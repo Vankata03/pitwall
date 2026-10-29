@@ -218,3 +218,60 @@ Owner accepted the current A direction for now and required tyres to start at 10
 - This acceptance settles the visual-language decision, not the full v1 spec, live telemetry correctness, temperature limits, mobile layouts or performance.
 
 final result: passed
+
+## Independent display treatments within accepted A
+
+Owner requested alternative designs for individual sections before continuing collector planning.
+
+Artifact: `docs/prototypes/dashboard-section-studies.html`. The accepted frozen A checkpoint remains unchanged. Five selectors vary the displays independently; the URL stores the selections. The initial view shows the second treatments; Reset to A restores the accepted reference.
+
+| Section | Reference treatment | Second treatment | Third treatment |
+| --- | --- | --- | --- |
+| Speed/RPM | Arc instrument | Digital speed with shift strip | Needle dial |
+| Tyre temperatures | Selected B ribbons | Three vertical thermal columns | Compact numeric matrix |
+| ERS | Battery segments | Circular reserve dial | Energy ledger |
+| Timing | Separate timing/delta tiles | Sector card | Lap clock |
+| Pedals | Overlaid traces | Mirrored traces around a common zero line | Instantaneous meters plus combined trace |
+
+All treatments retain tyre remaining-condition semantics (100% fresh), four corner readouts, SM, configurable speed units and one combined pedal chart. The thermal ranges, sectors, histories and energy readings are simulated. No operating limits are accepted here.
+
+Visual review:
+- Inspected the reference, all-second and all-third selections at 1440 CSS pixels, density 1. Captures are `section-reference-preview.png`, `section-second-preview.png` and `section-third-preview.png` under `docs/prototypes/`.
+- Fixed the needle dial's clipped upper tick label and the energy ledger's overflowing deployed row, then inspected the updated third-treatment capture.
+- Corrected a font-ready callback that restored the reference markup after the custom displays rendered.
+- Inspected the 728-pixel inline version. Controls remain outside the scaled dashboard and wrap independently. No mobile-device execution.
+
+Rendered checks passed for all 15 treatments selected individually, unchanged neighbouring selections, four condition meters, one combined pedal chart, restricted-data hiding, mph switching while retaining selections, Reset to A, canvas proportions, tile overflow and board overflow. Also inspected one mixed selection. The full set of possible combinations was not exhaustively tested.
+
+Console result: `PASS: 15 individual treatments, independent selections, condition meters, combined inputs, restricted data, units, reset and overflow`.
+
+`git diff --check` passed. New display choices remain undecided; no tracker resolution, commit or push for this study. No collector, live telemetry, persistence or performance validation.
+
+final result: passed
+
+## Owner-selected component combination and timing comparison
+
+The owner's screenshot selects this combination: shift strip, thermal columns, battery segments, sector card, and meters plus trace. These are now the defaults in `dashboard-section-studies.html`; Reset combo restores them. This supersedes the earlier B-ribbon temperature preference while preserving the accepted A dashboard composition.
+
+Timing behaviour added:
+- Completed sectors show their exact time and signed delta against the selected reference lap.
+- Best lap and Previous lap are selectable from the timing tile and the external demo toolbar; both controls remain synchronized. Best lap is the default, continuing the previous personal-best reference.
+- Sector references come from the same selected complete reference lap, rather than independently best sector times.
+- The finished lap displays its total time and delta. The result stays visible when the next lap starts, alongside the new running lap timer.
+- Comparison to best uses the best available before the completed lap. A newly fastest lap therefore retains its improvement instead of comparing against itself as zero.
+- Pending/in-progress sectors do not fabricate completed-sector deltas. The unfinished lap result remains pending.
+- Demo buttons expose running lap 18, lap 18 finish and lap 19 start. These are simulated presentation states, not an implemented telemetry lifecycle. The reference/phase controls are disabled when the sector-card study is not selected.
+
+Simulated arithmetic:
+- Finished sectors: 27.102, 28.491, 28.788 seconds; total 1:24.381.
+- Prior best lap: sectors 27.150, 28.600, 28.815; total 1:24.565. Sector deltas −0.048, −0.109, −0.027 sum to lap delta −0.184.
+- Previous lap: sectors 27.220, 28.430, 29.004; total 1:24.654. Sector deltas −0.118, +0.061, −0.216 sum to lap delta −0.273. The slower middle sector uses a positive sign and loss colour.
+
+Verification:
+- Rendered all six combinations of running/finished/next-lap and best/previous references. Checked sector counts, integer-millisecond arithmetic, sign/colour, retained result on next lap, frozen reference, synchronized selectors, phase buttons, retained component choices during unit switching and timing-tile overflow. All checks passed.
+- Plain renders at 1440 and 728 CSS pixels returned no console messages.
+- Captures: `timing-best-preview.png`, `timing-previous-preview.png`, `timing-next-lap-preview.png` under `docs/prototypes/`.
+- The user's image is the visual reference for the selected controls. Timing additions were inspected within that same composition.
+- No live-game, recorded-session, invalid-lap, missing-reference, flashback or session-reset behaviour has been implemented or verified. Those reference-lifecycle rules still need specification.
+
+final result: passed
