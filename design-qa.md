@@ -275,3 +275,71 @@ Verification:
 - No live-game, recorded-session, invalid-lap, missing-reference, flashback or session-reset behaviour has been implemented or verified. Those reference-lifecycle rules still need specification.
 
 final result: passed
+
+## Extended display lab
+
+Owner requested further alternatives across all displays. Created `docs/prototypes/dashboard-display-lab.html`, retaining the selected combo as the initial state and preserving the previously pushed reference artifacts.
+
+| Section | Treatments available |
+| --- | --- |
+| Speed/RPM | Arc, shift strip, needle, vertical tach, linear scales |
+| Tyre temperatures | B ribbons, thermal columns, numeric matrix, thermal orbits, dot scales |
+| ERS | Battery, reserve dial, ledger, vertical reserve, four-value ledger |
+| Timing | Original tiles, sector card, original lap clock, split ladder, delta first |
+| Pedals | Overlay, mirrored, meters plus trace, stepped samples, sample markers |
+| Circuit | Road outline, sector colours, simulated field overview |
+| Weather | Numeric row, condition banner, ledger |
+| Fuel | Delta value, bipolar margin scale, typographic margin |
+| Stint | Completed blocks, numbered completed laps, compound label |
+| SM/discipline | Gauge/badge, status rail, compact status cards |
+
+Five main selectors remain visible. A collapsible More sections group contains the additional five selectors. Try new styles cycles two sample mixes and opens that group; Reset combo restores the owner's selected display choices. Selections are encoded in the URL, without persistence.
+
+New timing treatments retain the sector-card comparison behaviour: selectable best/previous lap, signed sector deltas, completed result and retention on next-lap start. The original tiles and original lap-clock alternatives retain their earlier static study behaviour; comparison controls are enabled for sector card, split ladder and delta-first treatments.
+
+Evidence and verification:
+- Inspected the selected default, both new main-treatment sets, and the alternative secondary-section set at 1440 CSS pixels. Stored `display-lab-set-1.png` and `display-lab-set-2.png` under `docs/prototypes/`.
+- The initial expanded render failed because the extension tried to find ribbon rows after the column treatment had replaced them. Limited that replacement to the new thermal treatments; subsequent plain renders returned no console errors.
+- Rendered checks passed for all 40 treatments selected individually across ten sections: independent settings, four remaining-condition meters, one combined pedal chart, restricted values hidden, canvas proportions, panel overflow and board overflow.
+- All 18 combinations of sector-card/split-ladder/delta-first with best/previous and running/finished/next-lap states passed arithmetic and result-retention checks.
+- Rendered checks at 728 CSS pixels passed for both preview-set actions, speed-unit switching with selections retained, and restoring the selected combo. Plain 728-pixel rendering returned no console messages.
+- `git diff --check` passed. The full cross-product of possible mixes was not tested. No mobile-device, live-game, collector, persistence or performance validation.
+
+All thermal ranges, map positions, histories and numerical values are illustrative. Alternative circuit renderings remain schematics and are not validated Monza outlines. Stint variations show only nine completed laps, not a predicted stint length. Fuel scale −3 to +3 is a visual range, not a strategy threshold.
+
+This is an uncommitted exploration awaiting owner selection, not a replacement for the accepted checkpoint or a new tracker resolution.
+
+final result: passed
+
+## Favourite extended combination and discipline replacements
+
+Owner's screenshot selects: shift strip, thermal columns, battery segments, delta-first timing, meters plus trace, field overview, numeric weather, fuel delta, completed stint blocks. These are now the extended lab's defaults. The owner requested removal of track discipline and asked to see all three proposed replacements.
+
+- Track discipline is removed from the dashboard. SM and tyre age retain their positions.
+- Three comparison cards appear together above the dashboard: gaps ahead/behind, warnings/penalties, and lap-distance progress.
+- Each card has Try in dashboard. It changes only the replacement slot, synchronizes its selector and updates the URL.
+- Gaps is initially previewed, not accepted as the final replacement. No replacement is selected by the owner yet.
+- Lap progress follows the existing demo phases: running 39%, finish 100%, next lap 12%. These are illustrative distance samples, not percentages inferred from elapsed time.
+- Gap, warning and penalty values are simulated. No live-game availability or data mapping was qualified here.
+
+Verification:
+- Inspected all three cards together at 1440 and 728 CSS pixels. Stored `docs/prototypes/replacement-comparison-preview.png` (1440 × 1503 pixels, screenshot density 1).
+- Rendered checks passed for the favourite default combo, all three in-dashboard replacements, absence of the track-discipline gauge/text inside the board, retained SM and tyre-age displays, unchanged neighbouring settings, four condition meters, one combined pedal chart, no board overflow, phase-linked progress, unit switching and reset.
+- Plain 728-pixel rendering returned no console messages.
+- `git diff --check` passed. Prototype only; no collector, live telemetry, device or performance verification. No commit/push or tracker resolution for the pending replacement choice.
+
+final result: passed
+
+## Accepted extended favourite — 2026-10-30
+
+Owner accepted the currently previewed combination for now. The preview showed gaps ahead/behind in the removed track-discipline slot; this is the recorded replacement.
+
+Accepted defaults: shift strip; thermal columns; battery segments; delta-first timing; meters plus combined trace; field overview; numeric weather; fuel delta; completed stint blocks; gaps ahead/behind. SM and tyre age remain above the car. Tyre condition starts at 100% and decreases. Sector and completed-lap deltas retain the selectable best/previous reference.
+
+Collapsed the alternative-replacement gallery by default and labelled the accepted baseline. The alternatives remain usable; Reset combo restores the accepted gap display.
+
+Rendered checks passed for accepted defaults, absence of track discipline in the dashboard, the gap display, collapsed comparison, alternative selection and reset. This does not expand the earlier simulated-data, schematic-map, reference-lifecycle, device or performance evidence.
+
+Captured `docs/prototypes/favourite-accepted-preview.png`. This checkpoint records the visual direction and selected displays; it is not a production implementation.
+
+final result: passed
