@@ -79,4 +79,37 @@ impl Outline {
             .unwrap_or(0);
         widest as f32 * BUCKET_METRES <= MAX_GAP_METRES
     }
+
+    /// Distance from `at` to the stored line near `bucket`, or `None` when nothing is
+    /// stored there. The line is read across the nearby filled buckets, wrapping at the start.
+    pub(super) fn distance_to_line(&self, bucket: usize, at: [f32; 2]) -> Option<f32> {
+        const WINDOW: isize = 6;
+        let count = self.buckets.len() as isize;
+        let near: Vec<[f32; 2]> = (-WINDOW..=WINDOW)
+            .filter_map(|offset| self.buckets[(bucket as isize + offset).rem_euclid(count) as usize])
+            .collect();
+        match near.as_slice() {
+            [] => None,
+            [only] => Some(point_distance(*only, at)),
+            points => points
+                .windows(2)
+                .map(|pair| segment_distance(pair[0], pair[1], at))
+                .reduce(f32::min),
+        }
+    }
+}
+
+fn point_distance(a: [f32; 2], b: [f32; 2]) -> f32 {
+    (a[0] - b[0]).hypot(a[1] - b[1])
+}
+
+fn segment_distance(a: [f32; 2], b: [f32; 2], p: [f32; 2]) -> f32 {
+    let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+    let length_squared = dx * dx + dz * dz;
+    let t = if length_squared == 0.0 {
+        0.0
+    } else {
+        (((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / length_squared).clamp(0.0, 1.0)
+    };
+    point_distance([a[0] + t * dx, a[1] + t * dz], p)
 }

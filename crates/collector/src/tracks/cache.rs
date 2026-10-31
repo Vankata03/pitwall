@@ -58,3 +58,12 @@ pub(super) fn write(
     fs::write(&temp, serde_json::to_vec(&file).map_err(io::Error::other)?)?;
     fs::rename(temp, target)
 }
+
+/// Delete a map's cached file. Returns whether there was one.
+pub(super) fn remove(dir: &Path, key: TrackKey) -> io::Result<bool> {
+    match fs::remove_file(path(dir, key)) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
+}

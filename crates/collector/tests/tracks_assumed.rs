@@ -267,3 +267,195 @@ fn an_unreadable_cached_file_for_a_shipped_layout_falls_back_to_the_shipped_map(
     std::fs::write(cached_path(&dir, key), "garbage").unwrap();
     assert_eq!(TrackStore::open(dir).get(key).unwrap().source, Source::Shipped);
 }
+
+/// Drive a car along a layout's stored line, `offset` metres off in X, for lap distances
+/// `from..to`.
+fn follow(store: &TrackStore, key: TrackKey, car: usize, from: f32, to: f32, offset: f32) {
+    let map = store.get(key).unwrap();
+    for p in map.outline.iter().filter(|p| (from..to).contains(&(p.bucket as f32 * 8.0))) {
+        store.feed(
+            key,
+            Sample {
+                car,
+                x: p.x + offset,
+                z: p.z,
+                lap_distance: p.bucket as f32 * 8.0,
+                in_pit: false,
+                lap_invalid: false,
+            },
+        );
+    }
+}
+
+const MONACO: TrackKey = TrackKey { track_id: 5, track_length: 3323 };
+
+#[test]
+fn cars_on_the_stored_line_never_trigger_a_relearn() {
+    let store = TrackStore::open(temp_dir());
+    let shipped = store.get(MONACO).unwrap();
+    let revision = store.revision();
+    follow(&store, MONACO, 0, 0.0, 3323.0, 0.0);
+    follow(&store, MONACO, 0, 0.0, 3323.0, 4.0);
+    assert_eq!(store.get(MONACO).unwrap(), shipped);
+    assert_eq!(store.revision(), revision);
+}
+
+#[test]
+fn a_full_lap_far_off_the_stored_line_learns_a_new_cached_map_in_its_place() {
+    let dir = temp_dir();
+    let store = TrackStore::open(dir.clone());
+    let shipped = store.get(MONACO).unwrap();
+    let revision = store.revision();
+
+    // Almost a lap off the line, then back on it: nothing changes.
+    follow(&store, MONACO, 0, 0.0, 3000.0, 500.0);
+    follow(&store, MONACO, 0, 3000.0, 3323.0, 0.0);
+    assert_eq!(store.get(MONACO).unwrap(), shipped);
+
+    // A whole lap off the line replaces the map with a learner.
+    follow(&store, MONACO, 0, 0.0, 3323.0, 500.0);
+    follow(&store, MONACO, 0, 0.0, 400.0, 500.0);
+    let relearning = store.get(MONACO).unwrap();
+    assert_eq!(relearning.source, Source::Learned);
+    assert!(!relearning.complete);
+    assert!(store.revision() > revision);
+
+    // One more clean lap completes it, caches it and leaves the shipped copy alone.
+    for d in (0..3323).step_by(8) {
+        store.feed(MONACO, at(MONACO, 1, d as f32, 900.0));
+    }
+    let learned = store.get(MONACO).unwrap();
+    assert!(learned.complete);
+    assert_ne!(learned.outline, shipped.outline);
+    assert_eq!(TrackStore::open(dir).get(MONACO).unwrap().source, Source::Cached);
+}
+
+#[test]
+fn off_line_cars_that_cannot_complete_a_lap_between_samples_do_not_add_up() {
+    // A flashback or teleport breaks the run: two half laps are not a full lap.
+    let store = TrackStore::open(temp_dir());
+    let shipped = store.get(MONACO).unwrap();
+    follow(&store, MONACO, 0, 0.0, 1700.0, 500.0);
+    follow(&store, MONACO, 0, 0.0, 1700.0, 500.0);
+    follow(&store, MONACO, 0, 0.0, 1700.0, 500.0);
+    assert_eq!(store.get(MONACO).unwrap(), shipped);
+}
+
+#[test]
+fn relearn_drops_the_cached_file_and_falls_back_to_the_shipped_map() {
+    let dir = temp_dir();
+    let store = TrackStore::open(dir.clone());
+    follow(&store, MONACO, 0, 0.0, 3323.0, 500.0);
+    follow(&store, MONACO, 0, 0.0, 400.0, 500.0);
+    for d in (0..3323).step_by(8) {
+        store.feed(MONACO, at(MONACO, 1, d as f32, 900.0));
+    }
+    assert!(cached_path(&dir, MONACO).is_file());
+    let revision = store.revision();
+
+    store.relearn(MONACO).unwrap();
+    assert!(!cached_path(&dir, MONACO).exists());
+    assert_eq!(store.get(MONACO).unwrap().source, Source::Shipped);
+    assert!(store.revision() > revision);
+}
+
+#[test]
+fn relearn_of_an_unshipped_map_starts_over_and_of_an_unknown_one_is_refused() {
+    let dir = temp_dir();
+    let key = unshipped();
+    let store = TrackStore::open(dir.clone());
+    assert!(store.relearn(key).is_err());
+    drive(&store, key, 0, 0.0, 6200.0, 8.0);
+    assert!(cached_path(&dir, key).is_file());
+
+    store.relearn(key).unwrap();
+    assert!(!cached_path(&dir, key).exists());
+    assert!(store.get(key).is_none());
+    drive(&store, key, 0, 0.0, 6200.0, 8.0);
+    assert!(store.get(key).unwrap().complete);
+}
+
+/// One sample of a pit lane that runs 400 m along x = 50 (z from 0), `metres` along it.
+fn pit_sample(car: usize, metres: f32, in_pit: bool) -> Sample {
+    Sample {
+        car,
+        x: 50.0,
+        z: metres,
+        lap_distance: 5000.0 + metres,
+        in_pit,
+        lap_invalid: false,
+    }
+}
+
+/// Drive the whole lane: one on-track sample, every 5 m in the lane, one on-track sample.
+fn pit_pass(store: &TrackStore, key: TrackKey, car: usize, from: f32, to: f32) {
+    store.feed(key, pit_sample(car, from - 5.0, false));
+    let mut metres = from;
+    while metres <= to {
+        store.feed(key, pit_sample(car, metres, true));
+        metres += 5.0;
+    }
+    store.feed(key, pit_sample(car, to + 5.0, false));
+}
+
+#[test]
+fn the_first_whole_pass_through_the_pit_lane_becomes_the_pit_trace_and_freezes() {
+    let dir = temp_dir();
+    let store = TrackStore::open(dir.clone());
+    let before = store.get(MONACO).unwrap();
+    assert!(before.pit.is_none());
+    let outline = before.outline.clone();
+    let revision = store.revision();
+
+    pit_pass(&store, MONACO, 3, 0.0, 400.0);
+    let trace = store.get(MONACO).unwrap().pit.unwrap();
+    assert_eq!(trace.first(), Some(&[50.0, 0.0]));
+    assert_eq!(trace.last(), Some(&[50.0, 400.0]));
+    assert_eq!(trace.len(), 81);
+    assert_eq!(store.get(MONACO).unwrap().outline, outline, "pit samples never reach the outline");
+    assert!(store.revision() > revision);
+
+    // A second pass, by another car down another lane, changes nothing.
+    let revision = store.revision();
+    pit_pass(&store, MONACO, 4, 10.0, 390.0);
+    assert_eq!(store.get(MONACO).unwrap().pit.unwrap(), trace);
+    assert_eq!(store.revision(), revision);
+
+    // The pit lane learned on a shipped map is saved on top of it.
+    let reopened = TrackStore::open(dir).get(MONACO).unwrap();
+    assert_eq!(reopened.source, Source::Cached);
+    assert_eq!(reopened.outline, outline);
+    assert_eq!(reopened.pit.unwrap(), trace);
+}
+
+#[test]
+fn partial_pit_passes_are_discarded() {
+    let store = TrackStore::open(temp_dir());
+    // The car starts the session in the lane and leaves it: no entry was seen.
+    for metres in (0..=400).step_by(5) {
+        store.feed(MONACO, pit_sample(0, metres as f32, true));
+    }
+    store.feed(MONACO, pit_sample(0, 405.0, false));
+    // The car enters and then jumps (a flashback) before the exit.
+    store.feed(MONACO, pit_sample(1, -5.0, false));
+    for metres in (0..=100).step_by(5) {
+        store.feed(MONACO, pit_sample(1, metres as f32, true));
+    }
+    store.feed(MONACO, pit_sample(1, 2000.0, true));
+    store.feed(MONACO, pit_sample(1, 2005.0, false));
+    // The car dips into the lane and straight out again.
+    pit_pass(&store, MONACO, 2, 0.0, 20.0);
+    assert!(store.get(MONACO).unwrap().pit.is_none());
+}
+
+#[test]
+fn a_pit_pass_on_a_map_still_being_learned_is_kept_and_saved_with_the_map() {
+    let dir = temp_dir();
+    let key = unshipped();
+    let store = TrackStore::open(dir.clone());
+    pit_pass(&store, key, 0, 0.0, 400.0);
+    assert!(!cached_path(&dir, key).exists());
+    drive(&store, key, 0, 0.0, 6200.0, 8.0);
+    let reopened = TrackStore::open(dir).get(key).unwrap();
+    assert_eq!(reopened.pit.unwrap().len(), 81);
+}
