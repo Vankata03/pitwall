@@ -1,13 +1,14 @@
 use super::*;
 use crate::telemetry::Event;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[ts(rename = "RaceControlSource")]
 pub enum Source {
     Game,
     Derived,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub enum RaceControlKind {
     Game(Event),
     FlagChanged {
@@ -36,7 +37,7 @@ pub enum RaceControlKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct RaceControlEntry {
     /// Session-local stable ID, retained when an entry is marked rewound.
     pub id: u64,
@@ -48,7 +49,7 @@ pub struct RaceControlEntry {
     pub rewound: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct Penalty {
     /// ID of the corresponding race-control entry.
     pub id: u64,
@@ -61,7 +62,7 @@ pub struct Penalty {
     pub places_gained: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 pub struct PenaltyState {
     pub seconds: u8,
     pub total_warnings: u8,

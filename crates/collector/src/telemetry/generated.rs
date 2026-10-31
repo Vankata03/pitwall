@@ -14,7 +14,7 @@ impl ActiveAeroZone {
         })
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct CarDamageData {
     pub tyres_wear: [f32; 4],
     pub tyres_damage: [u8; 4],
@@ -286,7 +286,7 @@ impl CarStatusData {
         }
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct CarTelemetry2Data {
     pub active_aero_mode: u8,
     pub active_aero_available: u8,
@@ -312,7 +312,7 @@ impl CarTelemetry2Data {
         })
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct CarTelemetryData {
     pub speed: u16,
     pub throttle: f32,
@@ -429,7 +429,7 @@ impl FinalClassificationData {
         })
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct LapData {
     pub last_lap_time_in_ms: u32,
     pub current_lap_time_in_ms: u32,
@@ -531,7 +531,7 @@ impl LapHistoryData {
         })
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct LiveryColour {
     pub red: u8,
     pub green: u8,
@@ -1276,7 +1276,7 @@ impl PacketTyreSetsData {
         })
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct ParticipantData {
     pub ai_controlled: u8,
     pub driver_id: u16,
@@ -1333,7 +1333,7 @@ impl ParticipantData {
         }
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct TimeTrialDataSet {
     pub car_idx: u8,
     pub team_id: u16,
@@ -1428,7 +1428,7 @@ impl TyreStintHistoryData {
         })
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct WeatherForecastSample {
     pub session_type: u8,
     pub time_offset: u8,

@@ -1,14 +1,14 @@
 use super::{ParseError, Reader};
 
 /// Decoded event plus untouched details, including unknown future event codes.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct Event {
     pub code: [u8; 4],
     pub details: EventDetails,
     pub raw_details: [u8; 12],
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub enum EventDetails {
     SessionStarted,
     SessionEnded,
