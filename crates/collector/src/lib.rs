@@ -3,6 +3,7 @@
 pub mod assets;
 pub mod http;
 pub mod ingest;
+pub mod model;
 pub mod names;
 pub mod paths;
 pub mod pitrec;
