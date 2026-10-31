@@ -166,7 +166,7 @@ describe('several screens', () => {
     const { controller, server } = setup({ extra: [mine], stored: { 'pitwall.layout': 'Mine' } });
     await controller.start();
     controller.startEdit('wide');
-    controller.moveResize([{ i: 'weather', x: 6, y: 1, w: 6, h: 2 }]);
+    controller.moveResize([{ i: 'future-tile', x: 6, y: 1, w: 6, h: 2 }]);
     const theirs = layoutOf('Mine', false, []);
     theirs.arrangements.wide = [tile('notice', 'notice', 0, 9, 24, 1)];
     server.layouts.set('Mine', theirs);
@@ -174,7 +174,7 @@ describe('several screens', () => {
     await controller.revisionChanged(server.revision);
     const snap = controller.getSnapshot();
     expect(snap.edit).not.toBeNull();
-    expect(arrangementOf(snap.edit!.draft, 'wide').find((t) => t.i === 'weather')!.x).toBe(6);
+    expect(arrangementOf(snap.edit!.draft, 'wide').find((t) => t.i === 'future-tile')!.x).toBe(6);
     expect(snap.notices.at(-1)).toMatchObject({ kind: 'conflict' });
     expect(snap.notices.at(-1)!.text).toMatch(/Done will replace/);
   });
@@ -195,11 +195,11 @@ describe('several screens', () => {
     const { controller, server } = setup({ extra: [mine], stored: { 'pitwall.layout': 'Mine' } });
     await controller.start();
     controller.startEdit('wide');
-    controller.moveResize([{ i: 'weather', x: 6, y: 1, w: 6, h: 2 }]);
+    controller.moveResize([{ i: 'future-tile', x: 6, y: 1, w: 6, h: 2 }]);
     await controller.done();
     await controller.revisionChanged(server.revision);
     expect(controller.getSnapshot().notices).toEqual([]);
-    expect(arrangementOf(controller.getSnapshot().current!, 'wide').find((t) => t.i === 'weather')!.x).toBe(6);
+    expect(arrangementOf(controller.getSnapshot().current!, 'wide').find((t) => t.i === 'future-tile')!.x).toBe(6);
   });
 });
 
@@ -220,7 +220,7 @@ describe('edit mode', () => {
     const { controller, server } = setup({ extra: [mine], stored: { 'pitwall.layout': 'Mine' } });
     await controller.start();
     controller.startEdit('wide');
-    controller.moveResize([{ i: 'weather', x: 12, y: 1, w: 6, h: 2 }]);
+    controller.moveResize([{ i: 'future-tile', x: 12, y: 1, w: 6, h: 2 }]);
     controller.removeTile('notice');
     controller.cancelEdit();
     expect(controller.getSnapshot().edit).toBeNull();
@@ -244,13 +244,13 @@ describe('edit mode', () => {
     controller.startEdit('wide');
     controller.moveResize([
       { i: 'notice', x: 0, y: 0, w: 24, h: 1 },
-      { i: 'weather', x: 18, y: 1, w: 6, h: 4 },
+      { i: 'future-tile', x: 18, y: 1, w: 6, h: 4 },
     ]);
     expect(controller.getSnapshot().edit!.dirty).toBe(true);
     await controller.done();
     expect(server.log).toEqual(['PUT Mine']);
     const saved = server.layouts.get('Mine')!;
-    expect(saved.arrangements.wide.find((t) => t.i === 'weather')).toMatchObject({ x: 18, h: 4 });
+    expect(saved.arrangements.wide.find((t) => t.i === 'future-tile')).toMatchObject({ x: 18, h: 4 });
     expect(controller.getSnapshot().edit).toBeNull();
   });
 
@@ -260,14 +260,14 @@ describe('edit mode', () => {
     controller.startEdit('tablet');
     controller.moveResize([
       { i: 'notice', x: 0, y: 0, w: 12, h: 1 },
-      { i: 'weather', x: 6, y: 1, w: 6, h: 2 },
+      { i: 'future-tile', x: 6, y: 1, w: 6, h: 2 },
     ]);
     await controller.done();
     const saved = server.layouts.get('Mine')!;
     expect(saved.generated).toEqual(['phone']);
     expect(saved.arrangements.wide).toEqual(mine.arrangements.wide);
     expect(saved.arrangements.phone).toEqual(mine.arrangements.phone);
-    expect(saved.arrangements.tablet.find((t) => t.i === 'weather')!.x).toBe(6);
+    expect(saved.arrangements.tablet.find((t) => t.i === 'future-tile')!.x).toBe(6);
   });
 
   test('the first change to a preset is saved as a copy, and the device moves to it', async () => {
@@ -280,7 +280,7 @@ describe('edit mode', () => {
     await controller.done();
     expect(server.log).toEqual([`POST duplicate ${classic}`, 'PUT Pitwall Classic copy']);
     expect(server.layouts.get(classic)!.arrangements.wide).toHaveLength(2);
-    expect(server.layouts.get('Pitwall Classic copy')!.arrangements.wide.map((t) => t.i)).toEqual(['weather']);
+    expect(server.layouts.get('Pitwall Classic copy')!.arrangements.wide.map((t) => t.i)).toEqual(['future-tile']);
     expect(controller.getSnapshot().current?.name).toBe('Pitwall Classic copy');
     expect(device.getSnapshot().layout).toBe('Pitwall Classic copy');
   });
@@ -297,9 +297,9 @@ describe('edit mode', () => {
     const { controller } = setup({ extra: [mine], stored: { 'pitwall.layout': 'Mine' } });
     await controller.start();
     controller.startEdit('wide');
-    controller.addTile('weather', { w: 6, h: 2 });
+    controller.addTile('future-tile', { w: 6, h: 2 });
     const tiles = arrangementOf(controller.getSnapshot().edit!.draft, 'wide');
-    expect(tiles.at(-1)).toMatchObject({ i: 'weather-2', type: 'weather', x: 0, y: 3, w: 6, h: 2 });
+    expect(tiles.at(-1)).toMatchObject({ i: 'future-tile-2', type: 'future-tile', x: 0, y: 3, w: 6, h: 2 });
     expect(controller.getSnapshot().edit!.dirty).toBe(true);
   });
 
@@ -307,9 +307,9 @@ describe('edit mode', () => {
     const { controller, server } = setup({ extra: [mine], stored: { 'pitwall.layout': 'Mine' } });
     await controller.start();
     controller.startEdit('wide');
-    controller.setTileSettings('weather', { car: { target: 'focus' } });
+    controller.setTileSettings('future-tile', { car: { target: 'focus' } });
     await controller.done();
-    expect(server.layouts.get('Mine')!.arrangements.wide.find((t) => t.i === 'weather')!.settings).toEqual({
+    expect(server.layouts.get('Mine')!.arrangements.wide.find((t) => t.i === 'future-tile')!.settings).toEqual({
       car: { target: 'focus' },
     });
   });

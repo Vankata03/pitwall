@@ -19,9 +19,9 @@ export function layoutOf(name: string, preset = false, generated: Layout['genera
     preset,
     generated,
     arrangements: {
-      wide: [tile('notice', 'notice', 0, 0, 24, 1), tile('weather', 'weather', 0, 1, 6, 2)],
-      tablet: [tile('notice', 'notice', 0, 0, 12, 1), tile('weather', 'weather', 0, 1, 6, 2)],
-      phone: [tile('notice', 'notice', 0, 0, 4, 1), tile('weather', 'weather', 0, 1, 4, 2)],
+      wide: [tile('notice', 'notice', 0, 0, 24, 1), tile('future-tile', 'future-tile', 0, 1, 6, 2)],
+      tablet: [tile('notice', 'notice', 0, 0, 12, 1), tile('future-tile', 'future-tile', 0, 1, 6, 2)],
+      phone: [tile('notice', 'notice', 0, 0, 4, 1), tile('future-tile', 'future-tile', 0, 1, 4, 2)],
     },
   };
 }
