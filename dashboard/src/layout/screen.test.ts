@@ -101,3 +101,11 @@ describe('density thresholds written in grid cells', () => {
     expect(pickDensity(tile, px.width, px.height)).toBe('full');
   });
 });
+
+test('Stream rows fit viewport including gaps and retain empty rows in the arrangement', async () => {
+  const { streamGridMetrics } = await import('./screen');
+  expect(streamGridMetrics([{ y: 1, h: 2 }], 1080)).toEqual({ rowHeight: 1064 / 3, margin: 8 });
+  expect(streamGridMetrics([{ y: 0, h: 1 }], 1080)).toEqual({ rowHeight: 1080, margin: 8 });
+  const tiny = streamGridMetrics([{ y: 0, h: 100 }], 100);
+  expect(tiny.rowHeight * 100 + tiny.margin * 99).toBe(100);
+});

@@ -1,3 +1,4 @@
+import { streamFromUrl } from './app/stream';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
@@ -23,11 +24,13 @@ function browserStorage(): StorageLike {
   }
 }
 
+const stream = streamFromUrl(globalThis.location.search);
 const device = createDevice(browserStorage());
 const controller = createLayoutController({
   api: createLayoutsApi(),
   device,
-  fixedLayout: layoutNameFromUrl(globalThis.location.search),
+  fixedLayout: stream.enabled ? stream.layout : layoutNameFromUrl(globalThis.location.search),
+  stream: stream.enabled,
   onEditingChange: (editing) => runtime.setEditing(editing),
 });
 
@@ -37,7 +40,7 @@ void controller.start();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <RuntimeProvider runtime={runtime}>
-      <App controller={controller} device={device} registry={registry} />
+      <App controller={controller} device={device} registry={registry} stream={stream} />
     </RuntimeProvider>
   </StrictMode>,
 );

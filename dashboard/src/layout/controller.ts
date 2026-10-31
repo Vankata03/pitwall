@@ -82,6 +82,10 @@ export interface ControllerOptions {
   api: LayoutsApi;
   device: Device;
   fixedLayout?: string | null;
+  stream?: boolean;
+  /** Integration seam for #48: report the missing Stream layout to the collector for
+   * logging/status; null clears it when restored. No collector route exists yet. */
+  onMissingStreamLayout?: (name: string | null) => void;
   /** Called with true on entering edit mode and false on leaving it. */
   onEditingChange?: (editing: boolean) => void;
 }
@@ -110,7 +114,7 @@ function messageOf(error: unknown): string {
  */
 export function createLayoutController(options: ControllerOptions): LayoutController {
   const { api, device, onEditingChange } = options;
-  const fixed = Boolean(options.fixedLayout);
+  const fixed = Boolean(options.fixedLayout) || Boolean(options.stream);
   const listeners = new Set<() => void>();
   let nextNotice = 1;
   /** Revision of the library as last fetched over HTTP. */
@@ -184,6 +188,18 @@ export function createLayoutController(options: ControllerOptions): LayoutContro
     return true;
   }
 
+  let missingStreamLayout: string | null = null;
+  async function showStream(): Promise<void> {
+    const wanted = options.fixedLayout ?? DEFAULT_LAYOUT;
+    const found = await api.get(wanted);
+    set({ current: found, status: 'ready' });
+    const missing = found ? null : wanted;
+    if (missing !== missingStreamLayout) {
+      missingStreamLayout = missing;
+      options.onMissingStreamLayout?.(missing);
+    }
+  }
+
   const editing = () => state.edit !== null;
 
   function updateEdit(patch: Partial<EditState>): void {
@@ -220,6 +236,10 @@ export function createLayoutController(options: ControllerOptions): LayoutContro
     async start() {
       try {
         await loadLayouts();
+        if (options.stream) {
+          await showStream();
+          return;
+        }
         const wanted = options.fixedLayout ?? device.getSnapshot().layout ?? DEFAULT_LAYOUT;
         if (!(await show(wanted))) {
           await fallBack(`"${wanted}" no longer exists. Showing ${DEFAULT_LAYOUT}.`);
@@ -239,6 +259,10 @@ export function createLayoutController(options: ControllerOptions): LayoutContro
         if (started !== generation) return;
         known = list.revision;
         set({ layouts: list.layouts });
+        if (options.stream) {
+          await showStream();
+          return;
+        }
         const here = state.current;
         if (!here) return;
         if (!list.layouts.some((l) => l.name === here.name)) {
@@ -336,7 +360,7 @@ export function createLayoutController(options: ControllerOptions): LayoutContro
 
     startEdit(screenClass) {
       const current = state.current;
-      if (!current || state.edit) return;
+      if (options.stream || !current || state.edit) return;
       set({
         edit: {
           screenClass,

@@ -8,9 +8,11 @@ import { hello, snapshot } from '../runtime/fixtures';
 import { RuntimeProvider } from '../runtime/react';
 import { createRuntime } from '../runtime/runtime';
 import { createRegistry, registry as shipped, type TileRegistry } from '../tiles/registry';
+import { streamFromUrl } from './stream';
 import { App } from '../App';
 
-export function mockViewport(width: number): void {
+export function mockViewport(width: number, height = 1080): void {
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: height });
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width - 16 });
 }
@@ -22,9 +24,11 @@ export function mount(
     stored?: Record<string, string>;
     viewport?: number;
     fixed?: string | null;
+    search?: string;
   } = {},
 ) {
   mockViewport(options.viewport ?? 1280);
+  const stream = streamFromUrl(options.search ?? '');
   const server = fakeServer(options.extra);
   const device = createDevice(memoryStorage(options.stored));
   const runtime = createRuntime({
@@ -40,13 +44,14 @@ export function mount(
   const controller = createLayoutController({
     api: server,
     device,
-    fixedLayout: options.fixed ?? null,
+    fixedLayout: stream.enabled ? stream.layout : options.fixed ?? null,
+    stream: stream.enabled,
     onEditingChange: (e) => runtime.setEditing(e),
   });
   const registry = options.registry ?? shipped;
   const view = render(
     <RuntimeProvider runtime={runtime}>
-      <App controller={controller} device={device} registry={registry} />
+      <App controller={controller} device={device} registry={registry} stream={stream} />
     </RuntimeProvider>,
   );
   /** Push a State snapshot to this screen, as the collector's stream would. */

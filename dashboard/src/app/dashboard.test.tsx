@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test } from 'vitest';
 import { layoutOf, tile } from '../layout/fake-server';
 import { SHORT_LINE } from '../shared/short-line';
-import { createRegistry, mount } from './harness';
+import { createRegistry, mount, mockViewport } from './harness';
 
 afterEach(cleanup);
 
@@ -434,4 +434,59 @@ describe('loading', () => {
     expect(await screen.findByText('Could not load layouts from the collector.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
+});
+
+describe('Stream view', () => {
+  test('shows tiles only, follows player despite saved focus, and uses URL units without saving them', async () => {
+    const view = mount({ registry: carProbe, extra: [probeLayout()], viewport: 1920,
+      search: '?layout=Cars&stream=1&speed=mph&temp=f&pressure=bar',
+      stored: { 'pitwall.layout': 'Race' } });
+    view.device.setFocus({ kind: 'driver', driverId: 1 });
+    await ready(view);
+    act(() => view.sendState(session()));
+    expect((await screen.findByTestId('probe')).textContent).toContain('car 0 mph');
+    expect(document.querySelector('header')).toBeNull();
+    expect(document.querySelector('footer')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByText('Connecting to the collector')).toBeNull();
+    expect(document.documentElement.dataset.stream).toBe('true');
+    expect(view.device.getSnapshot().units.speed).toBe('kmh');
+    expect(view.device.getSnapshot().layout).toBe('Race');
+  });
+
+  test('missing layout renders no content, including load errors', async () => {
+    const view = mount({ search: '?layout=Gone&stream=1' });
+    await ready(view);
+    expect(view.container.textContent).toBe('');
+    expect(document.querySelector('.pw-tile')).toBeNull();
+    view.server.list = async () => { throw new Error('offline'); };
+    await ready(view);
+    expect(view.container.textContent).toBe('');
+  });
+});
+
+test('Stream fits a forced phone arrangement and resizes tile density with the viewport', async () => {
+  const layout = probeLayout();
+  layout.arrangements.phone = [tile('car-probe', 'car-probe', 0, 0, 4, 1)];
+  const view = mount({ registry: carProbe, extra: [layout], viewport: 1920,
+    search: '?layout=Cars&stream=1&class=phone' });
+  await ready(view);
+  act(() => view.sendState(session()));
+  expect((await screen.findByTestId('probe')).textContent).toContain('regular 1920');
+  expect((document.querySelector('.react-grid-layout') as HTMLElement).style.height).toBe('1080px');
+  act(() => { mockViewport(200, 60); window.dispatchEvent(new Event('resize')); });
+  await waitFor(() => expect(screen.getByTestId('probe').textContent).toContain('compact 200'));
+  expect((document.querySelector('.react-grid-layout') as HTMLElement).style.height).toBe('60px');
+  act(() => view.runtime.stores.setConnection('reconnecting'));
+  expect(document.querySelectorAll('.pw-tile')).toHaveLength(1);
+  expect(screen.queryByText('Connecting to the collector')).toBeNull();
+});
+
+test('Stream preserves a layout pin while ignoring the device focus', async () => {
+  const layout = probeLayout();
+  layout.arrangements.wide[0]!.settings = { car: { target: 'pinned', pin: { kind: 'driver', driverId: 2 } } };
+  const view = mount({ registry: carProbe, extra: [layout], search: '?layout=Cars&stream=1' });
+  await ready(view);
+  act(() => view.sendState(session()));
+  expect((await screen.findByTestId('probe')).textContent).toContain('car 2');
 });

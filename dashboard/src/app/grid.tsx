@@ -1,8 +1,8 @@
-import ReactGridLayout, { verticalCompactor, type Layout as GridLayout } from 'react-grid-layout';
+import ReactGridLayout, { verticalCompactor, noCompactor, type Layout as GridLayout } from 'react-grid-layout';
 import type { Units } from '../device/units';
 import type { GridItem } from '../layout/controller';
 import type { Tile } from '../layout/model';
-import { COLUMNS, GRID_MARGIN, ROW_HEIGHT, cellsToPixels, type ScreenClass } from '../layout/screen';
+import { COLUMNS, GRID_MARGIN, ROW_HEIGHT, cellsToPixels, streamGridMetrics, type ScreenClass } from '../layout/screen';
 import type { ResolvedCar } from '../session/cars';
 import { TileHost } from '../tiles/host';
 import type { TileRegistry } from '../tiles/registry';
@@ -13,6 +13,8 @@ export interface DashboardGridProps {
   screenClass: ScreenClass;
   /** Grid width in CSS pixels. */
   width: number;
+  /** Present only in Stream view: fit rows to the CSS viewport. */
+  viewportHeight?: number;
   editing: boolean;
   registry: TileRegistry;
   carFor(tile: Tile): ResolvedCar | null;
@@ -29,6 +31,8 @@ const DRAG_CANCEL = '.pw-tile-actions';
 export function DashboardGrid(props: DashboardGridProps) {
   const { tiles, screenClass, width, editing, registry } = props;
   const columns = COLUMNS[screenClass];
+  const streaming = props.viewportHeight !== undefined;
+  const metrics = props.viewportHeight !== undefined ? streamGridMetrics(tiles, props.viewportHeight) : { rowHeight: ROW_HEIGHT, margin: GRID_MARGIN };
   const layout: GridLayout = tiles.map((t) => {
     const min = registry.get(t.type)?.declaration.minSize;
     return {
@@ -47,14 +51,14 @@ export function DashboardGrid(props: DashboardGridProps) {
       className="pw-grid"
       width={width}
       layout={layout}
-      gridConfig={{ ...GRID_CONFIG, cols: columns }}
+      gridConfig={{ ...GRID_CONFIG, cols: columns, rowHeight: metrics.rowHeight, margin: [metrics.margin, metrics.margin] }}
       dragConfig={{ enabled: editing, bounded: false, handle: DRAG_HANDLE, cancel: DRAG_CANCEL, threshold: 3 }}
       resizeConfig={{ enabled: editing, handles: ['se'] }}
-      compactor={verticalCompactor}
+      compactor={streaming ? noCompactor : verticalCompactor}
       onLayoutChange={(next) => props.onMoveResize(next.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })))}
     >
       {tiles.map((tile) => {
-        const { width: px, height: py } = cellsToPixels(screenClass, width, { w: tile.w, h: tile.h });
+        const { width: px, height: py } = cellsToPixels(screenClass, width, { w: Math.min(tile.w, columns), h: tile.h }, metrics.rowHeight, metrics.margin);
         const name = registry.get(tile.type)?.declaration.name ?? tile.type;
         const configurable = registry.get(tile.type) !== undefined;
         return (

@@ -57,3 +57,10 @@ export function useEscape(active: boolean, onEscape: () => void): void {
     return () => document.removeEventListener('keydown', onKey);
   }, [active]);
 }
+
+/** CSS viewport dimensions, including changes to an OBS source size. */
+export function useViewportSize(): { width: number; height: number } {
+  const width = useSyncExternalStore(subscribeViewport, () => window.innerWidth, () => 1920);
+  const height = useSyncExternalStore(subscribeViewport, () => window.innerHeight, () => 1080);
+  return { width, height };
+}

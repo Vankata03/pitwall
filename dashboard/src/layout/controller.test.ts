@@ -377,3 +377,25 @@ describe('edit mode', () => {
     expect(controller.getSnapshot().current?.name).toBe('Mine');
   });
 });
+
+test('Stream view stays blank for a missing named layout and recovers on a library revision', async () => {
+  const server = fakeServer();
+  const device = createDevice(memoryStorage({ 'pitwall.layout': 'Race' }));
+  const missing = vi.fn();
+  const controller = createLayoutController({ api: server, device, fixedLayout: 'Air', stream: true, onMissingStreamLayout: missing });
+  await controller.start();
+  expect(controller.getSnapshot().current).toBeNull();
+  expect(controller.getSnapshot().notices).toEqual([]);
+  expect(missing).toHaveBeenLastCalledWith('Air');
+  expect(device.getSnapshot().layout).toBe('Race');
+  server.layouts.set('Air', layoutOf('Air'));
+  server.revision++;
+  await controller.revisionChanged(server.revision);
+  expect(controller.getSnapshot().current?.name).toBe('Air');
+  expect(missing).toHaveBeenLastCalledWith(null);
+  server.layouts.delete('Air');
+  server.revision++;
+  await controller.revisionChanged(server.revision);
+  expect(controller.getSnapshot().current).toBeNull();
+  expect(missing).toHaveBeenLastCalledWith('Air');
+});
