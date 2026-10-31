@@ -38,10 +38,10 @@ describe('the grid', () => {
   test('shows the layout’s tiles; types this build lacks get the placeholder and keep their place', async () => {
     const view = mount();
     await ready(view);
-    // The fake preset holds Notice and Weather; only Notice exists in this build.
+    // The fake preset holds Notice and a type this build lacks.
     expect(document.querySelectorAll('.pw-tile')).toHaveLength(2);
     expect(screen.getAllByTestId('unknown-tile')).toHaveLength(1);
-    expect(screen.getByTestId('unknown-tile').textContent).toContain('weather');
+    expect(screen.getByTestId('unknown-tile').textContent).toContain('future-tile');
     expect(screen.getAllByText(SHORT_LINE).length).toBe(2); // the Notice tile and the footer
   });
 
@@ -76,8 +76,8 @@ describe('edit mode', () => {
     expect(screen.getByRole('button', { name: 'Remove Notice' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Settings for Notice' })).toBeTruthy();
     // An unknown tile can be removed but has no settings to open.
-    expect(screen.getByRole('button', { name: 'Remove weather' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Settings for weather' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove future-tile' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Settings for future-tile' })).toBeNull();
   });
 
   test('removing a tile and pressing Done saves the layout and leaves edit mode', async () => {
@@ -85,7 +85,7 @@ describe('edit mode', () => {
     await ready(view);
     const u = user();
     await u.click(screen.getByRole('button', { name: 'Edit' }));
-    await u.click(screen.getByRole('button', { name: 'Remove weather' }));
+    await u.click(screen.getByRole('button', { name: 'Remove future-tile' }));
     await u.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy());
     expect(view.server.layouts.get('Mine')!.arrangements.wide.map((t) => t.i)).toEqual(['notice']);
@@ -107,7 +107,7 @@ describe('edit mode', () => {
     const u = user();
     await u.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getByText(/Pitwall Classic is read-only/)).toBeTruthy();
-    await u.click(screen.getByRole('button', { name: 'Remove weather' }));
+    await u.click(screen.getByRole('button', { name: 'Remove future-tile' }));
     expect(screen.getByText(/Done saves your changes as “Pitwall Classic copy”/)).toBeTruthy();
     await u.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /Layout\s*Pitwall Classic copy/ })).toBeTruthy());
@@ -134,7 +134,7 @@ describe('edit mode', () => {
     await ready(view);
     const u = user();
     await u.click(screen.getByRole('button', { name: 'Edit' }));
-    await u.click(screen.getByRole('button', { name: 'Remove weather' }));
+    await u.click(screen.getByRole('button', { name: 'Remove future-tile' }));
     view.server.failNext(500, 'disk full');
     await u.click(screen.getByRole('button', { name: 'Done' }));
     expect((await screen.findByRole('alert')).textContent).toContain('disk full');
@@ -412,7 +412,7 @@ describe('several screens', () => {
     act(() => view.sendState(session()));
     const u = user();
     await u.click(screen.getByRole('button', { name: 'Edit' }));
-    await u.click(screen.getByRole('button', { name: 'Remove weather' }));
+    await u.click(screen.getByRole('button', { name: 'Remove future-tile' }));
     const theirs = layoutOf('Mine');
     theirs.arrangements.wide = [tile('notice', 'notice', 0, 5, 24, 1)];
     view.server.layouts.set('Mine', theirs);
@@ -420,7 +420,7 @@ describe('several screens', () => {
     act(() => view.sendState(session({ context: { revisions: { layouts: 1, tracks: 0 } } })));
     expect(await screen.findByText(/was saved on another screen. Done will replace it/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Remove weather' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove future-tile' })).toBeNull();
   });
 });
 

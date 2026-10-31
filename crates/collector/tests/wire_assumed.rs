@@ -371,3 +371,21 @@ fn assumed_flashback_frame_uses_target_session_time() {
     let bytes = pitwall_collector::wire::frame::encode(&m, 1, 1);
     assert_eq!(f64::from_le_bytes(bytes[8..16].try_into().unwrap()), 5.);
 }
+
+#[test]
+fn assumed_session_total_laps_reaches_state() {
+    use pitwall_collector::{
+        telemetry::Packet,
+        wire::{Context, State},
+    };
+    let mut p = packet(1, 0.);
+    if let Packet::Session(ref mut s) = p.packet {
+        s.total_laps = 44;
+    } else {
+        panic!("expected session packet");
+    }
+    let mut model = SessionModel::default();
+    model.apply(Duration::ZERO, &p);
+    let value = serde_json::to_value(State::capture(&model, Context::default())).unwrap();
+    assert_eq!(value["session"]["value"]["totalLaps"], 44);
+}
