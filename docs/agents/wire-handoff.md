@@ -22,3 +22,5 @@
 Regenerate with `cargo run --example generate_wire`. `cargo test --test wire_contract` regenerates into a temporary directory and compares every checked-in file; normal CI runs this check. Telemetry contract derives originate in `tools/telemetry/generate_parser.py`.
 
 All new synthetic wire/runtime tests are labelled `assumed`. Loopback datagram-to-WebSocket checks do not qualify live-game telemetry, Windows or performance.
+
+Build identity uses `PITWALL_BUILD_ID` for both the dashboard build and Cargo, defaulting to `dev` locally. CI supplies the commit SHA to both. The #36 runtime merged from integration still imports its assumed `runtime/wire.ts` adapter; its integration owner must replace that adapter with the generated contracts.
