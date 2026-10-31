@@ -1,0 +1,48 @@
+/* Shared design tokens: the palette (spec section 10, Colour), Oxanium, and the text rules.
+   Tiles use these through var(); nothing else in the dashboard declares a colour or a size. */
+@import '@fontsource/oxanium/latin-400.css';
+@import '@fontsource/oxanium/latin-600.css';
+@import '@fontsource/oxanium/latin-ext-400.css';
+@import '@fontsource/oxanium/latin-ext-600.css';
+
+:root {
+  /* Surfaces */
+  --pw-page-bg: #181b1d;
+  --pw-tile-bg: #1B1F21;
+  --pw-line: #343d42;
+
+  /* Text. Muted text is also the colour of a `stale` value. */
+  --pw-text: #F3F5F6;
+  --pw-text-muted: #9AA7AD;
+
+  /* Temperature bands, condition, sectors, traces. Colour only repeats a number or glyph. */
+  --pw-temp-cold: #5CA7E7;
+  --pw-temp-window: #E8EDEF;
+  --pw-temp-hot: #FF9C35;
+  --pw-condition-healthy: #E8EDEF;
+  --pw-condition-mid: #9AA7AD;
+  --pw-condition-low: #FF9C35;
+  --pw-sector-session-best: #C58BFF;
+  --pw-sector-personal-best: #7ED99C;
+  --pw-sector-slower: #F2D14B;
+  --pw-energy: #56D9CA;
+  --pw-brake: #F55C72;
+
+  /* Chrome accent: papaya, for focus rings and the selected state. */
+  --pw-accent: #FF9C35;
+
+  /* Type. A label is never under 11px and a value never under 14px, at any density. */
+  --pw-font: 'Oxanium', system-ui, sans-serif;
+  --pw-text-label: 11px;
+  --pw-text-value: 14px;
+
+  /* Touch targets are at least 44px. */
+  --pw-hit: 44px;
+
+  /* Grid (spec section 10): kept in step with src/layout/screen.ts. */
+  --pw-row-height: 32px;
+  --pw-gap: 8px;
+
+  /* Motion */
+  --pw-ease: cubic-bezier(0.2, 0, 0, 1);
+}

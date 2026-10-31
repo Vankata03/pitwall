@@ -1,0 +1,67 @@
+/* Page-wide rules every screen gets. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--pw-page-bg);
+}
+
+body {
+  margin: 0;
+  background: var(--pw-page-bg);
+  color: var(--pw-text);
+  font-family: var(--pw-font);
+  font-size: var(--pw-text-value);
+  line-height: 1.3;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Numbers that change must not shift what sits beside them. */
+.pw-num,
+.pw-readout {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Labels sit at the 11px floor; values at 14px. Tiles drop readouts, never shrink text. */
+.pw-label {
+  font-size: var(--pw-text-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pw-text-muted);
+}
+.pw-value {
+  font-size: var(--pw-text-value);
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+/* Keyboard focus is always visible. */
+:focus-visible {
+  outline: 2px solid var(--pw-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
