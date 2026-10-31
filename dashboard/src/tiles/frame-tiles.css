@@ -89,3 +89,20 @@
 .pw-shift-strip[data-state='stale'] > span[data-on='true'] {
   opacity: 0.6;
 }
+
+/* ---- G-force ---- */
+.pw-gf-body {
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+}
+.pw-gf-values {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+.pw-gf-circle {
+  flex: none;
+}
