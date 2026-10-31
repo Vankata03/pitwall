@@ -56,7 +56,7 @@ fn assumed_binary_receives_and_reloads_udp_port_and_forwarding() {
         std::fs::write(
             &path,
             format!(
-                "[udp]\nport={port}\n[forward]\nenabled=true\ntargets=['{}']\n",
+                "[udp]\nport={port}\n[recording]\nenabled=false\n[forward]\nenabled=true\ntargets=['{}']\n",
                 target.local_addr().unwrap()
             ),
         )

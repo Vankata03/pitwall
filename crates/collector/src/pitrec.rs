@@ -39,6 +39,7 @@ pub struct Writer<W: Write> {
     last_time: u64,
     next_seq: u64,
     buffered_bytes: usize,
+    level: i32,
 }
 
 impl<W: Write> Writer<W> {
@@ -57,7 +58,13 @@ impl<W: Write> Writer<W> {
             last_time: 0,
             next_seq: 0,
             buffered_bytes: 0,
+            level: COMPRESSION_LEVEL,
         })
+    }
+
+    /// Level for blocks flushed from now on; the recorder raises it to recompress.
+    pub fn set_compression_level(&mut self, level: i32) {
+        self.level = level;
     }
 
     /// Append in arrival order. Times must be monotonic (ties allowed); the first
@@ -106,7 +113,7 @@ impl<W: Write> Writer<W> {
             raw.extend_from_slice(&(r.datagram.len() as u16).to_le_bytes());
             raw.extend_from_slice(&r.datagram);
         }
-        let compressed = zstd::stream::encode_all(raw.as_slice(), COMPRESSION_LEVEL)?;
+        let compressed = zstd::stream::encode_all(raw.as_slice(), self.level)?;
         self.output
             .write_all(&(compressed.len() as u32).to_le_bytes())?;
         self.output.write_all(&compressed)?;
