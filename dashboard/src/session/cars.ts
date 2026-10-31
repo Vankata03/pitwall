@@ -3,7 +3,7 @@
  * and which car a tile follows. Reads State through plain structural checks so it works
  * against the wire boundary today and the generated types later (see `reading State`).
  *
- * Wire shape this file assumes, from the generated `State` on ticket #35:
+ * Wire shape this file reads (the generated `State`):
  * `state.playerCar: number | null`, `state.cars[i]: { participant: Readout<ParticipantData>,
  * retired: boolean, lap: Readout<{ car_position }> } | null`, and
  * `state.context.revisions.layouts: number`. `ParticipantData` keeps the game's snake_case

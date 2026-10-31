@@ -72,7 +72,8 @@ const weatherTile = defineTileModule({
     reads: [{ source: 'state', keys: ['session'] }],
   },
   Component: function WeatherExample({ settings }: TileProps) {
-    const air = useSlow((s) => (s.state?.airTemperature as number | undefined) ?? null);
+    const session = useSlow((s) => s.state?.session);
+    const air = session?.state === 'live' || session?.state === 'stale' ? session.value.airTemperature : null;
     return (
       <div>
         <Readout state={air === null ? 3 : 0} value={String(air)} />
@@ -181,7 +182,7 @@ test('a frame tile stops drawing once unmounted', () => {
 
 test('a slow tile reads State, and its own settings sit beside the host’s car setting', () => {
   const { runtime } = liveRuntime();
-  runtime.stores.ingest(JSON.stringify({ type: 'state', epoch: 1, lifecycle: 'live', airTemperature: 22 }));
+  runtime.stores.ingest(JSON.stringify({ type: 'state', epoch: 1, lifecycle: 'live', session: { state: 'live', value: { airTemperature: 22 } } }));
   const Tile = weatherTile.Component;
   const Panel = weatherTile.Settings!;
   const saved: Record<string, unknown>[] = [];
