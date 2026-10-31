@@ -137,3 +137,38 @@
 .pw-sm-state[data-state='stale'] {
   opacity: 0.7;
 }
+
+/* ---- ERS ---- */
+.pw-ers-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.pw-ers-percent {
+  font-size: 40px;
+  min-width: 4ch;
+}
+.pw-battery {
+  display: flex;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+}
+.pw-battery > span {
+  flex: 1;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--pw-line);
+}
+.pw-battery > span[data-on='true'] {
+  background: var(--pw-energy);
+}
+.pw-battery[data-state='stale'] > span[data-on='true'] {
+  opacity: 0.6;
+}
+.pw-ers-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px 16px;
+  margin-top: auto;
+}
