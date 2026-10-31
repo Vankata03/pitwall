@@ -21,8 +21,9 @@ static SHIPPED: OnceLock<HashMap<TrackKey, Vec<OutlinePoint>>> = OnceLock::new()
 pub(super) fn outline(key: TrackKey) -> Option<&'static [OutlinePoint]> {
     SHIPPED
         .get_or_init(|| {
-            let entries: Vec<Entry> = serde_json::from_str(include_str!("../../assets/tracks.json"))
-                .expect("embedded track maps are valid");
+            let entries: Vec<Entry> =
+                serde_json::from_str(include_str!("../../assets/tracks.json"))
+                    .expect("embedded track maps are valid");
             entries
                 .into_iter()
                 .map(|e| (TrackKey::new(e.track_id, e.track_length), e.points))

@@ -154,8 +154,20 @@ fn pit_lane_invalid_lap_and_negative_distance_samples_are_rejected() {
     let key = unshipped();
     let store = TrackStore::open(temp_dir());
     for d in [0.0, 8.0, 16.0] {
-        store.feed(key, Sample { in_pit: true, ..at(key, 0, d, 0.0) });
-        store.feed(key, Sample { lap_invalid: true, ..at(key, 0, d, 0.0) });
+        store.feed(
+            key,
+            Sample {
+                in_pit: true,
+                ..at(key, 0, d, 0.0)
+            },
+        );
+        store.feed(
+            key,
+            Sample {
+                lap_invalid: true,
+                ..at(key, 0, d, 0.0)
+            },
+        );
     }
     store.feed(key, at(key, 0, -8.0, 0.0));
     assert!(store.get(key).is_none(), "nothing accepted, so no map yet");
@@ -163,7 +175,13 @@ fn pit_lane_invalid_lap_and_negative_distance_samples_are_rejected() {
     // One clean lap except a rejected stretch: incomplete until a second pass covers it.
     drive(&store, key, 0, 0.0, 2000.0, 8.0);
     for d in (2000..2200).step_by(8) {
-        store.feed(key, Sample { lap_invalid: true, ..at(key, 0, d as f32, 0.0) });
+        store.feed(
+            key,
+            Sample {
+                lap_invalid: true,
+                ..at(key, 0, d as f32, 0.0)
+            },
+        );
     }
     drive(&store, key, 0, 2200.0, 6200.0, 8.0);
     assert!(!store.get(key).unwrap().complete);
@@ -195,7 +213,9 @@ fn cached_path(dir: &std::path::Path, key: TrackKey) -> PathBuf {
 /// A hand-written cached file whose outline covers every 8 m bucket on a line.
 fn cached_file(key: TrackKey, schema: u64) -> serde_json::Value {
     let buckets = (f32::from(key.track_length) / 8.0).ceil() as u32;
-    let outline: Vec<_> = (0..buckets).map(|b| serde_json::json!([b, b as f32, 7.5])).collect();
+    let outline: Vec<_> = (0..buckets)
+        .map(|b| serde_json::json!([b, b as f32, 7.5]))
+        .collect();
     serde_json::json!({
         "schemaVersion": schema,
         "trackId": key.track_id,
@@ -211,11 +231,18 @@ fn a_map_is_written_to_its_cached_file_the_moment_it_completes_and_reloads() {
     let key = unshipped();
     let store = TrackStore::open(dir.clone());
     drive(&store, key, 0, 0.0, 6000.0, 8.0);
-    assert!(!cached_path(&dir, key).exists(), "nothing is written before completion");
+    assert!(
+        !cached_path(&dir, key).exists(),
+        "nothing is written before completion"
+    );
     drive(&store, key, 0, 6000.0, 6200.0, 8.0);
     let learned = store.get(key).unwrap();
     assert!(cached_path(&dir, key).is_file());
-    assert_eq!(dir.read_dir().unwrap().count(), 1, "no manifest, no temp files");
+    assert_eq!(
+        dir.read_dir().unwrap().count(),
+        1,
+        "no manifest, no temp files"
+    );
 
     let reopened = TrackStore::open(dir).get(key).unwrap();
     assert_eq!(reopened.source, Source::Cached);
@@ -251,7 +278,10 @@ fn unreadable_old_schema_or_incomplete_cached_files_are_ignored_and_relearned() 
         let dir = temp_dir();
         std::fs::write(cached_path(&dir, key), contents).unwrap();
         let store = TrackStore::open(dir.clone());
-        assert!(store.get(key).is_none(), "ignored, so unknown until learned");
+        assert!(
+            store.get(key).is_none(),
+            "ignored, so unknown until learned"
+        );
         drive(&store, key, 0, 0.0, 6200.0, 8.0);
         assert_eq!(store.get(key).unwrap().source, Source::Learned);
         let rewritten: serde_json::Value =
@@ -265,14 +295,21 @@ fn an_unreadable_cached_file_for_a_shipped_layout_falls_back_to_the_shipped_map(
     let dir = temp_dir();
     let key = TrackKey::new(5, 3323);
     std::fs::write(cached_path(&dir, key), "garbage").unwrap();
-    assert_eq!(TrackStore::open(dir).get(key).unwrap().source, Source::Shipped);
+    assert_eq!(
+        TrackStore::open(dir).get(key).unwrap().source,
+        Source::Shipped
+    );
 }
 
 /// Drive a car along a layout's stored line, `offset` metres off in X, for lap distances
 /// `from..to`.
 fn follow(store: &TrackStore, key: TrackKey, car: usize, from: f32, to: f32, offset: f32) {
     let map = store.get(key).unwrap();
-    for p in map.outline.iter().filter(|p| (from..to).contains(&(p.bucket as f32 * 8.0))) {
+    for p in map
+        .outline
+        .iter()
+        .filter(|p| (from..to).contains(&(p.bucket as f32 * 8.0)))
+    {
         store.feed(
             key,
             Sample {
@@ -287,7 +324,10 @@ fn follow(store: &TrackStore, key: TrackKey, car: usize, from: f32, to: f32, off
     }
 }
 
-const MONACO: TrackKey = TrackKey { track_id: 5, track_length: 3323 };
+const MONACO: TrackKey = TrackKey {
+    track_id: 5,
+    track_length: 3323,
+};
 
 #[test]
 fn cars_on_the_stored_line_never_trigger_a_relearn() {
@@ -327,7 +367,10 @@ fn a_full_lap_far_off_the_stored_line_learns_a_new_cached_map_in_its_place() {
     let learned = store.get(MONACO).unwrap();
     assert!(learned.complete);
     assert_ne!(learned.outline, shipped.outline);
-    assert_eq!(TrackStore::open(dir).get(MONACO).unwrap().source, Source::Cached);
+    assert_eq!(
+        TrackStore::open(dir).get(MONACO).unwrap().source,
+        Source::Cached
+    );
 }
 
 #[test]
@@ -412,7 +455,11 @@ fn the_first_whole_pass_through_the_pit_lane_becomes_the_pit_trace_and_freezes()
     assert_eq!(trace.first(), Some(&[50.0, 0.0]));
     assert_eq!(trace.last(), Some(&[50.0, 400.0]));
     assert_eq!(trace.len(), 81);
-    assert_eq!(store.get(MONACO).unwrap().outline, outline, "pit samples never reach the outline");
+    assert_eq!(
+        store.get(MONACO).unwrap().outline,
+        outline,
+        "pit samples never reach the outline"
+    );
     assert!(store.revision() > revision);
 
     // A second pass, by another car down another lane, changes nothing.
@@ -458,4 +505,97 @@ fn a_pit_pass_on_a_map_still_being_learned_is_kept_and_saved_with_the_map() {
     drive(&store, key, 0, 0.0, 6200.0, 8.0);
     let reopened = TrackStore::open(dir).get(key).unwrap();
     assert_eq!(reopened.pit.unwrap().len(), 81);
+}
+
+mod from_model {
+    use super::*;
+    use pitwall_collector::{
+        model::SessionModel,
+        telemetry::{ParsedDatagram, parse_datagram},
+    };
+    use std::{process::Command, time::Duration};
+
+    fn packet(id: u8, fields: &[(&str, &str)]) -> ParsedDatagram {
+        let mut command = Command::new("python3");
+        command.arg(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tools/telemetry/assumed_datagram.py"
+        ));
+        command.args(["2026".to_string(), id.to_string()]);
+        command.args(["--set", "header.session_uid=101"]);
+        for (path, value) in fields {
+            command.args(["--set", &format!("{path}={value}")]);
+        }
+        let output = command
+            .output()
+            .expect("Python is required for assumed fixtures");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        parse_datagram(&output.stdout).unwrap()
+    }
+
+    fn model(pit_status: &str, lap_distance: &str, invalid: &str) -> SessionModel {
+        let mut model = SessionModel::default();
+        let at = Duration::from_secs(1);
+        model.apply(
+            at,
+            &packet(1, &[("track_id", "31"), ("track_length", "6200")]),
+        );
+        model.apply(
+            at,
+            &packet(
+                0,
+                &[
+                    ("car_motion_data.2.world_position_x", "100"),
+                    ("car_motion_data.2.world_position_z", "200"),
+                ],
+            ),
+        );
+        model.apply(
+            at,
+            &packet(
+                2,
+                &[
+                    ("lap_data.2.result_status", "2"),
+                    ("lap_data.2.lap_distance", lap_distance),
+                    ("lap_data.2.pit_status", pit_status),
+                    ("lap_data.2.current_lap_invalid", invalid),
+                ],
+            ),
+        );
+        model
+    }
+
+    #[test]
+    fn observe_feeds_every_valid_cars_motion_and_lap_distance() {
+        let store = TrackStore::open(temp_dir());
+        store.observe(&model("0", "803", "0"));
+        let map = store.get(unshipped()).unwrap();
+        let points: Vec<_> = map.outline.iter().map(|p| (p.bucket, p.x, p.z)).collect();
+        assert_eq!(points, [(100, 100.0, 200.0)]);
+    }
+
+    #[test]
+    fn observe_rejects_pit_lane_invalid_lap_and_negative_distance() {
+        let store = TrackStore::open(temp_dir());
+        store.observe(&model("1", "803", "0"));
+        store.observe(&model("0", "803", "1"));
+        store.observe(&model("0", "-5", "0"));
+        assert!(store.get(unshipped()).is_none());
+    }
+
+    #[test]
+    fn observe_ignores_a_session_with_no_known_track() {
+        let store = TrackStore::open(temp_dir());
+        let mut model = SessionModel::default();
+        model.apply(
+            Duration::from_secs(1),
+            &packet(1, &[("track_id", "-1"), ("track_length", "6200")]),
+        );
+        store.observe(&model);
+        assert_eq!(store.revision(), 0);
+    }
 }

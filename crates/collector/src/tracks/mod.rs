@@ -8,6 +8,7 @@
 
 mod cache;
 mod outline;
+mod routes;
 mod shipped;
 mod watch;
 
@@ -20,9 +21,15 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::{
+    model::{Readout, SessionModel},
+    telemetry::MAX_CARS,
+};
+
 use outline::Outline;
 use watch::{Drift, PitWatch};
 
+pub use routes::routes;
 pub use watch::MISMATCH_METRES;
 
 /// Lap distance covered by one outline bucket.
@@ -186,11 +193,11 @@ impl Inner {
                 .and_then(|bucket| entry.outline.distance_to_line(bucket, at))
                 .map(|distance| distance > MISMATCH_METRES);
             let replace = off_line.is_some_and(|off_line| {
-                entry
-                    .drift
-                    .entry(sample.car)
-                    .or_default()
-                    .observe(sample.lap_distance, off_line, length)
+                entry.drift.entry(sample.car).or_default().observe(
+                    sample.lap_distance,
+                    off_line,
+                    length,
+                )
             });
             if !replace {
                 return;
@@ -198,10 +205,7 @@ impl Inner {
             self.maps.insert(key, Entry::learner(key));
             self.revision += 1;
         }
-        let entry = self
-            .maps
-            .entry(key)
-            .or_insert_with(|| Entry::learner(key));
+        let entry = self.maps.entry(key).or_insert_with(|| Entry::learner(key));
         let Some(bucket) = entry.outline.bucket_of(sample.lap_distance) else {
             return;
         };
@@ -292,5 +296,36 @@ impl TrackStore {
     /// fall back to the shipped map if there is one.
     pub fn relearn(&self, key: TrackKey) -> Result<(), TrackError> {
         self.0.lock().unwrap().relearn(key)
+    }
+
+    /// Feed the learner from a session model: every valid car's world X/Z and lap
+    /// distance, under the model's current track. Call it as often as the model changes;
+    /// repeating a reading changes nothing. Live and replay models both work.
+    pub fn observe(&self, model: &SessionModel) {
+        let Readout::Live(session) = model.session() else {
+            return;
+        };
+        if session.track_id < 0 || session.track_length == 0 {
+            return;
+        }
+        let key = TrackKey::new(session.track_id, session.track_length);
+        let mut inner = self.0.lock().unwrap();
+        for car in 0..MAX_CARS {
+            let Some(view) = model.car(car) else { continue };
+            let (Readout::Live(motion), Readout::Live(lap)) = (view.motion(), view.lap()) else {
+                continue;
+            };
+            inner.feed(
+                key,
+                Sample {
+                    car,
+                    x: motion.world_position_x,
+                    z: motion.world_position_z,
+                    lap_distance: lap.lap_distance,
+                    in_pit: lap.pit_status != 0,
+                    lap_invalid: lap.current_lap_invalid != 0,
+                },
+            );
+        }
     }
 }

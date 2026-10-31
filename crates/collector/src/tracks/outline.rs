@@ -86,7 +86,9 @@ impl Outline {
         const WINDOW: isize = 6;
         let count = self.buckets.len() as isize;
         let near: Vec<[f32; 2]> = (-WINDOW..=WINDOW)
-            .filter_map(|offset| self.buckets[(bucket as isize + offset).rem_euclid(count) as usize])
+            .filter_map(|offset| {
+                self.buckets[(bucket as isize + offset).rem_euclid(count) as usize]
+            })
             .collect();
         match near.as_slice() {
             [] => None,
