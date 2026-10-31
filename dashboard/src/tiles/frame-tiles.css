@@ -106,3 +106,34 @@
 .pw-gf-circle {
   flex: none;
 }
+
+/* ---- SM / DRS ---- */
+.pw-sm-body {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+}
+.pw-sm-state {
+  min-width: 8ch;
+  padding: 4px 16px;
+  border: 1px solid var(--pw-line);
+  border-radius: 4px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+/* On is a filled box as well as a word, so colour is never the only cue. */
+.pw-sm-state[data-mode='active'],
+.pw-sm-state[data-mode='open'] {
+  border-color: var(--pw-energy);
+  background: var(--pw-energy);
+  color: var(--pw-tile-bg);
+}
+.pw-sm-state[data-mode='available'] {
+  border-color: var(--pw-energy);
+  color: var(--pw-energy);
+}
+.pw-sm-state[data-state='stale'] {
+  opacity: 0.7;
+}
