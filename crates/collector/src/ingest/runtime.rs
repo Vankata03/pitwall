@@ -1,9 +1,13 @@
 //! Executable wiring until the recorder (#30), session model (#31), and host
 //! application are attached. Config reads and DNS stay off the receive thread.
 use super::{
-    Disposition,
+    DatagramTap, Disposition,
     config::{Cli, Config},
     udp::{LiveUdp, PreparedUpdate},
+};
+use crate::{
+    paths::AppPaths,
+    recorder::{Recorder, RecorderConfig},
 };
 use std::{
     io,
@@ -14,6 +18,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+fn unix_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
+}
+
 fn address(config: &Config) -> SocketAddr {
     SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.udp.port))
 }
@@ -21,6 +31,7 @@ fn address(config: &Config) -> SocketAddr {
 pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
     let mut config = cli.load(&default_path)?;
     let mut live = LiveUdp::bind(address(&config), &config.forward)?;
+    let recording = config.recording.clone();
     let (updates, receiver) = mpsc::channel();
     let (status_sender, statuses) = mpsc::sync_channel(1);
     let worker =
@@ -29,8 +40,23 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
             .spawn(move || -> io::Result<()> {
                 let origin = Instant::now();
                 let mut last_status = Instant::now();
-                // #30: attach a DatagramTap that enqueues raw bytes for the recorder.
-                let mut tap = |_: u64, _: &[u8]| {};
+                // The recorder only enqueues; dropping it at exit closes the open recording.
+                let mut recorder = if recording.enabled {
+                    Some(Recorder::start(
+                        RecorderConfig::new(
+                            AppPaths::resolve()?.recordings,
+                            recording.size_cap_gb.saturating_mul(1_000_000_000),
+                        ),
+                        unix_seconds,
+                    )?)
+                } else {
+                    None
+                };
+                let mut tap = |at: u64, bytes: &[u8]| {
+                    if let Some(recorder) = recorder.as_mut() {
+                        recorder.datagram(at, bytes);
+                    }
+                };
                 loop {
                     loop {
                         match receiver.try_recv() {
