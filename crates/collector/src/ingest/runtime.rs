@@ -41,7 +41,7 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
         ),
         unix_seconds,
     )?));
-    let replay = crate::replay::Controller::new(paths.recordings, recorder.clone());
+    let replay = crate::replay::Controller::new(paths.recordings.clone(), recorder.clone());
     let shell = crate::http::HttpShell::new(crate::http::TrustedHosts::discover()?);
     // Browsers request this even before the dashboard ships an icon.
     let shell = shell.route(
