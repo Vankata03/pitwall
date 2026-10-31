@@ -1,5 +1,4 @@
-//! Executable wiring until the recorder (#30), session model (#31), and host
-//! application are attached. Config reads and DNS stay off the receive thread.
+//! Collector runtime composition. Config reads and DNS stay off the receive thread.
 use super::{
     DatagramTap, Disposition,
     config::{Cli, Config},
@@ -31,6 +30,38 @@ fn address(config: &Config) -> SocketAddr {
 pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
     let mut config = cli.load(&default_path)?;
     let mut live = LiveUdp::bind(address(&config), &config.forward)?;
+    let paths = AppPaths::resolve()?;
+    let layouts = crate::layouts::LayoutLibrary::open(paths.layouts)?;
+    let tracks = crate::tracks::TrackStore::open(paths.tracks);
+    let stream = crate::wire::Stream::new(env!("PITWALL_BUILD_ID"));
+    let shell = crate::http::HttpShell::new(crate::http::TrustedHosts::discover()?);
+    let shell = crate::layouts::routes(shell, layouts.clone());
+    let shell = crate::tracks::routes(shell, tracks.clone());
+    let router = crate::wire::routes(shell, stream.clone()).into_router();
+    let http_runtime = tokio::runtime::Runtime::new()?;
+    let http_address = |c: &Config| SocketAddr::new(c.http.bind, c.http.port);
+    let mut http = http_runtime.block_on(crate::http::HttpListener::bind(
+        http_address(&config),
+        router,
+    ))?;
+    let (models, mut selected) = tokio::sync::watch::channel((
+        crate::model::SessionModel::default(),
+        crate::wire::CollectorStatus::default(),
+    ));
+    let publisher_tracks = tracks.clone();
+    http_runtime.spawn(async move {
+        let origin = tokio::time::Instant::now();
+        let mut timer = tokio::time::interval(Duration::from_secs(1) / 60);
+        timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! { _ = timer.tick() => {}, changed = selected.changed() => { if changed.is_err() { break; } } }
+            let (model, collector) = selected.borrow_and_update().clone();
+            stream.tick(origin.elapsed(), crate::wire::Source::Live, &model, crate::wire::Context {
+                revisions: crate::wire::Revisions { layouts: layouts.revision() as u32, tracks: publisher_tracks.revision() as u32 },
+                collector, replay: None,
+            });
+        }
+    });
     let recording = config.recording.clone();
     let (updates, receiver) = mpsc::channel();
     let (status_sender, statuses) = mpsc::sync_channel(1);
@@ -40,6 +71,7 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
             .spawn(move || -> io::Result<()> {
                 let origin = Instant::now();
                 let mut last_status = Instant::now();
+                let mut model = crate::model::SessionModel::default();
                 // The recorder only enqueues; dropping it at exit closes the open recording.
                 let mut recorder = if recording.enabled {
                     Some(Recorder::start(
@@ -68,12 +100,24 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
                     let now = || origin.elapsed().as_micros().min(u64::MAX as u128) as u64;
                     for received in live.poll(256, now, &mut tap)? {
                         if let Ok((parsed, Disposition::Apply)) = received.result {
-                            // #31: model.apply(Duration::from_micros(received.arrival_time_us), &parsed).
-                            // Parsing and lifecycle filtering already happened once.
-                            let _ = parsed;
+                            model.apply(Duration::from_micros(received.arrival_time_us), &parsed);
+                            tracks.observe(&model);
                         }
                     }
-                    // #31: model.advance(Duration::from_micros(now())) also carries silence.
+                    model.advance(Duration::from_micros(now()));
+                    let status = live.status(now());
+                    models.send_replace((
+                        model.clone(),
+                        crate::wire::CollectorStatus {
+                            packet_rate_hz: status.ingest.packet_rate_hz.round() as u32,
+                            dropped: status.ingest.dropped_frames as u32,
+                            parse_errors: status.ingest.parse_errors as u32,
+                            uid_zero: status.ingest.uid_zero as u32,
+                            closed_uid: status.ingest.closed_uid as u32,
+                            forwarding_errors: status.forwarding_errors as u32,
+                            last_format: status.ingest.last_format,
+                        },
+                    ));
                     if last_status.elapsed() >= Duration::from_secs(1) {
                         let _ = status_sender.try_send(live.status(now()));
                         last_status = Instant::now();
@@ -99,9 +143,19 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
         // Reading a partially saved or invalid file cannot replace active state.
         let reload = (|| -> io::Result<()> {
             let next = cli.load(&default_path)?;
-            if next.udp != config.udp || next.forward != config.forward {
-                let update =
-                    PreparedUpdate::prepare(address(&config), address(&next), &next.forward)?;
+            let update = if next.udp != config.udp || next.forward != config.forward {
+                Some(PreparedUpdate::prepare(
+                    address(&config),
+                    address(&next),
+                    &next.forward,
+                )?)
+            } else {
+                None
+            };
+            if next.http != config.http {
+                http_runtime.block_on(http.restart(http_address(&next)))?;
+            }
+            if let Some(update) = update {
                 updates
                     .send(update)
                     .map_err(|_| io::Error::other("UDP receive thread stopped"))?;

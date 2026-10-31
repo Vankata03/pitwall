@@ -10,7 +10,7 @@ pub enum Reference {
 }
 
 /// Official summary comparison. No distance samples are required.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct LapResult {
     pub lap_number: u8,
     pub valid: bool,
@@ -20,7 +20,7 @@ pub struct LapResult {
     pub sector_deltas_ms: [Option<i64>; 3],
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct LapSample {
     pub distance_m: f32,
     pub time_ms: f32,

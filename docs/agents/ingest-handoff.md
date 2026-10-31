@@ -20,6 +20,6 @@ The merged #31 API is `SessionModel::apply(Duration, &ParsedDatagram)` and `Sess
 
 `config::Cli::load` reads TOML and reapplies CLI overrides. `PreparedUpdate::prepare(current, desired, forwarding)` resolves destinations and binds a replacement socket on the control thread. `LiveUdp::apply` swaps that prepared state on the receive thread. Failed preparation leaves active settings intact. Forward-only changes preserve the receive socket and queued datagrams.
 
-`ingest::runtime::run` starts the UDP worker and checks config every 250 ms. Recorder and model attachment points are marked in that worker. They are placeholders until #30/#31 are integrated. HTTP settings are parsed here; HTTP serving, tray integration, and coordinated exit remain outside #29.
+`ingest::runtime::run` starts the UDP worker and checks config every 250 ms. The recorder and live session model are attached. The runtime serves the dashboard, layout and track routes, WebSocket stream and lap traces on the configured HTTP listener. See `docs/agents/wire-handoff.md` for the publication and replay seams added by #35. Tray integration and coordinated exit remain later work.
 
 Status exposes cumulative UID 0, closed-identity, frame-drop, parse-error, and forwarding-error counts. Rates count valid datagrams per packet type over the preceding second, including duplicates. The displayed rate is the highest menu-rate packet type's rate, so aggregate packet traffic cannot hide a low game send rate.
