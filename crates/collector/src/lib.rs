@@ -5,3 +5,4 @@ pub mod http;
 pub mod names;
 pub mod paths;
 pub mod pitrec;
+pub mod telemetry;
