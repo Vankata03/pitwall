@@ -46,6 +46,7 @@ impl SessionModel {
         for car in &mut self.cars {
             let car = Arc::make_mut(car);
             Arc::make_mut(&mut car.derived).rewind(time);
+            car.delta.rewind(time, car.derived.best_lap_number);
             car.participant.rewind(time);
             car.lap.rewind(time);
             car.motion.rewind(time);
@@ -68,6 +69,7 @@ impl SessionModel {
                 car.valid_since = None;
             }
         }
+        self.time_trial.rewind(time);
         self.session.rewind(time);
         self.pit_window.rewind(time);
         if self

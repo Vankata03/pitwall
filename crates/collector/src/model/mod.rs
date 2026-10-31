@@ -16,6 +16,13 @@
 //! `Arc`s. `gaps`, `penalty_state`, `ers_percentage` and `tyre_condition` preserve
 //! their source readout states. `race_control` is an arrival-ordered audit log;
 //! rewinds mark abandoned entries and bump `epoch` before accepting new facts.
+//!
+//! `CarView` exposes named lap references, live and sector deltas, and the held
+//! official `completed_result`. `lap_trace` and `current_lap_trace` borrow shared
+//! 5 m traces with elapsed time, speed, throttle and brake. Missing telemetry
+//! channels remain `None`; Time Trial extras provide summary comparisons only.
+mod delta;
+pub use delta::{LapResult, LapSample, LapTrace, Reference};
 mod facts;
 mod history;
 mod race_control;
@@ -124,6 +131,7 @@ impl<T: Clone> Group<T> {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 struct Car {
+    delta: delta::DeltaState,
     derived: Arc<CarHistory>,
     valid: bool,
     valid_since: Option<f32>,
@@ -310,6 +318,7 @@ pub struct SessionModel {
     session: Group<PacketSessionData>,
     pit_window: Group<PitWindow>,
     classification: Option<Arc<Classification>>,
+    time_trial: Group<crate::telemetry::PacketTimeTrialData>,
 }
 
 impl Default for SessionModel {
@@ -329,6 +338,7 @@ impl Default for SessionModel {
             session: Group::default(),
             pit_window: Group::default(),
             classification: None,
+            time_trial: Group::default(),
         }
     }
 }
@@ -434,6 +444,10 @@ impl SessionModel {
         self.derive_race_control(datagram);
         self.derive_history(datagram);
         match &datagram.packet {
+            Packet::TimeTrial(packet) => {
+                self.time_trial
+                    .set(self.now, datagram.header.session_time, packet)
+            }
             Packet::FinalClassification(packet) => {
                 self.classification = Some(Arc::new(Classification {
                     session_time: datagram.header.session_time,
@@ -609,6 +623,7 @@ impl SessionModel {
             }
             _ => {}
         }
+        self.derive_delta(datagram);
         if matches!(&datagram.packet, Packet::FinalClassification(_))
             || matches!(&datagram.packet, Packet::Event(event) if event.details == EventDetails::SessionEnded)
         {
