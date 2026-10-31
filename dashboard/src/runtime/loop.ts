@@ -11,6 +11,8 @@ export interface DrawContext {
   car: number | null;
   /** Recent samples of `car`; null when `car` is. */
   rings: CarRings | null;
+  /** False while the collector is unreachable: pass to `effectiveState` so live values read stale. */
+  connected: boolean;
 }
 
 export interface FrameTile {
@@ -88,6 +90,7 @@ interface Entry {
   readsSlow: boolean;
   seenFrame: number;
   seenSlow: unknown;
+  seenConnected: boolean | null;
   forced: boolean;
   error: unknown;
   parked: boolean;
@@ -102,7 +105,8 @@ export interface LoopOptions {
 /**
  * The one shared requestAnimationFrame loop. Each animation frame it calls `draw()` on
  * the registered tiles whose data changed since their last draw, and on no others. A frame
- * that arrives late draws the latest value; nothing is queued or interpolated.
+ * that arrives late draws the latest value; nothing is queued or interpolated. A change of
+ * connection also redraws every tile, so values dim the moment the collector goes quiet.
  */
 export class RenderLoop {
   readonly monitor = new FrameRateMonitor();
@@ -127,6 +131,7 @@ export class RenderLoop {
       readsSlow: reads.some((r) => r.source === 'state' || r.source === 'history'),
       seenFrame: -1,
       seenSlow: null,
+      seenConnected: null,
       forced: true,
       error: undefined,
       parked: false,
@@ -165,19 +170,28 @@ export class RenderLoop {
     this.monitor.sample(ts);
     const { frame, slow } = this.options.stores;
     const snapshot = slow.getSnapshot();
+    const connected = snapshot.connection === 'open';
     for (const e of this.entries) {
       if (e.parked) continue;
       const dirty =
         e.forced ||
+        connected !== e.seenConnected ||
         (e.readsFrame && frame.version !== e.seenFrame) ||
         (e.readsSlow && snapshot !== e.seenSlow);
       if (!dirty) continue;
       e.forced = false;
       e.seenFrame = frame.version;
       e.seenSlow = snapshot;
+      e.seenConnected = connected;
       const car = e.tile.car();
       try {
-        e.tile.draw({ ts, frame: frame.data, car, rings: car === null ? null : (frame.rings[car] ?? null) });
+        e.tile.draw({
+          ts,
+          frame: frame.data,
+          car,
+          rings: car === null ? null : (frame.rings[car] ?? null),
+          connected,
+        });
       } catch (err) {
         e.error = err;
         e.parked = true;

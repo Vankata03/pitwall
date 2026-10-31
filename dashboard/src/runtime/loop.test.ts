@@ -124,6 +124,23 @@ describe('RenderLoop', () => {
     expect(stateOnly).toHaveBeenCalledTimes(1);
   });
 
+  test('every frame tile redraws when the connection drops or returns, with ctx.connected', () => {
+    stores.setConnection('open');
+    vi.advanceTimersByTime(200);
+    const seen: boolean[] = [];
+    loop.register({ declaration: decl(), car: () => 0, draw: (c) => seen.push(c.connected) });
+    loop.start();
+    tick(1);
+    stores.setConnection('reconnecting');
+    vi.advanceTimersByTime(200);
+    tick(17);
+    tick(33);
+    stores.setConnection('open');
+    vi.advanceTimersByTime(200);
+    tick(50);
+    expect(seen).toEqual([true, false, true]);
+  });
+
   test('invalidate forces one redraw (resize, car change)', () => {
     const draw = vi.fn();
     const h = loop.register({ declaration: decl(), car: () => 0, draw });
