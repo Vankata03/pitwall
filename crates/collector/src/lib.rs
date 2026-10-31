@@ -15,3 +15,5 @@ pub mod telemetry;
 pub mod tracks;
 
 pub mod wire;
+
+pub mod replay;

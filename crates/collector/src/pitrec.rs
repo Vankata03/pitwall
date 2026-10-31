@@ -266,6 +266,41 @@ impl<R: Read> Reader<R> {
     }
 }
 
+/// In-memory reader continuation used by replay checkpoints.
+#[derive(Clone)]
+pub(crate) struct Cursor {
+    offset: u64,
+    ready: VecDeque<Record>,
+    next_seq: u64,
+    last_time: u64,
+    done: bool,
+    incomplete: bool,
+}
+impl<R: Read + std::io::Seek> Reader<R> {
+    pub(crate) fn offset(&mut self) -> io::Result<u64> {
+        self.input.stream_position()
+    }
+    pub(crate) fn cursor(&mut self) -> io::Result<Cursor> {
+        Ok(Cursor {
+            offset: self.input.stream_position()?,
+            ready: self.ready.clone(),
+            next_seq: self.next_seq,
+            last_time: self.last_time,
+            done: self.done,
+            incomplete: self.incomplete,
+        })
+    }
+    pub(crate) fn restore(&mut self, cursor: &Cursor) -> io::Result<()> {
+        self.input.seek(std::io::SeekFrom::Start(cursor.offset))?;
+        self.ready = cursor.ready.clone();
+        self.next_seq = cursor.next_seq;
+        self.last_time = cursor.last_time;
+        self.done = cursor.done;
+        self.incomplete = cursor.incomplete;
+        Ok(())
+    }
+}
+
 impl<R: Read> Iterator for Reader<R> {
     type Item = io::Result<Record>;
     fn next(&mut self) -> Option<Self::Item> {

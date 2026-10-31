@@ -51,7 +51,7 @@ pub struct IngestStatus {
     pub packet_rate_hz: f64,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Ingest {
     active: Option<SessionIdentity>,
     last_frame: HashMap<u8, u32>,
