@@ -4,3 +4,4 @@ pub mod assets;
 pub mod names;
 pub mod paths;
 pub mod pitrec;
+pub mod telemetry;
