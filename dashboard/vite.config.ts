@@ -4,5 +4,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [react()],
   build: { target: 'chrome127' },
+  // The collector reports its own build ID in `hello`; a page built with another ID reloads.
+  // Both sides take it from PITWALL_BUILD_ID at build time.
+  define: { __PITWALL_BUILD_ID__: JSON.stringify(process.env.PITWALL_BUILD_ID ?? 'dev') },
   test: { environment: 'node' },
 });
