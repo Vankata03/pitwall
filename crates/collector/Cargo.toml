@@ -1,0 +1,13 @@
+[package]
+name = "pitwall-collector"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+dirs = "7.0.0"
+include_dir = "0.7.4"
+
+[[bin]]
+name = "pitwall"
+path = "src/main.rs"

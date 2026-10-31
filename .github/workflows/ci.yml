@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  scaffold:
+    name: ${{ github.event_name == 'pull_request' && 'Windows x64' || 'macOS arm64' }}
+    runs-on: ${{ github.event_name == 'pull_request' && 'windows-latest' || 'macos-14' }}
+    env:
+      CARGO_TARGET: ${{ github.event_name == 'pull_request' && 'x86_64-pc-windows-msvc' || 'aarch64-apple-darwin' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: ${{ env.CARGO_TARGET }}
+      - name: Fetch dependencies
+        run: |
+          pnpm fetch --frozen-lockfile
+          pnpm install --offline --frozen-lockfile
+          cargo fetch --locked --target ${{ env.CARGO_TARGET }}
+      - name: Dashboard tests and build
+        run: |
+          pnpm test
+          pnpm build
+      - name: Collector tests and release build
+        run: |
+          cargo test --workspace --locked --offline --target ${{ env.CARGO_TARGET }}
+          cargo test --workspace --release --locked --offline --target ${{ env.CARGO_TARGET }}
+          cargo build --release --locked --offline --target ${{ env.CARGO_TARGET }} --bin pitwall
