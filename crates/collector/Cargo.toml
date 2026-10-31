@@ -7,7 +7,15 @@ publish.workspace = true
 [dependencies]
 dirs = "7.0.0"
 include_dir = "0.7.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zstd = "0.13"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [[bin]]
 name = "pitwall"
 path = "src/main.rs"
+
+[[bin]]
+name = "pitrec"
+path = "../../tools/pitrec/main.rs"
