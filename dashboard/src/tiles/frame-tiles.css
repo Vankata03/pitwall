@@ -1,0 +1,91 @@
+/* Frame-rate tiles. Colours and sizes come from tokens.css; text is never below the 11px
+   label and 14px value floors, and nothing here animates, so nothing can flash. */
+.pw-frame-tile {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+  padding: 12px 16px;
+  overflow: hidden;
+  background: var(--pw-tile-bg);
+  color: var(--pw-text);
+  font-family: var(--pw-font);
+}
+.pw-frame-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+/* The message sits over the values; they stay in the layout, so nothing reflows. */
+.pw-frame-tile[data-empty='true'] .pw-frame-body {
+  visibility: hidden;
+}
+.pw-frame-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+  font-size: var(--pw-text-value);
+  color: var(--pw-text-muted);
+}
+.pw-frame-message[hidden] {
+  display: none;
+}
+
+.pw-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pw-big {
+  font-size: 56px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* ---- Speed/RPM/gear ---- */
+.pw-srg-speed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.pw-srg-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: auto;
+}
+.pw-gear {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--pw-accent);
+}
+.pw-dial {
+  align-self: center;
+}
+.pw-shift-strip {
+  display: flex;
+  gap: 3px;
+}
+.pw-shift-strip > span {
+  flex: 1;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--pw-line);
+}
+.pw-shift-strip > span[data-on='true'][data-zone='low'] {
+  background: var(--pw-sector-personal-best);
+}
+.pw-shift-strip > span[data-on='true'][data-zone='mid'] {
+  background: var(--pw-sector-slower);
+}
+.pw-shift-strip > span[data-on='true'][data-zone='high'] {
+  background: var(--pw-temp-hot);
+}
+.pw-shift-strip[data-state='stale'] > span[data-on='true'] {
+  opacity: 0.6;
+}
