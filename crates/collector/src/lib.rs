@@ -4,6 +4,7 @@ pub mod assets;
 pub mod http;
 pub mod ingest;
 pub mod layouts;
+pub mod liveries;
 pub mod model;
 pub mod names;
 pub mod notice;

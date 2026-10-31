@@ -33,3 +33,7 @@ path = "src/main.rs"
 [[bin]]
 name = "pitrec"
 path = "../../tools/pitrec/main.rs"
+
+[[bin]]
+name = "pitrec-resend"
+path = "../../tools/resend/main.rs"
