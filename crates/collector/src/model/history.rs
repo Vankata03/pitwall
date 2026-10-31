@@ -1,7 +1,7 @@
 //! Session-long summaries. Completed laps are immutable and shared by checkpoints.
 use super::*;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct CompletedLap {
     pub lap_number: u8,
     /// Finish time when observed live; first observation time for history-only laps.
@@ -13,7 +13,7 @@ pub struct CompletedLap {
     pub authoritative: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct Sector {
     pub lap_number: u8,
     /// Zero-based sector index.
@@ -23,7 +23,7 @@ pub struct Sector {
     pub valid: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct Stint {
     pub id: u64,
     pub session_time: f32,
@@ -37,7 +37,9 @@ pub struct Stint {
     /// Last observed condition on this set, not an estimate for a new set.
     pub tyre_condition: Readout<[f32; 4]>,
     pub authoritative: bool,
+    #[serde(skip)]
     age_updated_at: f32,
+    #[serde(skip)]
     condition_updated_at: f32,
 }
 
@@ -47,7 +49,7 @@ impl Stint {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct PitStop {
     pub id: u64,
     pub session_time: f32,
@@ -55,6 +57,7 @@ pub struct PitStop {
     pub exit_time: Option<f32>,
     pub lane_time_ms: Option<u32>,
     pub stopped_time_ms: Option<u32>,
+    #[serde(skip)]
     timing_updated_at: f32,
 }
 

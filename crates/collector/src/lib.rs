@@ -13,3 +13,7 @@ pub mod pitrec;
 pub mod recorder;
 pub mod telemetry;
 pub mod tracks;
+
+pub mod wire;
+
+pub mod replay;

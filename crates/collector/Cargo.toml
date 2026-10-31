@@ -5,7 +5,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 dirs = "7.0.0"
 if-addrs = "0.15"
 hyper = { version = "1", features = ["server", "http1"] }
@@ -18,8 +18,12 @@ serde_json = "1"
 zstd = "0.13"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 toml = "1"
+ts-rs = { version = "12.0.1", features = ["serde-json-impl"] }
 
 [dev-dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+tokio = { version = "1", features = ["test-util"] }
+tokio-tungstenite = "0.29.0"
 tower = { version = "0.5", features = ["util"] }
 
 [[bin]]

@@ -13,6 +13,7 @@ jobs:
     name: ${{ github.event_name == 'pull_request' && 'Windows x64' || 'macOS arm64' }}
     runs-on: ${{ github.event_name == 'pull_request' && 'windows-latest' || 'macos-14' }}
     env:
+      PITWALL_BUILD_ID: ${{ github.sha }}
       CARGO_TARGET: ${{ github.event_name == 'pull_request' && 'x86_64-pc-windows-msvc' || 'aarch64-apple-darwin' }}
     steps:
       - uses: actions/checkout@v4

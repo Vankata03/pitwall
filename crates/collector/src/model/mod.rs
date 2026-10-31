@@ -41,7 +41,8 @@ pub use status::{ErsData, FuelData, StatusData};
 use std::{sync::Arc, time::Duration};
 
 /// Missing and withheld data never carry a numeric placeholder.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, ts_rs::TS)]
+#[serde(tag = "state", content = "value", rename_all = "camelCase")]
 pub enum Readout<T> {
     Live(T),
     Stale(T),
@@ -60,13 +61,13 @@ impl<T> Readout<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 pub enum Regulations {
     Pre2026,
     Regulations2026,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 pub struct PitWindow {
     pub car_index: usize,
     pub ideal_lap: u8,
@@ -287,13 +288,13 @@ impl<'a> CarView<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 pub struct SessionId {
     pub uid: u64,
     pub format: u16,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 pub enum Lifecycle {
     #[default]
     Waiting,
@@ -352,6 +353,11 @@ impl SessionModel {
             menu_interval,
             ..Self::default()
         }
+    }
+    pub fn session_time(&self) -> f32 {
+        self.last_session_time
+            .or_else(|| self.header.as_ref().map(|h| h.session_time))
+            .unwrap_or(0.0)
     }
     pub fn identity(&self) -> Option<SessionId> {
         self.identity

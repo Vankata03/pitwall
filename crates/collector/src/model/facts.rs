@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 pub struct Gaps {
     /// Race leader in races; session-best valid lap in timed sessions.
     pub to_leader_ms: u32,

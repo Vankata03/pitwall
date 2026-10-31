@@ -2,7 +2,7 @@
 use crate::telemetry::CarStatusData;
 
 /// Status fields that the game never restricts.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct StatusData {
     pub traction_control: u8,
     pub anti_lock_brakes: u8,
@@ -19,7 +19,7 @@ pub struct StatusData {
     pub network_paused: u8,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct FuelData {
     pub mix: u8,
     pub in_tank: f32,
@@ -27,7 +27,7 @@ pub struct FuelData {
     pub remaining_laps: f32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct ErsData {
     pub store_energy: f32,
     pub deploy_mode: u8,
