@@ -312,3 +312,71 @@ async fn trust_checks_cover_all_mutation_methods_and_reject_ambiguous_authoritie
         );
     }
 }
+
+#[tokio::test]
+async fn tickets_can_add_stateful_handlers_with_different_access_on_one_path() {
+    use axum::{
+        extract::State,
+        routing::{get, put},
+    };
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    let state = Arc::new(AtomicUsize::new(0));
+    let router = HttpShell::new(TrustedHosts::new([]))
+        .route(
+            "/api/layouts/test",
+            get(|State(state): State<Arc<AtomicUsize>>| async move {
+                state.load(Ordering::SeqCst).to_string()
+            })
+            .with_state(state.clone()),
+            Access::Any,
+        )
+        .route(
+            "/api/layouts/test",
+            put(|State(state): State<Arc<AtomicUsize>>| async move {
+                state.fetch_add(1, Ordering::SeqCst);
+                StatusCode::NO_CONTENT
+            })
+            .with_state(state),
+            Access::Host,
+        )
+        .into_router();
+    let mut denied = mutation(
+        Some("localhost:8777"),
+        Some("http://localhost:8777"),
+        Some("application/json"),
+    );
+    denied.extensions_mut().insert(axum::extract::ConnectInfo(
+        "192.168.1.30:1234".parse::<std::net::SocketAddr>().unwrap(),
+    ));
+    assert_eq!(
+        router.clone().oneshot(denied).await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+    let mut allowed = mutation(
+        Some("localhost:8777"),
+        Some("http://localhost:8777"),
+        Some("application/json"),
+    );
+    allowed.extensions_mut().insert(axum::extract::ConnectInfo(
+        "127.0.0.1:1234".parse::<std::net::SocketAddr>().unwrap(),
+    ));
+    assert_eq!(
+        router.clone().oneshot(allowed).await.unwrap().status(),
+        StatusCode::NO_CONTENT
+    );
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/api/layouts/test")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(to_bytes(response.into_body(), 100).await.unwrap(), "1");
+}
