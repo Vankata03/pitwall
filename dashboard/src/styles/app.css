@@ -1,0 +1,402 @@
+/* Dashboard chrome, grid and edit mode. Colours and sizes come from tokens.css. */
+.pw-app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px;
+}
+
+/* ---- Chrome ---- */
+.pw-chrome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--pw-line);
+}
+.pw-wordmark {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+.pw-chrome-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.pw-button,
+.pw-select,
+.pw-input,
+.pw-icon-button {
+  min-height: var(--pw-hit);
+  border: 1px solid var(--pw-line);
+  border-radius: 6px;
+  background: var(--pw-tile-bg);
+  color: var(--pw-text);
+  transition-property: background-color, border-color, scale;
+  transition-duration: 120ms;
+  transition-timing-function: var(--pw-ease);
+}
+.pw-button,
+.pw-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: var(--pw-text-value);
+}
+.pw-icon-button {
+  min-width: var(--pw-hit);
+  padding: 0;
+}
+.pw-button:hover,
+.pw-icon-button:hover {
+  border-color: var(--pw-text-muted);
+}
+.pw-button:active,
+.pw-icon-button:active {
+  scale: 0.96;
+}
+.pw-button:disabled {
+  color: var(--pw-text-muted);
+  cursor: default;
+}
+.pw-button:disabled:active {
+  scale: 1;
+}
+.pw-primary {
+  border-color: var(--pw-accent);
+}
+.pw-danger {
+  border-color: var(--pw-brake);
+  color: var(--pw-brake);
+}
+.pw-select,
+.pw-input {
+  padding: 0 8px;
+  font-size: var(--pw-text-value);
+}
+
+.pw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pw-popover {
+  position: relative;
+}
+.pw-popover-button {
+  text-align: left;
+}
+.pw-switcher .pw-popover-button {
+  min-width: 160px;
+  justify-content: space-between;
+}
+.pw-switcher .pw-popover-button > span {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.pw-button-value {
+  font-size: var(--pw-text-value);
+}
+.pw-popover-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 280px;
+  max-width: min(92vw, 420px);
+  padding: 8px;
+  border: 1px solid var(--pw-line);
+  border-radius: 8px;
+  background: var(--pw-tile-bg);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.2);
+}
+.pw-switcher .pw-popover-panel {
+  left: 0;
+  right: auto;
+}
+
+.pw-menu-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pw-menu-row {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+.pw-menu-choice {
+  flex: 1;
+  justify-content: space-between;
+  text-align: left;
+}
+.pw-menu-choice[data-selected='true'] {
+  border-color: var(--pw-accent);
+}
+.pw-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.pw-inline-form .pw-input {
+  flex: 1;
+  min-width: 8ch;
+}
+
+.pw-display-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pw-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.pw-segmented {
+  display: flex;
+  gap: 4px;
+}
+.pw-segment {
+  position: relative;
+  display: flex;
+  flex: 1;
+}
+.pw-segment input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.pw-segment span {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--pw-hit);
+  border: 1px solid var(--pw-line);
+  border-radius: 6px;
+}
+.pw-segment input:checked + span {
+  border-color: var(--pw-accent);
+  background: color-mix(in srgb, var(--pw-accent) 14%, transparent);
+}
+.pw-segment input:focus-visible + span {
+  outline: 2px solid var(--pw-accent);
+  outline-offset: 2px;
+}
+
+/* ---- Banners and notices ---- */
+.pw-banners,
+.pw-notices {
+  margin-top: 8px;
+}
+.pw-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pw-banner {
+  border: 1px solid var(--pw-line);
+  border-radius: 6px;
+  background: var(--pw-tile-bg);
+}
+.pw-banner + .pw-banner {
+  margin-top: 4px;
+}
+.pw-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 0 12px;
+  border: 1px solid var(--pw-line);
+  border-left: 3px solid var(--pw-accent);
+  border-radius: 6px;
+  background: var(--pw-tile-bg);
+}
+.pw-notice[data-kind='error'] {
+  border-left-color: var(--pw-brake);
+}
+.pw-edit-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--pw-accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--pw-accent) 10%, var(--pw-tile-bg));
+}
+.pw-edit-error {
+  color: var(--pw-brake);
+}
+.pw-load-error {
+  padding: 16px 0;
+}
+
+/* ---- Grid ---- */
+.pw-main {
+  flex: 1;
+  padding: 8px 0;
+}
+.pw-grid {
+  min-height: var(--pw-row-height);
+}
+.pw-tile {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--pw-line);
+  border-radius: 6px;
+  background: var(--pw-tile-bg);
+  color: var(--pw-text);
+}
+.pw-tile-message,
+.pw-unknown,
+.pw-notice-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+  padding: 0 12px;
+}
+.pw-tile-message,
+.pw-unknown-note {
+  color: var(--pw-text-muted);
+}
+.pw-unknown-note {
+  font-size: var(--pw-text-label);
+}
+.pw-notice-tile {
+  flex-direction: row;
+  align-items: center;
+}
+.pw-short-line {
+  font-size: var(--pw-text-label);
+  color: var(--pw-text-muted);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.pw-footer {
+  border-top: 1px solid var(--pw-line);
+}
+/* The chrome copy is a touch target; the Notice tile's is one 32px row and cannot be. */
+.pw-footer .pw-short-line {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--pw-hit);
+}
+
+/* ---- Edit mode ---- */
+.pw-tile-edit {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--pw-page-bg) 55%, transparent);
+  border-radius: inherit;
+  outline: 1px dashed var(--pw-accent);
+  outline-offset: -1px;
+}
+.pw-tile-grip {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pw-text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+.pw-tile-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 4px;
+  z-index: 1;
+}
+.pw-tile-actions .pw-icon-button {
+  background: var(--pw-tile-bg);
+}
+.react-grid-item.react-draggable-dragging .pw-tile-grip {
+  cursor: grabbing;
+}
+.react-grid-item > .react-resizable-handle {
+  width: var(--pw-hit);
+  height: var(--pw-hit);
+  opacity: 1;
+  z-index: 3;
+  touch-action: none;
+}
+.react-grid-item > .react-resizable-handle::after {
+  right: 8px;
+  bottom: 8px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid var(--pw-accent);
+  border-bottom: 2px solid var(--pw-accent);
+}
+.react-grid-item.react-grid-placeholder {
+  background: var(--pw-accent);
+  border-radius: 6px;
+}
+.react-grid-item {
+  transition-timing-function: var(--pw-ease);
+}
+
+/* ---- Dialog ---- */
+.pw-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.6);
+}
+.pw-dialog {
+  width: min(100%, 420px);
+  padding: 16px;
+  border: 1px solid var(--pw-line);
+  border-radius: 10px;
+  background: var(--pw-tile-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pw-dialog-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.pw-settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pw-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+}
