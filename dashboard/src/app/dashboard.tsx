@@ -9,10 +9,12 @@ import {
   participantsOf,
   playerCarOf,
   resolveBinding,
+  resolveFocus,
   type ResolvedCar,
 } from '../session/cars';
 import { ShortLine } from '../shared/short-line';
 import type { TileRegistry } from '../tiles/registry';
+import { TowerFocusProvider } from '../tiles/types/timing-tower';
 import { AddTile } from './add-tile';
 import { DisplayMenu } from './display-menu';
 import { FocusPicker } from './focus-picker';
@@ -57,6 +59,9 @@ export function Dashboard({ controller, device, registry }: DashboardServices) {
     if (registry.get(tile.type)?.declaration.binding !== 'follows-car') return null;
     return resolveBinding(carSettingOf(tile.settings), { participants, playerCar, focus: settings.focus });
   };
+
+  const focused = settings.focus ? resolveFocus({ participants, playerCar, focus: settings.focus }) : undefined;
+  const towerFocus = !focused ? undefined : 'index' in focused ? focused.index : null;
 
   return (
     <div className="pw-app" data-editing={edit ? 'true' : undefined}>
@@ -128,20 +133,22 @@ export function Dashboard({ controller, device, registry }: DashboardServices) {
           </div>
         ) : null}
         {state.status === 'loading' ? <p className="pw-label">Loading layout</p> : null}
-        {shown ? (
-          <DashboardGrid
-            tiles={tiles}
-            screenClass={screenClass}
-            width={measured > 0 ? measured : FALLBACK_WIDTH}
-            editing={edit !== null}
-            registry={registry}
-            carFor={carFor}
-            units={settings.units}
-            onMoveResize={(items) => controller.moveResize(items)}
-            onOpenSettings={(tile) => setSettingsFor(tile.i)}
-            onRemove={(tile) => controller.removeTile(tile.i)}
-          />
-        ) : null}
+        <TowerFocusProvider value={towerFocus}>
+          {shown ? (
+            <DashboardGrid
+              tiles={tiles}
+              screenClass={screenClass}
+              width={measured > 0 ? measured : FALLBACK_WIDTH}
+              editing={edit !== null}
+              registry={registry}
+              carFor={carFor}
+              units={settings.units}
+              onMoveResize={(items) => controller.moveResize(items)}
+              onOpenSettings={(tile) => setSettingsFor(tile.i)}
+              onRemove={(tile) => controller.removeTile(tile.i)}
+            />
+          ) : null}
+        </TowerFocusProvider>
       </main>
 
       <footer className="pw-footer">
