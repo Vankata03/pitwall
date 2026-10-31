@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { buildFrame } from './fixtures';
 import {
   ABSENT_TEXT,
+  jsonReadoutView,
   RESTRICTED_TEXT,
   effectiveState,
   frameReadoutState,
@@ -112,4 +113,13 @@ describe('frameReadoutState: Frame field to its group', () => {
     const f = createFrameData();
     expect(frameReadoutState(f, 20, 'speed')).toBe(ReadoutState.Absent);
   });
+});
+
+// Assumed JSON gap values: snake_case members are the generated collector contract.
+test('JSON readouts render gap values and never format missing placeholders', () => {
+  const format = (g: { to_leader_ms: number }) => `${g.to_leader_ms} ms`;
+  expect(jsonReadoutView({ state: 'stale', value: { to_leader_ms: 1234 } }, format))
+    .toEqual({ state: 'stale', text: '1234 ms' });
+  expect(jsonReadoutView({ state: 'restricted' }, format)).toEqual({ state: 'restricted', text: 'Restricted' });
+  expect(jsonReadoutView({ state: 'absent' }, format)).toEqual({ state: 'absent', text: '—' });
 });

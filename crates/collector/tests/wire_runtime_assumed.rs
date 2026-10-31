@@ -88,7 +88,12 @@ async fn assumed_binary_resends_datagrams_to_websocket_and_composes_routes() {
     .unwrap();
     // HTTP route composition is observable through the same configured listener.
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    for path in ["/api/layouts", "/api/tracks/5/3323"] {
+    for path in [
+        "/api/layouts",
+        "/api/tracks/5/3323",
+        "/api/liveries",
+        "/favicon.ico",
+    ] {
         let mut tcp = tokio::net::TcpStream::connect(("127.0.0.1", http_port))
             .await
             .unwrap();
@@ -102,7 +107,16 @@ async fn assumed_binary_resends_datagrams_to_websocket_and_composes_routes() {
         .unwrap();
         let mut text = String::new();
         tcp.read_to_string(&mut text).await.unwrap();
-        assert!(text.starts_with("HTTP/1.1 200"), "{text}");
+        let status = if path == "/favicon.ico" {
+            "HTTP/1.1 204"
+        } else {
+            "HTTP/1.1 200"
+        };
+        assert!(text.starts_with(status), "{text}");
+        if path == "/api/liveries" {
+            assert!(text.contains("application/json"), "{text}");
+            assert!(text.contains("\"files\":"), "{text}");
+        }
     }
     std::fs::remove_file(config).unwrap();
 }

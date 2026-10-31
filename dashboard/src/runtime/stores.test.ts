@@ -188,3 +188,15 @@ describe('hello listener', () => {
     expect(onHello).toHaveBeenCalledWith({ type: 'hello', buildId: 'zzz', epoch: 1, source: 'live' });
   });
 });
+
+// Assumed mixed availability: motion exists while telemetry/lap placeholders are zero.
+test('rings preserve aligned gaps instead of treating absent or restricted values as zero', () => {
+  live();
+  s.ingest(buildFrame({ epoch: 1, seq: 1, sessionTime: 1,
+    cars: { 0: { readout: 0x3fcf } } })); // telemetry absent, motion absent, lap live
+  const rings = s.frame.rings[0]!;
+  expect(rings.speed.last()).toBeNaN();
+  expect(rings.throttle.last()).toBeNaN();
+  expect(rings.lapDistance.last()).toBe(0);
+  expect(rings.sessionTime.last()).toBe(1);
+});

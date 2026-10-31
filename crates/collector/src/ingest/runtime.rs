@@ -31,10 +31,17 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
     let mut config = cli.load(&default_path)?;
     let mut live = LiveUdp::bind(address(&config), &config.forward)?;
     let paths = AppPaths::resolve()?;
-    let layouts = crate::layouts::LayoutLibrary::open(paths.layouts)?;
-    let tracks = crate::tracks::TrackStore::open(paths.tracks);
+    let layouts = crate::layouts::LayoutLibrary::open(paths.layouts.clone())?;
+    let tracks = crate::tracks::TrackStore::open(paths.tracks.clone());
     let stream = crate::wire::Stream::new(env!("PITWALL_BUILD_ID"));
     let shell = crate::http::HttpShell::new(crate::http::TrustedHosts::discover()?);
+    // Browsers request this even before the dashboard ships an icon.
+    let shell = shell.route(
+        "/favicon.ico",
+        axum::routing::get(|| async { axum::http::StatusCode::NO_CONTENT }),
+        crate::http::Access::Any,
+    );
+    let shell = crate::liveries::routes(shell, &paths);
     let shell = crate::layouts::routes(shell, layouts.clone());
     let shell = crate::tracks::routes(shell, tracks.clone());
     let router = crate::wire::routes(shell, stream.clone()).into_router();

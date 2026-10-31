@@ -1,59 +1,25 @@
-/**
- * Wire boundary: decoded Frame, State and History messages (spec section 8).
- *
- * This is the ONLY file in the dashboard that knows byte offsets or JSON message
- * shapes. Ticket #35 generates the Frame decoder and the ts-rs JSON types from the
- * Rust field table; when it lands, replace this file with a thin module that
- * re-exports the generated code under the same names. Everything else imports
- * from './wire' alone.
- *
- * Assumptions to confirm against the generated types when swapping:
- *  - the snapshot's `history` is an array of entries, each with `kind` and `id`;
- *  - State carries a `lifecycle` field (`waiting` | `live` | `ended` | `lost`);
- *  - `FRAME_FIELD_GROUP` (which readout group covers which Frame field).
- */
+/** Generated collector contracts adapted to the runtime's stable store interface. */
+import { Frame, FRAME_SIZE } from '../generated/wire/frame';
+import type { TextMessage as GeneratedTextMessage } from '../generated/wire/TextMessage';
+import type { Lifecycle as WireLifecycle } from '../generated/wire/Lifecycle';
+export type { Trace } from '../generated/wire/Trace';
+export type { Readout } from '../generated/wire/Readout';
 
 // ---- Frame -----------------------------------------------------------------
 
 export const CAR_COUNT = 24;
 export const FRAME_HEADER_BYTES = 16;
 export const FRAME_CAR_BYTES = 40;
-export const FRAME_BYTES = FRAME_HEADER_BYTES + CAR_COUNT * FRAME_CAR_BYTES; // 976
+export const FRAME_BYTES = FRAME_SIZE;
 
 /** `gLateral` and `gLongitudinal` are sent as G x 1000. */
 export const G_SCALE = 1000;
 
-/**
- * Struct-of-arrays view of the latest Frame: one typed array per field, 24 entries
- * each, reused for every message so decoding allocates nothing per car.
- */
-export interface FrameData {
-  epoch: number;
-  seq: number;
-  sessionTime: number;
-  speed: Uint16Array;
-  gear: Int8Array;
-  throttle: Uint8Array;
-  brake: Uint8Array;
-  steering: Int8Array;
-  rpm: Uint16Array;
-  worldX: Float32Array;
-  worldZ: Float32Array;
-  lapDistance: Float32Array;
-  currentLapTime: Uint32Array;
-  deltaBest: Int32Array;
-  deltaPrevious: Int32Array;
-  gLateral: Int16Array;
-  gLongitudinal: Int16Array;
-  ersPercent: Uint8Array;
-  aeroState: Uint8Array;
-  readout: Uint16Array;
-}
+/** Mutable store arrays; transport field names come from the generated decoder. */
+export type FrameData = ReturnType<typeof createFrameData>;
+export type FrameField = Exclude<keyof Frame, 'view' | 'epoch' | 'seq' | 'sessionTime'>;
 
-/** Names of the per-car Frame fields (everything in FrameData except the header). */
-export type FrameField = Exclude<keyof FrameData, 'epoch' | 'seq' | 'sessionTime'>;
-
-export function createFrameData(): FrameData {
+export function createFrameData() {
   return {
     epoch: 0,
     seq: 0,
@@ -82,35 +48,20 @@ export function createFrameData(): FrameData {
 /** Epoch of a Frame, or null if the buffer is not a Frame. Cheap pre-check before decoding. */
 export function frameEpoch(buf: ArrayBuffer): number | null {
   if (buf.byteLength !== FRAME_BYTES) return null;
-  return new DataView(buf).getUint32(0, true);
+  return new Frame(buf).epoch;
 }
 
 /** Decode a Frame into `out`, little-endian. Returns false, leaving `out` untouched, on a wrong size. */
 export function decodeFrameInto(buf: ArrayBuffer, out: FrameData): boolean {
   if (buf.byteLength !== FRAME_BYTES) return false;
-  const v = new DataView(buf);
-  out.epoch = v.getUint32(0, true);
-  out.seq = v.getUint32(4, true);
-  out.sessionTime = v.getFloat64(8, true);
+  const frame = new Frame(buf);
+  out.epoch = frame.epoch;
+  out.seq = frame.seq;
+  out.sessionTime = frame.sessionTime;
   for (let i = 0; i < CAR_COUNT; i++) {
-    const o = FRAME_HEADER_BYTES + i * FRAME_CAR_BYTES;
-    out.speed[i] = v.getUint16(o, true);
-    out.gear[i] = v.getInt8(o + 2);
-    out.throttle[i] = v.getUint8(o + 3);
-    out.brake[i] = v.getUint8(o + 4);
-    out.steering[i] = v.getInt8(o + 5);
-    out.rpm[i] = v.getUint16(o + 6, true);
-    out.worldX[i] = v.getFloat32(o + 8, true);
-    out.worldZ[i] = v.getFloat32(o + 12, true);
-    out.lapDistance[i] = v.getFloat32(o + 16, true);
-    out.currentLapTime[i] = v.getUint32(o + 20, true);
-    out.deltaBest[i] = v.getInt32(o + 24, true);
-    out.deltaPrevious[i] = v.getInt32(o + 28, true);
-    out.gLateral[i] = v.getInt16(o + 32, true);
-    out.gLongitudinal[i] = v.getInt16(o + 34, true);
-    out.ersPercent[i] = v.getUint8(o + 36);
-    out.aeroState[i] = v.getUint8(o + 37);
-    out.readout[i] = v.getUint16(o + 38, true);
+    for (const field of FRAME_FIELDS) {
+      out[field][i] = frame[field](i);
+    }
   }
   return true;
 }
@@ -156,6 +107,7 @@ export const FRAME_FIELD_GROUP: Record<FrameField, ReadoutGroup> = {
   gLongitudinal: 'motion',
   lapDistance: 'lap',
   currentLapTime: 'lap',
+  // Collector frame::encode packs ers_percentage(), not the raw status readout.
   ersPercent: 'status',
   deltaBest: 'deltaBest',
   deltaPrevious: 'deltaPrevious',
@@ -163,49 +115,24 @@ export const FRAME_FIELD_GROUP: Record<FrameField, ReadoutGroup> = {
   readout: 'telemetry', // the word itself; never rendered as a readout
 };
 
+const FRAME_FIELDS = Object.keys(FRAME_FIELD_GROUP) as FrameField[];
+
 // ---- Text messages ---------------------------------------------------------
 
-export type Source = 'live' | 'replay';
-export type Lifecycle = 'waiting' | 'live' | 'ended' | 'lost';
-
-/** Bounded current values for session, cars and collector; shape owned by the generated types. */
-export type WireState = Record<string, unknown>;
-
-/** A History entry: stable `id`, replaces any earlier entry with the same id. */
-export interface WireHistoryEntry {
-  kind: string;
-  id: string;
-  [field: string]: unknown;
-}
-
-export interface HelloMessage {
-  type: 'hello';
-  buildId: string;
-  epoch: number;
-  source: Source;
-}
-export interface SnapshotMessage {
-  type: 'snapshot';
-  epoch: number;
-  source: Source;
-  state: WireState;
-  history: WireHistoryEntry[];
-}
-export interface StateMessage {
-  type: 'state';
-  epoch: number;
-  state: WireState;
-}
-export interface HistoryMessage {
-  type: 'history';
-  epoch: number;
-  entries: WireHistoryEntry[];
-}
+export type Source = Extract<GeneratedTextMessage, { type: 'hello' }>['source'];
+/** Presentation vocabulary retained for existing banner and tile callers. */
+export type Lifecycle = Lowercase<WireLifecycle>;
+export type WireState = Extract<GeneratedTextMessage, { type: 'snapshot' }>['state'];
+export type WireHistoryEntry = Extract<GeneratedTextMessage, { type: 'history' }>['entries'][number];
+export type HelloMessage = Extract<GeneratedTextMessage, { type: 'hello' }>;
+export type SnapshotMessage = Extract<GeneratedTextMessage, { type: 'snapshot' }>;
+export type StateMessage = { type: 'state'; epoch: number; state: WireState };
+export type HistoryMessage = Extract<GeneratedTextMessage, { type: 'history' }>;
 export type TextMessage = HelloMessage | SnapshotMessage | StateMessage | HistoryMessage;
 
 /** Lifecycle from a State, if it says. */
 export function lifecycleOf(state: WireState | null): Lifecycle | undefined {
-  const l = state?.lifecycle;
+  const l = state?.lifecycle?.toLowerCase();
   return l === 'waiting' || l === 'live' || l === 'ended' || l === 'lost' ? l : undefined;
 }
 
@@ -237,10 +164,10 @@ export function parseTextMessage(text: string): TextMessage | null {
       return { type: 'hello', buildId: m.buildId, epoch, source: m.source };
     case 'snapshot':
       if (!isSource(m.source) || !isObject(m.state) || !isEntries(m.history)) return null;
-      return { type: 'snapshot', epoch, source: m.source, state: m.state, history: m.history };
+      return { type: 'snapshot', epoch, source: m.source, state: m.state as WireState, history: m.history };
     case 'state': {
       const { type: _type, epoch: _epoch, ...state } = m;
-      return { type: 'state', epoch, state };
+      return { type: 'state', epoch, state: state as WireState };
     }
     case 'history':
       if (!isEntries(m.entries)) return null;

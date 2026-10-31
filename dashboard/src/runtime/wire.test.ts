@@ -7,6 +7,7 @@ import {
   createFrameData,
   decodeFrameInto,
   frameEpoch,
+  lifecycleOf,
   parseTextMessage,
   readoutGroupState,
 } from './wire';
@@ -193,4 +194,13 @@ describe('text messages', () => {
     expect(parseTextMessage('{"type":"state"}')).toBeNull();
     expect(parseTextMessage('[]')).toBeNull();
   });
+});
+
+// Assumed collector JSON: Rust Lifecycle serializes with PascalCase.
+test('collector lifecycle drives the existing banner vocabulary', () => {
+  const message = parseTextMessage(JSON.stringify({
+    type: 'snapshot', epoch: 1, source: 'live',
+    state: { lifecycle: 'Lost' }, history: [],
+  }));
+  expect(message?.type === 'snapshot' && lifecycleOf(message.state)).toBe('lost');
 });
