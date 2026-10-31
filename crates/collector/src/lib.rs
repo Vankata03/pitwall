@@ -2,3 +2,4 @@
 
 pub mod assets;
 pub mod paths;
+pub mod pitrec;
