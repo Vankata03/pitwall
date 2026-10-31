@@ -8,4 +8,5 @@ pub mod model;
 pub mod names;
 pub mod paths;
 pub mod pitrec;
+pub mod recorder;
 pub mod telemetry;
