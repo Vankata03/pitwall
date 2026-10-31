@@ -10,6 +10,16 @@
 //! Session History remains available after retirement and session end for the
 //! derived-history layer. Model clones share cars and packet groups through
 //! copy-on-write `Arc`s; advancing or applying to a clone leaves others intact.
+//!
+//! `CarView::session_history` exposes full-session summaries, while `history`
+//! retains the latest raw Session History packet. Completed summaries are shared
+//! `Arc`s. `gaps`, `penalty_state`, `ers_percentage` and `tyre_condition` preserve
+//! their source readout states. `race_control` is an arrival-ordered audit log;
+//! rewinds mark abandoned entries and bump `epoch` before accepting new facts.
+mod facts;
+mod history;
+mod race_control;
+mod rewind;
 mod status;
 use crate::telemetry::{
     CarDamageData, CarMotionData, CarTelemetry2Data, CarTelemetryData, EventDetails, LapData,
@@ -17,6 +27,9 @@ use crate::telemetry::{
     PacketSessionHistoryData, PacketTyreSetsData, ParsedDatagram, ParticipantData,
     WeatherForecastSample,
 };
+pub use facts::Gaps;
+pub use history::{CarHistory, CompletedLap, PitStop, Sector, Stint};
+pub use race_control::{Penalty, PenaltyState, RaceControlEntry, RaceControlKind, Source};
 pub use status::{ErsData, FuelData, StatusData};
 use std::{sync::Arc, time::Duration};
 
@@ -65,6 +78,7 @@ pub struct Classification {
 struct Group<T> {
     value: Option<Arc<T>>,
     arrival: Duration,
+    session_time: f32,
     restricted: bool,
 }
 
@@ -73,15 +87,17 @@ impl<T> Default for Group<T> {
         Self {
             value: None,
             arrival: Duration::ZERO,
+            session_time: 0.0,
             restricted: false,
         }
     }
 }
 
 impl<T: Clone> Group<T> {
-    fn set(&mut self, time: Duration, value: &T) {
+    fn set(&mut self, time: Duration, session_time: f32, value: &T) {
         self.value = Some(Arc::new(value.clone()));
         self.arrival = time;
+        self.session_time = session_time;
         self.restricted = false;
     }
     fn permission(&mut self, restricted: bool) {
@@ -108,8 +124,11 @@ impl<T: Clone> Group<T> {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 struct Car {
+    derived: Arc<CarHistory>,
     valid: bool,
+    valid_since: Option<f32>,
     retired: bool,
+    retired_at: Option<f32>,
     retirement_reason: Option<u8>,
     participant: Group<ParticipantData>,
     lap: Group<LapData>,
@@ -277,6 +296,10 @@ pub enum Lifecycle {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionModel {
+    epoch: u64,
+    last_session_time: Option<f32>,
+    race_control: Arc<Vec<RaceControlEntry>>,
+    next_race_control_id: u64,
     identity: Option<SessionId>,
     lifecycle: Lifecycle,
     now: Duration,
@@ -292,6 +315,10 @@ pub struct SessionModel {
 impl Default for SessionModel {
     fn default() -> Self {
         Self {
+            epoch: 0,
+            last_session_time: None,
+            race_control: Arc::default(),
+            next_race_control_id: 0,
             identity: None,
             lifecycle: Lifecycle::Waiting,
             now: Duration::ZERO,
@@ -318,6 +345,10 @@ impl SessionModel {
     }
     pub fn identity(&self) -> Option<SessionId> {
         self.identity
+    }
+    /// Changes on a new session or a flashback. Transport/replay owns other resets.
+    pub fn epoch(&self) -> u64 {
+        self.epoch
     }
     pub fn lifecycle(&self) -> Lifecycle {
         self.lifecycle
@@ -378,6 +409,7 @@ impl SessionModel {
         };
         if self.identity != Some(identity) {
             *self = Self {
+                epoch: self.epoch.wrapping_add(1),
                 identity: Some(identity),
                 lifecycle: Lifecycle::Live,
                 menu_interval: self.menu_interval,
@@ -398,6 +430,9 @@ impl SessionModel {
         if self.lifecycle != Lifecycle::Ended {
             self.lifecycle = Lifecycle::Live;
         }
+        self.rewind_for(datagram);
+        self.derive_race_control(datagram);
+        self.derive_history(datagram);
         match &datagram.packet {
             Packet::FinalClassification(packet) => {
                 self.classification = Some(Arc::new(Classification {
@@ -414,13 +449,20 @@ impl SessionModel {
                         && let Some(result) = result
                     {
                         let car = Arc::make_mut(car);
+                        if !car.valid && !matches!(result.result_status, 0 | 1) {
+                            car.valid_since = Some(datagram.header.session_time);
+                        }
                         car.valid = !matches!(result.result_status, 0 | 1);
                         car.retired = matches!(result.result_status, 4 | 7);
+                        if car.retired {
+                            car.retired_at = Some(datagram.header.session_time);
+                        }
                     }
                 }
             }
             Packet::Session(packet) => {
-                self.session.set(self.now, packet);
+                self.session
+                    .set(self.now, datagram.header.session_time, packet);
                 self.pit_window = Group::default();
                 if let Some(car_index) = self.player_car_index()
                     && packet.pit_stop_window_ideal_lap != 0
@@ -428,6 +470,7 @@ impl SessionModel {
                 {
                     self.pit_window.set(
                         self.now,
+                        datagram.header.session_time,
                         &PitWindow {
                             car_index,
                             ideal_lap: packet.pit_stop_window_ideal_lap,
@@ -443,11 +486,27 @@ impl SessionModel {
                         && let Some(value) = value
                     {
                         let car = Arc::make_mut(car);
-                        car.status.set(self.now, &StatusData::from(value));
+                        car.status.set(
+                            self.now,
+                            datagram.header.session_time,
+                            &StatusData::from(value),
+                        );
                         if car.public_telemetry() {
-                            car.fuel.set(self.now, &FuelData::from(value));
-                            car.ers.set(self.now, &ErsData::from(value));
-                            car.front_brake_bias.set(self.now, &value.front_brake_bias);
+                            car.fuel.set(
+                                self.now,
+                                datagram.header.session_time,
+                                &FuelData::from(value),
+                            );
+                            car.ers.set(
+                                self.now,
+                                datagram.header.session_time,
+                                &ErsData::from(value),
+                            );
+                            car.front_brake_bias.set(
+                                self.now,
+                                datagram.header.session_time,
+                                &value.front_brake_bias,
+                            );
                         }
                     }
                 }
@@ -458,7 +517,11 @@ impl SessionModel {
                         && car.public_telemetry()
                         && let Some(value) = value
                     {
-                        Arc::make_mut(car).damage.set(self.now, value);
+                        Arc::make_mut(car).damage.set(
+                            self.now,
+                            datagram.header.session_time,
+                            value,
+                        );
                     }
                 }
             }
@@ -467,21 +530,33 @@ impl SessionModel {
                     && !car.retired
                     && car.public_telemetry()
                 {
-                    Arc::make_mut(car).tyre_sets.set(self.now, packet);
+                    Arc::make_mut(car).tyre_sets.set(
+                        self.now,
+                        datagram.header.session_time,
+                        packet,
+                    );
                 }
             }
-            Packet::CarTelemetry2(packet) => {
-                self.update_cars(&packet.car_telemetry2_data, |car| &mut car.aero)
-            }
-            Packet::Motion(packet) => {
-                self.update_cars(&packet.car_motion_data, |car| &mut car.motion)
-            }
-            Packet::CarTelemetry(packet) => {
-                self.update_cars(&packet.car_telemetry_data, |car| &mut car.telemetry)
-            }
+            Packet::CarTelemetry2(packet) => self.update_cars(
+                &packet.car_telemetry2_data,
+                datagram.header.session_time,
+                |car| &mut car.aero,
+            ),
+            Packet::Motion(packet) => self.update_cars(
+                &packet.car_motion_data,
+                datagram.header.session_time,
+                |car| &mut car.motion,
+            ),
+            Packet::CarTelemetry(packet) => self.update_cars(
+                &packet.car_telemetry_data,
+                datagram.header.session_time,
+                |car| &mut car.telemetry,
+            ),
             Packet::SessionHistory(packet) => {
                 if let Some(car) = self.cars.get_mut(usize::from(packet.car_idx)) {
-                    Arc::make_mut(car).history.set(self.now, packet);
+                    Arc::make_mut(car)
+                        .history
+                        .set(self.now, datagram.header.session_time, packet);
                 }
             }
             Packet::Participants(packet) => {
@@ -496,7 +571,8 @@ impl SessionModel {
                     {
                         let car = Arc::make_mut(car);
                         car.permission(participant.your_telemetry != 1);
-                        car.participant.set(self.now, participant);
+                        car.participant
+                            .set(self.now, datagram.header.session_time, participant);
                     }
                 }
             }
@@ -506,9 +582,15 @@ impl SessionModel {
                         && let Some(lap) = lap
                     {
                         let car = Arc::make_mut(car);
+                        if !car.valid && !matches!(lap.result_status, 0 | 1) {
+                            car.valid_since = Some(datagram.header.session_time);
+                        }
                         car.valid = !matches!(lap.result_status, 0 | 1);
-                        car.lap.set(self.now, lap);
+                        car.lap.set(self.now, datagram.header.session_time, lap);
                         car.retired = matches!(lap.result_status, 4 | 7);
+                        if car.retired {
+                            car.retired_at = Some(datagram.header.session_time);
+                        }
                     }
                 }
             }
@@ -521,6 +603,7 @@ impl SessionModel {
                 {
                     let car = Arc::make_mut(car);
                     car.retired = true;
+                    car.retired_at = Some(datagram.header.session_time);
                     car.retirement_reason = Some(reason);
                 }
             }
@@ -536,13 +619,14 @@ impl SessionModel {
     fn update_cars<T: Clone>(
         &mut self,
         values: &[Option<T>; MAX_CARS],
+        session_time: f32,
         group: fn(&mut Car) -> &mut Group<T>,
     ) {
         for (car, value) in self.cars.iter_mut().zip(values) {
             if !car.retired
                 && let Some(value) = value
             {
-                group(Arc::make_mut(car)).set(self.now, value);
+                group(Arc::make_mut(car)).set(self.now, session_time, value);
             }
         }
     }
