@@ -1,12 +1,14 @@
-use pitwall_collector::{assets::dashboard_asset, paths::AppPaths};
+use pitwall_collector::{
+    ingest::config::{Cli, HELP},
+    ingest::runtime,
+    paths::AppPaths,
+};
 
 fn main() -> std::io::Result<()> {
-    let paths = AppPaths::resolve()?;
-    let index = dashboard_asset("index.html").expect("dashboard entry point is embedded");
-    println!(
-        "pitwall collector scaffold: embedded dashboard entry ({} bytes); data directory: {}",
-        index.len(),
-        paths.root.display()
-    );
-    Ok(())
+    let cli = Cli::parse(std::env::args_os().skip(1)).map_err(std::io::Error::other)?;
+    if cli.help {
+        println!("{HELP}");
+        return Ok(());
+    }
+    runtime::run(cli, AppPaths::resolve()?.config)
 }
