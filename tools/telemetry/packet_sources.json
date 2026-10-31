@@ -1,0 +1,26 @@
+{
+  "evidence": "assumed: all tests use synthetic datagrams; no capture is available",
+  "layout_only": true,
+  "sources": {
+    "2025": "https://github.com/mantazzo/F1TV-HUD-Reworked/blob/1cbac98b0dff1d15826f192bbdb2eaaf0f843526/documentation/UDP_Output/F1%2025%20Telemetry%20Output%20Structures.txt",
+    "2026": "https://github.com/MacManley/f1-26-udp/blob/399595967ab10041bccd746b3f036581446c200a/README.md",
+    "2026_supplement": "docs/research/f1-25-2026-udp-format.md"
+  },
+  "normalization": [
+    "snake_case field names",
+    "car_setup_data uses the 2025 spelling in both formats",
+    "sector time minutes fields use the 2025 _part suffix",
+    "livery_colour is singular in both formats",
+    "u16 driver, network and team IDs; u16 engine temperature",
+    "2026 G-force divided by 1000",
+    "24 car slots; 2025 tail slots are absent",
+    "format-specific fields are Option values"
+  ],
+  "notes": [
+    "2026 Lobby Info and Time Trial remain unchecked against captures",
+    "2026 PMEN, PMDI, OVEN and OVDI codes come from the supplement; raw details are preserved",
+    "All raw enum values, sentinels and zeroed restricted values are retained",
+    "Counts and indices are wire values; consumers must bound them before indexing",
+    "Packet version 1 and exact documented lengths are accepted"
+  ]
+}
