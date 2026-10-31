@@ -63,7 +63,8 @@ pub struct Ingest {
 
 impl Ingest {
     /// The raw tap runs first. Only `Disposition::Apply` reaches #31 via
-    /// `model.apply(arrival_time, parsed)`. Drive `model.advance(time)` during
+    /// `model.apply(Duration::from_micros(arrival_time), &parsed)`.
+    /// Drive `model.advance(time)` during
     /// silence too. Keep a separate model instance for live and replay.
     pub fn ingest<T: DatagramTap + ?Sized>(
         &mut self,

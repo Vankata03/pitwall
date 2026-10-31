@@ -42,12 +42,12 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
                     let now = || origin.elapsed().as_micros().min(u64::MAX as u128) as u64;
                     for received in live.poll(256, now, &mut tap)? {
                         if let Ok((parsed, Disposition::Apply)) = received.result {
-                            // #31: model.apply(received.arrival_time_us, parsed).
+                            // #31: model.apply(Duration::from_micros(received.arrival_time_us), &parsed).
                             // Parsing and lifecycle filtering already happened once.
                             let _ = parsed;
                         }
                     }
-                    // #31: model.advance(now()) runs here even when UDP is silent.
+                    // #31: model.advance(Duration::from_micros(now())) also carries silence.
                     if last_status.elapsed() >= Duration::from_secs(1) {
                         let _ = status_sender.try_send(live.status(now()));
                         last_status = Instant::now();

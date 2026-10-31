@@ -14,6 +14,8 @@ The gate separately tracks closed `(session_uid, packet_format)` identities for 
 
 Use one monotonic microsecond origin for arrivals and `model.advance(time)`, including polls with no input. Keep replay on its own `Ingest` and model instances. Replay does not use `LiveUdp`, so it cannot forward packets. The parser is `telemetry::parse_datagram`.
 
+The merged #31 API is `SessionModel::apply(Duration, &ParsedDatagram)` and `SessionModel::advance(Duration)`. Convert ingest timestamps with `Duration::from_micros(arrival_time_us)` and borrow the accepted parsed datagram.
+
 ## Host wiring
 
 `config::Cli::load` reads TOML and reapplies CLI overrides. `PreparedUpdate::prepare(current, desired, forwarding)` resolves destinations and binds a replacement socket on the control thread. `LiveUdp::apply` swaps that prepared state on the receive thread. Failed preparation leaves active settings intact. Forward-only changes preserve the receive socket and queued datagrams.
