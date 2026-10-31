@@ -26,6 +26,7 @@ fn embedded_entry_point_and_its_scripts_ship_in_the_collector_binary() {
 #[test]
 fn collector_can_start_outside_the_source_directory() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_pitwall"))
+        .arg("--help")
         .current_dir(std::env::temp_dir())
         .output()
         .unwrap();
@@ -34,6 +35,6 @@ fn collector_can_start_outside_the_source_directory() {
     assert!(
         String::from_utf8(output.stdout)
             .unwrap()
-            .contains("pitwall collector scaffold")
+            .contains("--udp-port PORT")
     );
 }
