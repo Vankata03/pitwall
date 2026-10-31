@@ -12,7 +12,7 @@ use std::{
     io,
     net::{Ipv4Addr, SocketAddr},
     path::PathBuf,
-    sync::mpsc,
+    sync::{Arc, Mutex, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -34,6 +34,14 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
     let layouts = crate::layouts::LayoutLibrary::open(paths.layouts.clone())?;
     let tracks = crate::tracks::TrackStore::open(paths.tracks.clone());
     let stream = crate::wire::Stream::new(env!("PITWALL_BUILD_ID"));
+    let recorder = Arc::new(Mutex::new(Recorder::start(
+        RecorderConfig::new(
+            paths.recordings.clone(),
+            config.recording.size_cap_gb.saturating_mul(1_000_000_000),
+        ),
+        unix_seconds,
+    )?));
+    let replay = crate::replay::Controller::new(paths.recordings, recorder.clone());
     let shell = crate::http::HttpShell::new(crate::http::TrustedHosts::discover()?);
     // Browsers request this even before the dashboard ships an icon.
     let shell = shell.route(
@@ -44,6 +52,7 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
     let shell = crate::liveries::routes(shell, &paths);
     let shell = crate::layouts::routes(shell, layouts.clone());
     let shell = crate::tracks::routes(shell, tracks.clone());
+    let shell = crate::replay::routes(shell, replay.clone());
     let router = crate::wire::routes(shell, stream.clone()).into_router();
     let http_runtime = tokio::runtime::Runtime::new()?;
     let http_address = |c: &Config| SocketAddr::new(c.http.bind, c.http.port);
@@ -63,7 +72,7 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
         loop {
             tokio::select! { _ = timer.tick() => {}, changed = selected.changed() => { if changed.is_err() { break; } } }
             let (model, collector) = selected.borrow_and_update().clone();
-            stream.tick(origin.elapsed(), crate::wire::Source::Live, &model, crate::wire::Context {
+            replay.publish(origin.elapsed(), &model, &stream, crate::wire::Context {
                 revisions: crate::wire::Revisions { layouts: layouts.revision() as u32, tracks: publisher_tracks.revision() as u32 },
                 collector, replay: None,
             });
@@ -79,21 +88,9 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
                 let origin = Instant::now();
                 let mut last_status = Instant::now();
                 let mut model = crate::model::SessionModel::default();
-                // The recorder only enqueues; dropping it at exit closes the open recording.
-                let mut recorder = if recording.enabled {
-                    Some(Recorder::start(
-                        RecorderConfig::new(
-                            AppPaths::resolve()?.recordings,
-                            recording.size_cap_gb.saturating_mul(1_000_000_000),
-                        ),
-                        unix_seconds,
-                    )?)
-                } else {
-                    None
-                };
                 let mut tap = |at: u64, bytes: &[u8]| {
-                    if let Some(recorder) = recorder.as_mut() {
-                        recorder.datagram(at, bytes);
+                    if recording.enabled {
+                        recorder.lock().unwrap().datagram(at, bytes);
                     }
                 };
                 loop {
