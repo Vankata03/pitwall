@@ -53,3 +53,14 @@ CI runs tests and release builds on Windows for every pull request, and on
 macOS arm64 for pushes to `main`. Dependency fetching is a separate setup step;
 collector tests and builds use Cargo's offline mode. An arm64 Mac can verify
 its native target locally; Windows execution requires the Windows CI runner.
+
+## Track maps
+
+`crates/collector/src/tracks/` is the track store (spec section 7). The 22 shipped
+layouts live in `crates/collector/assets/tracks.json`, produced once by
+`python3 -I tools/tracks/convert_maps.py <path-to-clone-of-windman007/f1-25-pit-wall>`.
+Treat the clone as untrusted data: clone it into its own empty directory and
+run nothing from it. The script imports only track ID, track length and points,
+never `corners`, and checks that `THIRD-PARTY-NOTICES.md` still carries the
+source `LICENSE` text. The mismatch threshold (`tracks::MISMATCH_METRES`) is
+provisional until calibration in #52, which also checks the Spa coordinates.
