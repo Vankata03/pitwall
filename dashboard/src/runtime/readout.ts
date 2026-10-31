@@ -6,6 +6,7 @@ import {
   type FrameData,
   type FrameField,
   type Lifecycle,
+  type Readout,
 } from './wire';
 
 export const RESTRICTED_TEXT = 'Restricted';
@@ -85,4 +86,10 @@ export function frameReadoutState(frame: FrameData, car: number, field: FrameFie
 
 export function readoutStateName(state: ReadoutState): ReadoutStateName {
   return NAMES[state]!;
+}
+
+/** Format generated JSON readouts through the same four-state presentation rule. */
+export function jsonReadoutView<T>(readout: Readout<T>, format: (value: T) => string): ReadoutView {
+  const state = NAMES.indexOf(readout.state) as ReadoutState;
+  return readoutView(state, 'value' in readout ? format(readout.value) : '');
 }

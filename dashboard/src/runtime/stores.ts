@@ -1,3 +1,4 @@
+import { frameReadoutState } from './readout';
 import { RingBuffer } from './ring';
 import {
   CAR_COUNT,
@@ -58,10 +59,10 @@ export class FrameStore {
       if ((d.readout[i]! & 0x3fff) === 0x3fff) continue; // empty slot: absent throughout
       const r = this.rings[i]!;
       r.sessionTime.push(d.sessionTime);
-      r.speed.push(d.speed[i]!);
-      r.throttle.push(d.throttle[i]!);
-      r.brake.push(d.brake[i]!);
-      r.lapDistance.push(d.lapDistance[i]!);
+      // Keep channels aligned; missing data must break a trace rather than draw zero.
+      for (const field of ['speed', 'throttle', 'brake', 'lapDistance'] as const) {
+        r[field].push(frameReadoutState(d, i, field) < 2 ? d[field][i]! : NaN);
+      }
     }
     this.version++;
   }
