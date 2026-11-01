@@ -22,6 +22,9 @@ importers:
       react-grid-layout:
         specifier: 2.2.4
         version: 2.2.4(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      uplot:
+        specifier: 1.6.32
+        version: 1.6.32
     devDependencies:
       '@testing-library/dom':
         specifier: 10.4.2
@@ -770,6 +773,9 @@ packages:
     resolution: {integrity: sha512-+fdndUTwBP86cVjihTp21hZHo7d6oj1c/47XPA3lL8mM0XHs+C4EkcjmgRsFnFk2f/UONGDy9ItBItmXsLOQHw==}
     engines: {node: '>=22.19.0'}
 
+  uplot@1.6.32:
+    resolution: {integrity: sha512-KIMVnG68zvu5XXUbC4LQEPnhwOxBuLyW1AHtpm6IKTXImkbLgkMy+jabjLgSLMasNuGGzQm/ep3tOkyTxpiQIw==}
+
   vite@8.3.5:
     resolution: {integrity: sha512-z1YpjieJ9g0ebTmQpLBv/oq9E3F9EIlOe+7LahW8SrE3LTiG3udBRUXQOlYXP9b+IC2q2phHeVxj9xGlw34OEQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -1434,6 +1440,8 @@ snapshots:
   undici-types@7.24.6: {}
 
   undici@8.12.3: {}
+
+  uplot@1.6.32: {}
 
   vite@8.3.5(@types/node@24.19.2):
     dependencies:
