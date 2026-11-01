@@ -5,6 +5,7 @@ import { useSlow } from '../../runtime/react';
 import { jsonReadoutView } from '../../runtime/readout';
 import { carLabel, participantsOf } from '../../session/cars';
 import { raceStatus } from '../../session/race-status';
+import '../tower.css';
 import { defineTileModule, type TileProps, type TileSettingsProps } from '../contract';
 
 // The session-wide host can supply device focus without giving the tower a car binding.
@@ -106,7 +107,7 @@ function Tower({ settings, density, height }: TileProps) {
   const regular = density !== 'compact';
   const capacity = Math.max(
     0,
-    Math.floor((height - (full ? 120 : regular ? 104 : 80)) / (full ? 72 : regular ? 48 : 28)),
+    Math.floor((height - (full ? 120 : regular ? 76 : 80)) / (full ? 72 : regular ? 30 : 28)),
   );
   const around = s.rows === 'around' || (s.rows === null && !regular) || all.length > capacity;
   const at = all.findIndex((p) => p.index === focus);
@@ -141,11 +142,12 @@ function Tower({ settings, density, height }: TileProps) {
   const stale = slow.connection !== 'open' || state.lifecycle === 'Lost';
   const band = raceStatus(session, slow.history);
   return (
-    <div className="pw-tower" style={{ overflow: 'hidden', height: '100%', padding: 8 }}>
-      <style>{`.pw-tower table{width:100%;border-collapse:collapse;table-layout:fixed}.pw-tower tr{display:grid;grid-template-columns:24px minmax(60px,1.5fr) minmax(72px,1.5fr) 30px;align-items:center;min-height:28px;border-bottom:1px solid var(--pw-line)}.pw-tower[data-density=regular] tr,.pw-tower[data-density=full] tr{grid-template-columns:repeat(12,minmax(0,1fr));min-height:48px}.pw-tower[data-density=full] tr{min-height:72px}.pw-tower[data-density] tr>:nth-child(1){grid-column:span 1}.pw-tower[data-density] tr>:nth-child(2){grid-column:span 4}.pw-tower[data-density] tr>:nth-child(3){grid-column:span 5}.pw-tower[data-density] tr>:nth-child(4){grid-column:span 2}.pw-tower[data-density] tr>:nth-child(5),.pw-tower[data-density] tr>:nth-child(6),.pw-tower[data-density] tr>:nth-child(7){grid-column:span 2}.pw-tower[data-density] tr>:nth-child(8){grid-column:span 6}.pw-tower[data-density] tr>:nth-child(9),.pw-tower[data-density] tr>:nth-child(10),.pw-tower[data-density] tr>:nth-child(11){grid-column:span 3}.pw-tower[data-density] tr>:nth-child(12){grid-column:span 2}.pw-tower[data-density] tr>:nth-child(13){grid-column:span 1}.pw-tower[data-density=compact] tr{grid-template-columns:repeat(12,minmax(0,1fr))}.pw-tower th{font-size:var(--pw-text-label);color:var(--pw-text-muted);font-weight:400}.pw-tower td{font-size:var(--pw-text-value)}.pw-tower td,.pw-tower th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;padding:2px}.pw-tower [aria-current=true]{background:var(--pw-line);border-left:3px solid var(--pw-accent)}.pw-tower [data-retired=true]{color:var(--pw-text-muted)}.pw-tower [data-state=stale]{color:var(--pw-text-muted)}`}</style>
-      <div className="pw-label">Timing tower</div>
-      <div role="status" className="pw-label" data-state={stale ? 'stale' : state.session.state}>
-        {band || 'Racing'}
+    <div className="pw-tower-tile">
+      <div className="pw-title">
+        <span>Timing tower</span>
+        <span className="pw-title-note" role="status" data-state={stale ? 'stale' : state.session.state}>
+          {band || 'Racing'}
+        </span>
       </div>
       <div className="pw-tower" data-density={density}>
         <table aria-label="Timing tower">

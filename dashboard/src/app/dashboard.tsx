@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Device } from '../device/device';
 import { arrangementOf, type Tile } from '../layout/model';
-import { fitRowHeight, ROW_HEIGHT } from '../layout/screen';
+import { fitRowHeight, GRID_MARGIN, ROW_HEIGHT } from '../layout/screen';
 import type { LayoutController } from '../layout/controller';
 import { Banners, SlowDrawNotice, useSlow } from '../runtime/react';
 import {
@@ -67,8 +67,14 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
   const shown = edit?.draft ?? current;
   const tiles = shown ? arrangementOf(shown, screenClass) : [];
   // Rows fill the page, and hold still in edit mode so a tile being dragged never resizes the rest.
+  // A Notice tile on the last row stays hidden outside edit mode (the chrome carries the line), so
+  // its row gets no share of the page and the footer closes the gap it leaves.
+  const lastRow = Math.max(0, ...tiles.map((t) => t.y + t.h));
+  const noticeOnly = tiles.filter((t) => t.y + t.h === lastRow).every((t) => t.type === 'notice' && t.h === 1);
+  const fitted = noticeOnly ? tiles.filter((t) => t.type !== 'notice' || t.y + t.h < lastRow) : tiles;
   const fittedRow = useRef(ROW_HEIGHT);
-  if (!edit) fittedRow.current = measured > 0 && available > 0 ? fitRowHeight(tiles, available) : ROW_HEIGHT;
+  if (!edit) fittedRow.current = measured > 0 && available > 0 ? fitRowHeight(fitted, available) : ROW_HEIGHT;
+  const hiddenRow = noticeOnly && !edit && tiles.length > 1 ? fittedRow.current + GRID_MARGIN : 0;
   const editedTile = settingsFor ? tiles.find((t) => t.i === settingsFor) : undefined;
   const editedModule = editedTile ? registry.get(editedTile.type) : undefined;
 
@@ -164,7 +170,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
       ) : null}
       <Notices notices={state.notices} onDismiss={(id) => controller.dismissNotice(id)} />
 
-      <main className="pw-main" ref={gridRef}>
+      <main className="pw-main" ref={gridRef} style={hiddenRow ? { marginBottom: -hiddenRow } : undefined}>
         {state.status === 'error' ? (
           <div className="pw-load-error" role="alert">
             <p>Could not load layouts from the collector.</p>

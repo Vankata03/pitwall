@@ -170,7 +170,7 @@ function TrackMapTile({ width, height }: TileProps) {
       const field = tokenColor(el, '--pw-energy', '#56D9CA');
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(3, Math.min(7, Math.min(w, h) / 36));
+      ctx.lineWidth = Math.max(3, Math.min(7, Math.min(w, h) / 28));
       ctx.strokeStyle = track;
       ctx.setLineDash([]);
       ctx.beginPath();
