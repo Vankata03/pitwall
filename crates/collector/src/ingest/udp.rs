@@ -6,6 +6,7 @@ use crate::telemetry::{ParseError, ParsedDatagram};
 use std::{
     io,
     net::{SocketAddr, ToSocketAddrs, UdpSocket},
+    time::Duration,
 };
 
 /// A poll yields after this many receives even under continuous input.
@@ -152,6 +153,35 @@ impl LiveUdp {
             ingest: self.ingest.status(now_us),
             forwarded: self.forwarded,
             forwarding_errors: self.forwarding_errors,
+        }
+    }
+
+    /// Block until a datagram is queued or `timeout` passes; true when input is waiting.
+    /// The datagram is only peeked, so `poll` still receives it. A sleep between polls
+    /// cannot do this: `thread::sleep(1 ms)` lasts about 15.6 ms on Windows, which
+    /// batches arrivals and caps the Frame rate, whereas a blocked receive wakes on arrival.
+    pub fn wait(&self, timeout: Duration) -> io::Result<bool> {
+        let mut probe = [0u8; 65535];
+        self.socket.set_nonblocking(false)?;
+        let peeked = self
+            .socket
+            .set_read_timeout(Some(timeout.max(Duration::from_millis(1))))
+            .and_then(|()| self.socket.peek_from(&mut probe));
+        self.socket.set_nonblocking(true)?;
+        match peeked {
+            Ok(_) => Ok(true),
+            // Unix reports an expired timeout as WouldBlock, Windows as TimedOut.
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock
+                        | io::ErrorKind::TimedOut
+                        | io::ErrorKind::Interrupted
+                ) =>
+            {
+                Ok(false)
+            }
+            Err(error) => Err(error),
         }
     }
 

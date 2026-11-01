@@ -17,6 +17,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Longest the receive thread blocks with no input; bounds config-update latency.
+const WAKE_TIMEOUT: Duration = Duration::from_millis(5);
+/// Model publish cadence while no datagram arrives (staleness advances with the clock).
+const IDLE_PUBLISH: Duration = Duration::from_millis(50);
+
 fn unix_seconds() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -165,8 +170,9 @@ pub fn run_at(
                     model.advance(Duration::from_micros(now()));
                     let status = live.status(now());
                     // Publish arrivals immediately, but do not clone and wake the publisher
-                    // on every empty 1 ms poll. Idle freshness needs only the slow cadence.
-                    if had_input || last_publish.elapsed() >= Duration::from_millis(200) {
+                    // when nothing arrived. Staleness is time-driven, so idle publishes
+                    // keep it within a few expected intervals of the spec's threshold.
+                    if had_input || last_publish.elapsed() >= IDLE_PUBLISH {
                         models.send_replace((
                             model.clone(),
                             crate::wire::CollectorStatus::from(&status),
@@ -187,7 +193,9 @@ pub fn run_at(
                         ));
                         last_status = Instant::now();
                     }
-                    thread::sleep(Duration::from_millis(1));
+                    // Wake on arrival. The timeout only bounds config updates and idle
+                    // bookkeeping, so its coarse granularity on Windows does not matter.
+                    live.wait(WAKE_TIMEOUT)?;
                 }
             })?;
 

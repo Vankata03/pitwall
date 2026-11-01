@@ -180,3 +180,33 @@ fn assumed_forward_only_update_preserves_listener_queue_and_poll_budget() {
     assert_eq!(count, 3);
     assert_eq!(live.local_addr().unwrap(), address);
 }
+
+#[test]
+fn assumed_wait_wakes_on_arrival_instead_of_the_sleep_granularity() {
+    let mut live = LiveUdp::bind(loopback(), &ForwardConfig::default()).unwrap();
+    let mut tap = |_: u64, _: &[u8]| {};
+    let started = Instant::now();
+    assert!(!live.wait(Duration::from_millis(60)).unwrap());
+    assert!(started.elapsed() >= Duration::from_millis(40));
+
+    let target = live.local_addr().unwrap();
+    let sender = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(30));
+        UdpSocket::bind(loopback())
+            .unwrap()
+            .send_to(&[1, 2, 3], target)
+            .unwrap();
+    });
+    let started = Instant::now();
+    assert!(live.wait(Duration::from_secs(5)).unwrap());
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "wait must end at arrival, not at the timeout"
+    );
+    sender.join().unwrap();
+    // Waiting only peeks: the datagram is still there, and polling is still nonblocking.
+    assert_eq!(live.poll(10, || 7, &mut tap).unwrap().len(), 1);
+    let started = Instant::now();
+    assert!(live.poll(10, || 7, &mut tap).unwrap().is_empty());
+    assert!(started.elapsed() < Duration::from_millis(20));
+}
