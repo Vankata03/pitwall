@@ -407,7 +407,16 @@ impl SessionModel {
                                     != Some(u32::from(value.pit_stop_timer_in_ms)))
                     });
                 if completed.is_none()
-                    && sector_times.iter().all(Option::is_none)
+                    && sector_times.iter().enumerate().all(|(sector, duration)| {
+                        duration.is_none()
+                            || usize::from(value.sector) <= sector
+                            || car.derived.sectors.iter().rev().any(|old| {
+                                old.lap_number == value.current_lap_num
+                                    && usize::from(old.sector) == sector
+                                    && Some(old.time_ms) == *duration
+                                    && old.valid == (value.current_lap_invalid == 0)
+                            })
+                    })
                     && in_pit == was_in_pit
                     && !timing_changed
                 {

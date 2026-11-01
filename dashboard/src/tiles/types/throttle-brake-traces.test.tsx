@@ -128,9 +128,22 @@ test('draws the current lap from Frame against distance, throttle and brake in p
   frame(3, 20, 0, 80);
   paint();
   expect(lastPlot().x).toEqual([0, 5, 10, 15, 20]);
-  expect(channelValues('throttle', 'current')).toEqual([100, null, 50, null, 0]);
-  expect(channelValues('brake', 'current')).toEqual([0, null, 0, null, 80]);
+  expect(channelValues('throttle', 'current')).toEqual([100, 75, 50, 25, 0]);
+  expect(channelValues('brake', 'current')).toEqual([0, 0, 0, 40, 80]);
   expect(lastPlot().series.every((s) => s.channel !== 'speed')).toBe(true);
+});
+
+test('draws a continuous current lap from 10 Hz Frames at 300 km/h, 8 m apart and off the bucket grid', async () => {
+  const { runtime, paint, frame } = setup();
+  show(runtime);
+  await settle();
+  for (let n = 0; n <= 12; n++) frame(n + 1, n * (300 / 3.6 / 10), 100 - n * 5, n * 5);
+  paint();
+  const x = lastPlot().x;
+  expect(x.length).toBeGreaterThan(15);
+  expect(x).toEqual(x.map((_, i) => i * 5));
+  expect(channelValues('throttle', 'current')!.every((v) => v !== null)).toBe(true);
+  expect(channelValues('brake', 'current')!.every((v) => v !== null)).toBe(true);
 });
 
 test('fetches the best lap as the default reference and overlays it', async () => {

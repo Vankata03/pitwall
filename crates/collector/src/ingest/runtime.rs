@@ -17,6 +17,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Longest the receive thread blocks with no input; bounds config-update latency.
+const WAKE_TIMEOUT: Duration = Duration::from_millis(5);
+/// Model publish cadence while no datagram arrives (staleness advances with the clock).
+const IDLE_PUBLISH: Duration = Duration::from_millis(50);
+
 fn unix_seconds() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -133,6 +138,7 @@ pub fn run_at(
             .spawn(move || -> io::Result<()> {
                 let origin = Instant::now();
                 let mut last_status = Instant::now();
+                let mut last_publish = Instant::now();
                 let mut model = crate::model::SessionModel::default();
                 let mut tap = |at: u64, bytes: &[u8]| {
                     if worker_recording.load(std::sync::atomic::Ordering::Relaxed) {
@@ -163,8 +169,16 @@ pub fn run_at(
                     }
                     model.advance(Duration::from_micros(now()));
                     let status = live.status(now());
-                    models
-                        .send_replace((model.clone(), crate::wire::CollectorStatus::from(&status)));
+                    // Publish arrivals immediately, but do not clone and wake the publisher
+                    // when nothing arrived. Staleness is time-driven, so idle publishes
+                    // keep it within a few expected intervals of the spec's threshold.
+                    if had_input || last_publish.elapsed() >= IDLE_PUBLISH {
+                        models.send_replace((
+                            model.clone(),
+                            crate::wire::CollectorStatus::from(&status),
+                        ));
+                        last_publish = Instant::now();
+                    }
                     if last_status.elapsed() >= Duration::from_secs(1) {
                         let track = match model.session() {
                             crate::model::Readout::Live(v) | crate::model::Readout::Stale(v) => {
@@ -179,7 +193,9 @@ pub fn run_at(
                         ));
                         last_status = Instant::now();
                     }
-                    thread::sleep(Duration::from_millis(1));
+                    // Wake on arrival. The timeout only bounds config updates and idle
+                    // bookkeeping, so its coarse granularity on Windows does not matter.
+                    live.wait(WAKE_TIMEOUT)?;
                 }
             })?;
 

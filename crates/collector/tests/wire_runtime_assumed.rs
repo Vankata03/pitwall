@@ -120,3 +120,67 @@ async fn assumed_binary_resends_datagrams_to_websocket_and_composes_routes() {
     }
     std::fs::remove_file(config).unwrap();
 }
+
+#[tokio::test]
+#[ignore = "manual synthetic Frame throughput measurement"]
+async fn assumed_resend_frame_throughput() {
+    let profile = std::env::var("PITWALL_BENCH_BIN").unwrap();
+    let port = 28777;
+    let config = std::env::temp_dir().join(format!("pitwall-rate-{}.toml", std::process::id()));
+    std::fs::write(
+        &config,
+        format!(
+            "[udp]\nport=28778\n[http]\nbind='127.0.0.1'\nport={port}\n[recording]\nenabled=false\n"
+        ),
+    )
+    .unwrap();
+    let _child = Child(
+        Command::new(&profile)
+            .args(["--config", config.to_str().unwrap()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}/ws"))
+        .await
+        .unwrap();
+    let mut sender = Command::new(env!("CARGO_BIN_EXE_pitrec-resend"))
+        .args([
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../tests/fixtures/assumed-full-grid.pitrec"
+            ),
+            "127.0.0.1:28778",
+        ])
+        .spawn()
+        .unwrap();
+    let start = std::time::Instant::now();
+    let mut frames = 0;
+    let mut gaps = Vec::new();
+    let mut last = None;
+    while start.elapsed() < Duration::from_secs(31) {
+        if let Ok(Some(Ok(message))) =
+            tokio::time::timeout(Duration::from_millis(100), ws.next()).await
+        {
+            if message.is_binary() {
+                let now = std::time::Instant::now();
+                if let Some(previous) = last {
+                    gaps.push(now.duration_since(previous).as_secs_f64() * 1000.0);
+                }
+                last = Some(now);
+                frames += 1;
+            }
+        }
+    }
+    assert!(sender.wait().unwrap().success());
+    gaps.sort_by(f64::total_cmp);
+    println!(
+        "{profile}: {frames} Frames/31s; p50 {:.2}ms p95 {:.2}ms max {:.2}ms",
+        gaps[gaps.len() / 2],
+        gaps[gaps.len() * 95 / 100],
+        gaps.last().unwrap()
+    );
+    std::fs::remove_file(config).unwrap();
+}
