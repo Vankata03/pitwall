@@ -79,6 +79,7 @@ impl Controller {
             stream.tick(transport, wire::Source::Replay, a.replay.model(), context);
         } else if i.loading || i.error.is_some() {
             context.replay = Some(wire::ReplayState {
+                duration: 0.0,
                 position: 0.0,
                 speed: 1.0,
                 paused: true,
@@ -107,6 +108,7 @@ impl Controller {
             Some(state)
         } else if i.loading || i.error.is_some() {
             Some(wire::ReplayState {
+                duration: 0.0,
                 position: 0.0,
                 speed: 1.0,
                 paused: true,

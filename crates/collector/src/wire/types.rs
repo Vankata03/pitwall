@@ -34,6 +34,7 @@ pub struct Context {
 #[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplayState {
+    pub duration: f64,
     pub position: f64,
     pub speed: f64,
     pub paused: bool,

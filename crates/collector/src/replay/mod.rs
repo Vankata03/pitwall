@@ -194,6 +194,7 @@ impl Replay {
     }
     pub fn state(&self, background_live: Option<String>) -> crate::wire::ReplayState {
         crate::wire::ReplayState {
+            duration: self.duration.as_secs_f64(),
             position: self.position.as_secs_f64(),
             speed: self.speed,
             paused: self.paused,
