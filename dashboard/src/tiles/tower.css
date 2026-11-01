@@ -1,0 +1,66 @@
+/* Timing tower. Columns are fixed by density (spec section 11); regular keeps every car on one
+   line so more of the field fits, full stacks its extra columns under each car. */
+.pw-tower-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  padding: 12px var(--pw-tile-pad);
+  overflow: hidden;
+}
+.pw-tower table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.pw-tower tr {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: center;
+  min-height: 28px;
+  border-bottom: 1px solid var(--pw-line);
+}
+.pw-tower[data-density='regular'] tr {
+  grid-template-columns: 34px minmax(0, 1.6fr) minmax(0, 1.2fr) 40px 16px 36px 46px minmax(0, 1fr);
+  min-height: 30px;
+}
+.pw-tower[data-density='full'] tr { min-height: 72px; }
+.pw-tower thead tr { min-height: 20px; }
+.pw-tower[data-density='compact'] tr > :nth-child(1),
+.pw-tower[data-density='full'] tr > :nth-child(1) { grid-column: span 1; }
+.pw-tower[data-density='compact'] tr > :nth-child(2),
+.pw-tower[data-density='full'] tr > :nth-child(2) { grid-column: span 4; }
+.pw-tower[data-density='compact'] tr > :nth-child(3),
+.pw-tower[data-density='full'] tr > :nth-child(3) { grid-column: span 5; }
+.pw-tower[data-density='compact'] tr > :nth-child(4),
+.pw-tower[data-density='full'] tr > :nth-child(4) { grid-column: span 2; }
+.pw-tower[data-density='full'] tr > :nth-child(5),
+.pw-tower[data-density='full'] tr > :nth-child(6),
+.pw-tower[data-density='full'] tr > :nth-child(7) { grid-column: span 2; }
+.pw-tower[data-density='full'] tr > :nth-child(8) { grid-column: span 6; }
+.pw-tower[data-density='full'] tr > :nth-child(9),
+.pw-tower[data-density='full'] tr > :nth-child(10),
+.pw-tower[data-density='full'] tr > :nth-child(11) { grid-column: span 3; }
+.pw-tower[data-density='full'] tr > :nth-child(12) { grid-column: span 2; }
+.pw-tower[data-density='full'] tr > :nth-child(13) { grid-column: span 1; }
+.pw-tower th {
+  font-family: var(--pw-font-label);
+  font-size: var(--pw-text-label);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pw-text-muted);
+}
+.pw-tower[data-density='regular'] th:nth-child(5) { color: transparent; }
+.pw-tower td { font-size: var(--pw-text-value); font-variant-numeric: tabular-nums; }
+.pw-tower td,
+.pw-tower th {
+  overflow: hidden;
+  padding: 2px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pw-tower [aria-current='true'] {
+  background: var(--pw-tile-bg-raised);
+  box-shadow: inset 3px 0 0 var(--pw-accent);
+}
+.pw-tower [aria-current='true'] td { font-weight: 600; }
+.pw-tower [aria-current='true'] td:first-child { padding-left: 6px; }
+.pw-tower [data-retired='true'] { color: var(--pw-text-muted); }

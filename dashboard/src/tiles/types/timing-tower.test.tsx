@@ -122,7 +122,7 @@ test('compact pins the leader around focus and regular falls back without scroll
   expect(screen.queryByRole('columnheader', { name: 'Stops' })).toBeNull();
   view.unmount();
   show({ density: 'regular', height: 260 });
-  expect(screen.getAllByRole('row').length).toBeLessThan(6);
+  expect(screen.getAllByRole('row').length).toBeLessThan(8); // header and six one-line cars
   expect(screen.getByText('Driver 6')).toBeTruthy();
 });
 test('focus-relative compares leader gaps and timed sessions name the fallback reference', () => {

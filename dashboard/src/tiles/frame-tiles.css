@@ -4,11 +4,13 @@
   position: relative;
   height: 100%;
   min-width: 0;
-  padding: 12px 16px;
+  padding: 12px var(--pw-tile-pad);
   overflow: hidden;
   background: var(--pw-tile-bg);
   color: var(--pw-text);
   font-family: var(--pw-font);
+  /* Hero numerals take their size from the tile, so a bigger tile means bigger type, not scaling. */
+  container-type: size;
 }
 .pw-frame-body {
   display: flex;
@@ -38,44 +40,76 @@
 .pw-stat {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
+.pw-stat-end {
+  align-items: flex-end;
+  text-align: right;
+}
 .pw-big {
-  font-size: 56px;
-  font-weight: 600;
-  line-height: 1;
+  font-size: clamp(56px, min(26cqw, 44cqh), 190px);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+}
+.pw-metric {
+  font-size: var(--pw-text-metric);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
 
 /* ---- Speed/RPM/gear ---- */
 .pw-srg-speed {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 0;
 }
 .pw-srg-row {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--pw-line);
 }
 .pw-gear {
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 1.1;
   color: var(--pw-accent);
 }
+.pw-gear[data-state='stale'] {
+  color: var(--pw-text-muted);
+}
 .pw-dial {
+  flex: none;
   align-self: center;
+}
+/* With the dial, the speed sits inside it. The offset is the padding, title and strip above. */
+.pw-srg[data-density='full'] .pw-srg-speed {
+  position: absolute;
+  top: calc(54px + var(--pw-dial) / 2);
+  right: var(--pw-tile-pad);
+  left: var(--pw-tile-pad);
+  translate: 0 -50%;
+}
+.pw-srg[data-density='full'] .pw-big {
+  font-size: calc(var(--pw-dial) * 0.3);
+}
+.pw-srg[data-density='full'] .pw-srg-row {
+  margin-top: auto;
 }
 .pw-shift-strip {
   display: flex;
-  gap: 3px;
+  flex: none;
+  gap: 4px;
 }
 .pw-shift-strip > span {
   flex: 1;
-  height: 12px;
-  border-radius: 2px;
-  background: var(--pw-line);
+  height: 10px;
+  background: var(--pw-meter-empty);
 }
 .pw-shift-strip > span[data-on='true'][data-zone='low'] {
   background: var(--pw-sector-personal-best);
@@ -87,21 +121,30 @@
   background: var(--pw-temp-hot);
 }
 .pw-shift-strip[data-state='stale'] > span[data-on='true'] {
-  opacity: 0.6;
+  background: var(--pw-text-muted);
 }
 
 /* ---- G-force ---- */
 .pw-gf-body {
   flex-direction: row;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
+}
+.pw-gf-total {
+  flex: 1;
 }
 .pw-gf-values {
   display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 8px 16px;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
+}
+.pw-gf-axis {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
 }
 .pw-gf-circle {
   flex: none;
@@ -112,16 +155,18 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 4px;
+  gap: 6px;
 }
 .pw-sm-state {
-  min-width: 8ch;
+  min-width: min(100%, 180px);
   padding: 4px 16px;
   border: 1px solid var(--pw-line);
-  border-radius: 4px;
-  font-size: 20px;
-  font-weight: 600;
+  border-radius: var(--pw-radius-inner);
+  background: var(--pw-tile-bg-raised);
+  font-size: 18px;
+  font-weight: 700;
   letter-spacing: 0.06em;
+  color: var(--pw-text-muted);
 }
 /* On is a filled box as well as a word, so colour is never the only cue. */
 .pw-sm-state[data-mode='active'],
@@ -134,19 +179,26 @@
   border-color: var(--pw-energy);
   color: var(--pw-energy);
 }
-.pw-sm-state[data-state='stale'] {
-  opacity: 0.7;
+/* The detail line is a nicety: a short tile keeps the label and the state. */
+@container (max-height: 100px) {
+  .pw-sm [data-testid='sm-detail'] {
+    display: none;
+  }
 }
 
 /* ---- ERS ---- */
 .pw-ers-head {
   display: flex;
+  flex: 1;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  min-height: 0;
 }
 .pw-ers-percent {
-  font-size: 40px;
-  min-width: 4ch;
+  flex: none;
+  min-width: 3.1ch;
+  font-size: clamp(30px, min(9cqw, 30cqh), 72px);
+  letter-spacing: -0.03em;
 }
 .pw-battery {
   display: flex;
@@ -156,35 +208,182 @@
 }
 .pw-battery > span {
   flex: 1;
-  height: 20px;
-  border-radius: 2px;
-  background: var(--pw-line);
+  height: 26px;
+  background: var(--pw-meter-empty);
 }
 .pw-battery > span[data-on='true'] {
   background: var(--pw-energy);
 }
 .pw-battery[data-state='stale'] > span[data-on='true'] {
-  opacity: 0.6;
+  background: var(--pw-text-muted);
+}
+.pw-ers-mode {
+  flex: none;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--pw-energy) 45%, transparent);
+  border-radius: var(--pw-radius-inner);
+  background: color-mix(in srgb, var(--pw-energy) 12%, transparent);
+  font-size: var(--pw-text-label);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pw-energy);
 }
 .pw-ers-rows {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 8px 16px;
-  margin-top: auto;
+  flex: none;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 6px 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--pw-line);
+}
+.pw-ers-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+.pw-ers-value[data-tone='energy'] .pw-readout[data-state='live'] { color: var(--pw-energy); }
+.pw-ers-value[data-tone='info'] .pw-readout[data-state='live'] { color: var(--pw-info); }
+.pw-ers-value[data-tone='accent'] .pw-readout[data-state='live'] { color: var(--pw-accent); }
+.pw-ers-value[data-tone='brake'] .pw-readout[data-state='live'] { color: var(--pw-brake); }
+
+/* ---- Track map ---- */
+.pw-tm {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: var(--pw-tile-bg);
+}
+.pw-tm .pw-title {
+  position: absolute;
+  top: 12px;
+  right: var(--pw-tile-pad);
+  left: var(--pw-tile-pad);
+  z-index: 1;
+}
+.pw-tm-map {
+  display: block;
+}
+.pw-tm-foot {
+  position: absolute;
+  right: var(--pw-tile-pad);
+  bottom: 0;
+  left: var(--pw-tile-pad);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 39px;
+  border-top: 1px solid var(--pw-line);
+}
+.pw-tm-name {
+  overflow: hidden;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pw-info);
+}
+.pw-tm-facts {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+/* ---- Throttle/brake traces: the pedals now, beside the lap so far. ---- */
+.pw-tr {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 12px var(--pw-tile-pad) 8px;
+  overflow: hidden;
+  background: var(--pw-tile-bg);
+}
+.pw-tr-status {
+  position: absolute;
+  top: 34px;
+  right: 24px;
+  z-index: 1;
+}
+.pw-tr-body {
+  display: flex;
+  flex: 1;
+  gap: 14px;
+  min-height: 0;
+}
+.pw-tr-meters {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(2, 42px);
+  gap: 8px;
+  height: 100%;
+}
+.pw-tr-meter {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 4px;
+  justify-items: center;
+  min-height: 0;
+}
+.pw-tr-track {
+  position: relative;
+  width: 12px;
+  background: var(--pw-meter-empty);
+}
+.pw-tr-track > i {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 0;
+  background: var(--pw-energy);
+}
+.pw-tr-meter[data-channel='brake'] .pw-tr-track > i {
+  background: var(--pw-brake);
+}
+.pw-tr-track > i[data-state='1'] {
+  background: var(--pw-text-muted);
+}
+.pw-tr-meter .pw-readout {
+  font-size: var(--pw-text-value);
+  font-weight: 600;
+  color: var(--pw-energy);
+}
+.pw-tr-meter[data-channel='brake'] .pw-readout {
+  color: var(--pw-brake);
+}
+.pw-tr-meter .pw-readout:not([data-state='live']) {
+  color: var(--pw-text-muted);
 }
 
 /* ---- Lap timing: delta first, sectors below, reference at full density. ---- */
-.pw-lt-head { display: flex; justify-content: space-between; gap: 12px; }
-.pw-lt-delta { font-size: 32px; font-weight: 600; line-height: 1.2; }
-.pw-lt-time { font-size: 22px; font-weight: 600; }
+.pw-lt .pw-frame-body { gap: 6px; }
+.pw-lt-head { display: flex; flex: none; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.pw-lt-head .pw-stat:last-child { align-items: flex-end; text-align: right; }
+.pw-lt-delta { font-size: clamp(30px, min(9.5cqw, 34cqh), 64px); font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+.pw-lt-time { font-size: clamp(22px, min(6cqw, 22cqh), 40px); font-weight: 700; line-height: 1.05; letter-spacing: -0.01em; color: var(--pw-text-muted); }
+.pw-lt-time[data-state='live'] { color: var(--pw-text); }
 .pw-lt-delta[data-state='live'][data-sign='ahead'] { color: var(--pw-sector-personal-best); }
 .pw-lt-delta[data-state='live'][data-sign='behind'] { color: var(--pw-sector-slower); }
-.pw-lt-sectors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.pw-lt-sectors > div { border-top: 2px solid var(--pw-line); padding-top: 4px; font-size: var(--pw-text-value); }
-.pw-lt-sectors [data-current='true'] { border-color: var(--pw-accent); }
+.pw-lt-sectors { display: grid; flex: none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pw-lt-sectors > div { gap: 0; border-top: 2px solid var(--pw-sector-personal-best); padding-top: 4px; font-size: clamp(var(--pw-text-value), min(3.6cqw, 9cqh), 28px); font-weight: 600; line-height: 1.25; }
+.pw-lt-sectors > div[data-rank=''] { border-top-color: var(--pw-line); }
+.pw-lt-sectors .pw-label { font-weight: 400; }
+.pw-lt-sectors [data-rank='session-best'] { border-top-color: var(--pw-sector-session-best); }
+.pw-lt-sectors [data-rank='slower'] { border-top-color: var(--pw-sector-slower); }
+.pw-lt-sectors [data-current='true'] { border-top-color: var(--pw-accent); }
 .pw-lt-sectors [data-rank='session-best'] .pw-readout[data-state='live'] { color: var(--pw-sector-session-best); }
 .pw-lt-sectors [data-rank='personal-best'] .pw-readout[data-state='live'] { color: var(--pw-sector-personal-best); }
 .pw-lt-sectors [data-rank='slower'] .pw-readout[data-state='live'] { color: var(--pw-sector-slower); }
-.pw-lt-reference { display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid var(--pw-line); padding-top: 8px; margin-top: auto; font-size: var(--pw-text-value); }
-.pw-lt-result { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--pw-line); padding-top: 6px; font-size: var(--pw-text-value); }
+.pw-lt-reference { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid var(--pw-line); padding-top: 4px; margin-top: auto; font-size: var(--pw-text-value); font-weight: 600; }
+.pw-lt-result { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid var(--pw-line); padding-top: 3px; font-size: var(--pw-text-value); font-weight: 600; }
+.pw-tm .pw-title-note > span + span::before { content: ' · '; }
+/* A short tile keeps every sector readout by putting the label beside the time. */
+@container (max-height: 190px) {
+  .pw-lt-sectors > div { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: baseline; }
+  .pw-lt-sectors > div > :last-child { grid-column: 1 / -1; }
+}
 .pw-lt-ref-sectors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

@@ -2,18 +2,28 @@
    Tiles use these through var(); nothing else in the dashboard declares a colour or a size. */
 @import '@fontsource/oxanium/latin-400.css';
 @import '@fontsource/oxanium/latin-600.css';
+@import '@fontsource/oxanium/latin-700.css';
+@import '@fontsource/oxanium/latin-800.css';
 @import '@fontsource/oxanium/latin-ext-400.css';
 @import '@fontsource/oxanium/latin-ext-600.css';
+@import '@fontsource/oxanium/latin-ext-700.css';
+@import '@fontsource/oxanium/latin-ext-800.css';
 
 :root {
   /* Surfaces */
   --pw-page-bg: #181b1d;
   --pw-tile-bg: #1B1F21;
+  --pw-tile-bg-raised: #242B2E;
   --pw-line: #343d42;
+  /* The empty part of a meter, strip or battery: quieter than a fill, never a value. */
+  --pw-meter-empty: #2C363B;
+  /* The track on the map: heavy but quiet, and still 3:1 on the tile background. */
+  --pw-track: #6B8496;
 
   /* Text. Muted text is also the colour of a `stale` value. */
   --pw-text: #F3F5F6;
   --pw-text-muted: #9AA7AD;
+  --pw-text-title-colour: #C2CCCF;
 
   /* Temperature bands, condition, sectors, traces. Colour only repeats a number or glyph. */
   --pw-temp-cold: #5CA7E7;
@@ -28,13 +38,21 @@
   --pw-energy: #56D9CA;
   --pw-brake: #F55C72;
 
+  /* Informational blue: track name and MGU-H, shared with the cold band's hue. */
+  --pw-info: #5CA7E7;
+
   /* Chrome accent: papaya, for focus rings and the selected state. */
   --pw-accent: #FF9C35;
 
   /* Type. A label is never under 11px and a value never under 14px, at any density. */
   --pw-font: 'Oxanium', system-ui, sans-serif;
+  /* Quiet labels are a plain sans, so the Oxanium numerals carry the hierarchy. */
+  --pw-font-label: Arial, Helvetica, system-ui, sans-serif;
   --pw-text-label: 11px;
   --pw-text-value: 14px;
+  --pw-text-title: 13px;
+  --pw-text-metric: 24px;
+  --pw-text-display: 34px;
 
   /* Touch targets are at least 44px. */
   --pw-hit: 44px;
@@ -42,6 +60,11 @@
   /* Grid (spec section 10): kept in step with src/layout/screen.ts. */
   --pw-row-height: 32px;
   --pw-gap: 8px;
+
+  /* Surfaces */
+  --pw-radius: 6px;
+  --pw-radius-inner: 3px;
+  --pw-tile-pad: 14px;
 
   /* Motion */
   --pw-ease: cubic-bezier(0.2, 0, 0, 1);

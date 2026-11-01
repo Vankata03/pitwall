@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Device } from '../device/device';
 import { arrangementOf, type Tile } from '../layout/model';
+import { fitRowHeight, GRID_MARGIN, ROW_HEIGHT } from '../layout/screen';
 import type { LayoutController } from '../layout/controller';
 import { Banners, SlowDrawNotice, useSlow } from '../runtime/react';
 import {
@@ -15,12 +16,13 @@ import {
 import { ShortLine } from '../shared/short-line';
 import type { TileRegistry } from '../tiles/registry';
 import { TowerFocusProvider } from '../tiles/types/timing-tower';
+import { RaceStrip } from './race-strip';
 import { ReplayControls } from './replay-controls';
 import { AddTile } from './add-tile';
 import { DisplayMenu } from './display-menu';
 import { FocusPicker } from './focus-picker';
 import { DashboardGrid } from './grid';
-import { useControllerState, useDeviceSettings, useElementWidth, useScreenClass, useViewportSize } from './hooks';
+import { useAvailableHeight, useControllerState, useDeviceSettings, useElementWidth, useScreenClass, useViewportSize } from './hooks';
 import { LayoutSwitcher } from './layout-switcher';
 import { Notices } from './notices';
 import { type StreamOptions, streamUnits } from './stream';
@@ -52,6 +54,8 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
   const playerCar = playerCarOf(wire);
   const revision = layoutsRevisionOf(wire);
   const [gridRef, measured] = useElementWidth<HTMLElement>();
+  const footerRef = useRef<HTMLElement>(null);
+  const available = useAvailableHeight(gridRef, footerRef, viewport.height);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,6 +66,15 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
   const screenClass = streaming ? stream?.screenClass ?? viewportClass : edit?.screenClass ?? viewportClass;
   const shown = edit?.draft ?? current;
   const tiles = shown ? arrangementOf(shown, screenClass) : [];
+  // Rows fill the page, and hold still in edit mode so a tile being dragged never resizes the rest.
+  // A Notice tile on the last row stays hidden outside edit mode (the chrome carries the line), so
+  // its row gets no share of the page and the footer closes the gap it leaves.
+  const lastRow = Math.max(0, ...tiles.map((t) => t.y + t.h));
+  const noticeOnly = tiles.filter((t) => t.y + t.h === lastRow).every((t) => t.type === 'notice' && t.h === 1);
+  const fitted = noticeOnly ? tiles.filter((t) => t.type !== 'notice' || t.y + t.h < lastRow) : tiles;
+  const fittedRow = useRef(ROW_HEIGHT);
+  if (!edit) fittedRow.current = measured > 0 && available > 0 ? fitRowHeight(fitted, available) : ROW_HEIGHT;
+  const clipped = noticeOnly && !edit && tiles.length > 1 ? { height: (lastRow - 1) * (fittedRow.current + GRID_MARGIN) + GRID_MARGIN, flex: 'none', overflow: 'clip' } : undefined;
   const editedTile = settingsFor ? tiles.find((t) => t.i === settingsFor) : undefined;
   const editedModule = editedTile ? registry.get(editedTile.type) : undefined;
 
@@ -71,6 +84,8 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
   };
 
   const focused = !streaming && settings.focus ? resolveFocus({ participants, playerCar, focus: settings.focus }) : undefined;
+  const headerCar = resolveFocus({ participants, playerCar, focus: settings.focus });
+  const headerIndex = 'index' in headerCar ? headerCar.index : null;
   const towerFocus = !focused ? undefined : 'index' in focused ? focused.index : null;
 
   if (streaming && stream) {
@@ -93,6 +108,13 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
       <ReplayControls replay={wire?.context?.replay} car={playerCar ?? 0} />
       <header className="pw-chrome">
         <h1 className="pw-wordmark">pitwall</h1>
+        <FocusPicker
+          participants={participants}
+          focus={settings.focus}
+          focused={participants.find((p) => p.index === headerIndex)}
+          onChange={(identity) => device.setFocus(identity)}
+        />
+        <RaceStrip focusIndex={headerIndex} />
         <div className="pw-chrome-controls">
           {current ? (
             <LayoutSwitcher
@@ -105,7 +127,6 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
               onDelete={(name) => void controller.remove(name)}
             />
           ) : null}
-          <FocusPicker participants={participants} focus={settings.focus} onChange={(identity) => device.setFocus(identity)} />
           <DisplayMenu units={settings.units} onChange={(units) => device.setUnits(units)}>
             <SlowDrawNotice />
           </DisplayMenu>
@@ -149,7 +170,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
       ) : null}
       <Notices notices={state.notices} onDismiss={(id) => controller.dismissNotice(id)} />
 
-      <main className="pw-main" ref={gridRef}>
+      <main className="pw-main" ref={gridRef} style={clipped}>
         {state.status === 'error' ? (
           <div className="pw-load-error" role="alert">
             <p>Could not load layouts from the collector.</p>
@@ -165,6 +186,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
               tiles={tiles}
               screenClass={screenClass}
               width={measured > 0 ? measured : FALLBACK_WIDTH}
+              rowHeight={fittedRow.current}
               editing={edit !== null}
               registry={registry}
               carFor={carFor}
@@ -177,7 +199,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
         </TowerFocusProvider>
       </main>
 
-      <footer className="pw-footer">
+      <footer className="pw-footer" ref={footerRef}>
         <ShortLine />
       </footer>
 

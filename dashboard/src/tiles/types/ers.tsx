@@ -11,6 +11,7 @@ import {
   SlowReadout,
   StateReadout,
   TileMessage,
+  TileTitle,
   useCarState,
   useConnected,
   useLifecycle,
@@ -46,11 +47,13 @@ const declaration = {
 const kj = (joules: number): string => `${grouped(joules / 1000)} kJ`;
 const modeName = (mode: number): string => MODES[mode] ?? `Mode ${mode}`;
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({ label, tone, children }: { label: string; tone?: string; children: React.ReactNode }) {
   return (
     <div className="pw-stat">
       <span className="pw-label">{label}</span>
-      <span className="pw-num pw-value">{children}</span>
+      <span className="pw-num pw-ers-value" data-tone={tone}>
+        {children}
+      </span>
     </div>
   );
 }
@@ -107,6 +110,7 @@ function Ers({ car, density }: TileProps) {
   return (
     <div className="pw-frame-tile pw-ers" ref={root} data-density={density}>
       <div className="pw-frame-body">
+        {showRows ? <TileTitle note="Deployment">Energy recovery</TileTitle> : null}
         <div className="pw-ers-head">
           <span className="pw-num pw-readout pw-big pw-ers-percent" ref={percentEl} data-testid="ers-percent" />
           <div className="pw-battery" ref={battery} data-testid="ers-battery" data-segments={SEGMENTS} data-lit="0" aria-hidden="true">
@@ -114,19 +118,24 @@ function Ers({ car, density }: TileProps) {
               <span key={i} data-on="false" />
             ))}
           </div>
+          {showRows ? (
+            <span className="pw-ers-mode pw-num" aria-label="Deploy mode">
+              <SlowReadout readout={ersReadout} connected={connected} format={(e) => modeName(e.deploy_mode)} testId="ers-mode" />
+            </span>
+          ) : null}
         </div>
         {showRows ? (
           <div className="pw-ers-rows">
-            <Row label="Deploy mode">
-              <SlowReadout readout={ersReadout} connected={connected} format={(e) => modeName(e.deploy_mode)} testId="ers-mode" />
-            </Row>
-            <Row label="MGU-K harvest">
+            <Row label="MGU-K" tone="energy">
               <SlowReadout readout={ersReadout} connected={connected} format={(e) => kj(e.harvested_this_lap_mguk)} testId="ers-mgu-k" />
             </Row>
-            <Row label="MGU-H harvest">
+            <Row label="MGU-H" tone="info">
               <SlowReadout readout={ersReadout} connected={connected} format={(e) => kj(e.harvested_this_lap_mguh)} testId="ers-mgu-h" />
             </Row>
-            <Row label="Deployed">
+            <Row label="Total" tone="accent">
+              <SlowReadout readout={ersReadout} connected={connected} format={(e) => kj(e.harvested_this_lap_mguk + e.harvested_this_lap_mguh)} testId="ers-total" />
+            </Row>
+            <Row label="Deployed" tone="brake">
               <SlowReadout readout={ersReadout} connected={connected} format={(e) => kj(e.deployed_this_lap)} testId="ers-deployed" />
             </Row>
             {show2026 ? (

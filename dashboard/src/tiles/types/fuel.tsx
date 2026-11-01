@@ -12,9 +12,11 @@ export default defineTileModule({
   Component: function Fuel({ car }: TileProps) {
     const snapshot = useSlow(s => s);
     const fuel = boundCar(snapshot, car)?.fuel;
+    const delta = mapValue(fuel, f => `${f.remaining_laps < 0 ? '−' : '+'}${Math.abs(f.remaining_laps).toFixed(2)} laps`);
+    const short = fuel && 'value' in fuel && fuel.value.remaining_laps < 0;
     return <SlowTile title="Fuel" snapshot={snapshot} rows={[
+      { label: 'Fuel delta', value: delta, tone: short ? 'bad' : 'good' },
       { label: 'Fuel in tank', value: mapValue(fuel, f => `${f.in_tank.toFixed(1)} kg`) },
-      { label: 'Fuel delta', value: mapValue(fuel, f => `${f.remaining_laps < 0 ? '−' : '+'}${Math.abs(f.remaining_laps).toFixed(2)} laps`) },
     ]} />;
   },
 });

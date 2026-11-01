@@ -9,6 +9,7 @@ export const COLUMNS: Record<ScreenClass, number> = { wide: 24, tablet: 12, phon
 export const CLASS_MIN_WIDTH: Record<ScreenClass, number> = { wide: 1280, tablet: 768, phone: 0 };
 
 export const ROW_HEIGHT = 32;
+const MAX_FIT_ROW_HEIGHT = 64;
 export const GRID_MARGIN = 8;
 /** Space between the viewport edge and the grid, in CSS pixels. */
 export const PAGE_PADDING = 8;
@@ -63,6 +64,17 @@ export function densityRulesFromCells(cells: readonly DensityCells[]): DensityRu
     const px = cellsToPixels('wide', NARROWEST_WIDE_CONTAINER, { w, h });
     return { density, minWidth: Math.floor(px.width), minHeight: Math.floor(px.height) };
   });
+}
+
+/**
+ * Row height that lets a layout fill the height left under the chrome. ROW_HEIGHT is the floor,
+ * so a layout taller than the screen still scrolls, and MAX_FIT_ROW_HEIGHT keeps a short layout
+ * from ballooning. Whole pixels, so tile edges stay crisp.
+ */
+export function fitRowHeight(tiles: readonly { y: number; h: number }[], available: number): number {
+  const rows = Math.max(1, ...tiles.map((tile) => tile.y + tile.h));
+  const fit = Math.floor((available - GRID_MARGIN * (rows - 1)) / rows);
+  return Math.min(MAX_FIT_ROW_HEIGHT, Math.max(ROW_HEIGHT, fit));
 }
 
 /** Divide the viewport between rows after reserving gaps, so the last row never scrolls.

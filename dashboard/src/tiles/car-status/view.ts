@@ -52,6 +52,8 @@ export interface DamageView {
   key: string;
   label: string;
   cell: Cell;
+  /** 0 to 100, or null unless live or stale: it sets the bar length. */
+  percent: number | null;
 }
 
 export interface CarStatusView {
@@ -156,6 +158,7 @@ export function carStatusView(car: CarState | null | undefined, units: Units, co
     key,
     label,
     cell: cell(damage, (d) => percentText(d[field])),
+    percent: hasValue(damage) ? clampPercent(damage.value[field]) : null,
   }));
 
   const cells: Cell[] = [

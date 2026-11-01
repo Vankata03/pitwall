@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import { speed as speedIn } from '../../device/units';
 import { effectiveState, frameReadoutState, readoutStateName, wholeTileMessage } from '../../runtime/readout';
 import { ReadoutState } from '../../runtime/wire';
@@ -11,6 +11,7 @@ import {
   setText,
   showMessage,
   TileMessage,
+  TileTitle,
   tokenColor,
   useCarState,
   useLifecycle,
@@ -34,7 +35,7 @@ const declaration = {
   densities: [
     { density: 'compact', minWidth: 0, minHeight: 0 },
     { density: 'regular', minWidth: 230, minHeight: 150 },
-    { density: 'full', minWidth: 330, minHeight: 330 },
+    { density: 'full', minWidth: 330, minHeight: 370 },
   ],
   reads: [
     { source: 'frame', fields: ['speed', 'rpm', 'gear'] },
@@ -101,12 +102,13 @@ function SpeedRpmGear({ car, units, density, width, height }: TileProps) {
   );
 
   return (
-    <div className="pw-frame-tile pw-srg" ref={root} data-density={density}>
+    <div className="pw-frame-tile pw-srg" ref={root} data-density={density} style={{ '--pw-dial': `${dialSize}px` } as CSSProperties}>
       <div className="pw-frame-body">
+        {showStrip ? <TileTitle>Speed / RPM</TileTitle> : null}
         {showStrip ? (
           <div className="pw-shift-strip" ref={strip} data-testid="shift-strip" data-segments={SEGMENTS} data-lit="0" data-limiter="false" aria-hidden="true">
             {Array.from({ length: SEGMENTS }, (_, i) => (
-              <span key={i} data-zone={i < 12 ? 'low' : i < 17 ? 'mid' : 'high'} data-on="false" />
+              <span key={i} data-zone={i < 8 ? 'low' : i < 14 ? 'mid' : 'high'} data-on="false" />
             ))}
           </div>
         ) : null}
@@ -124,17 +126,18 @@ function SpeedRpmGear({ car, units, density, width, height }: TileProps) {
           />
         ) : null}
         <div className="pw-srg-row">
-          {showStrip ? (
-            <div className="pw-stat">
-              <span className="pw-label">Engine speed</span>
-              <span className="pw-num pw-readout pw-value" ref={rpmEl} data-testid="rpm" />
-              <span className="pw-label">RPM</span>
-            </div>
-          ) : null}
           <div className="pw-stat">
             <span className="pw-label">Gear</span>
-            <span className="pw-num pw-readout pw-gear" ref={gearEl} data-testid="gear" />
+            <span className="pw-num pw-readout pw-metric pw-gear" ref={gearEl} data-testid="gear" />
           </div>
+          {showStrip ? (
+            <div className="pw-stat pw-stat-end">
+              <span className="pw-label">Engine speed</span>
+              <span className="pw-srg-rpm">
+                <span className="pw-num pw-readout pw-metric" ref={rpmEl} data-testid="rpm" /> <span className="pw-label">RPM</span>
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
       <TileMessage />

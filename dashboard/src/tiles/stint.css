@@ -1,0 +1,99 @@
+/* Stint tile: the big lap count and the block row first, the set-by-set detail below. */
+.pw-stint {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 12px var(--pw-tile-pad);
+  overflow: hidden;
+  font-size: var(--pw-text-value);
+}
+.pw-stint-head {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.pw-stint-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pw-stint-laps {
+  font-size: var(--pw-text-display);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.pw-stint-window {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  text-align: right;
+}
+.pw-stint-blocks {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  height: 18px;
+  background: var(--pw-meter-empty);
+}
+.pw-stint-group {
+  display: flex;
+  flex: 1 1 0;
+  gap: 3px;
+  min-width: 0;
+}
+.pw-stint-group > i {
+  flex: 1;
+  min-width: 1px;
+  background: var(--pw-text-muted);
+}
+.pw-stint-group[data-compound='soft'] > i { background: var(--pw-brake); }
+.pw-stint-group[data-compound='medium'] > i { background: var(--pw-sector-slower); }
+.pw-stint-group[data-compound='hard'] > i { background: var(--pw-temp-window); }
+.pw-stint-group[data-compound='inter'] > i { background: var(--pw-sector-personal-best); }
+.pw-stint-group[data-compound='wet'] > i { background: var(--pw-temp-cold); }
+.pw-stint-caption {
+  display: flex;
+  flex: none;
+  justify-content: space-between;
+  gap: 16px;
+  white-space: nowrap;
+}
+.pw-stint-detail {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
+  scrollbar-width: thin;
+  padding-top: 6px;
+  border-top: 1px solid var(--pw-line);
+}
+.pw-stint-detail ol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+.pw-stint-detail li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 14px;
+  padding-left: 8px;
+  border-left: 2px solid var(--pw-line);
+}
+.pw-stint-detail li[data-current='true'] {
+  border-left-color: var(--pw-accent);
+}
+.pw-stint-detail p {
+  margin: 0;
+}
+.pw-stint-detail .pw-wear {
+  overflow-wrap: anywhere;
+}

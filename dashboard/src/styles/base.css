@@ -30,13 +30,39 @@ body {
 
 /* Labels sit at the 11px floor; values at 14px. Tiles drop readouts, never shrink text. */
 .pw-label {
+  font-family: var(--pw-font-label);
   font-size: var(--pw-text-label);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--pw-text-muted);
 }
 .pw-value {
   font-size: var(--pw-text-value);
+}
+
+/* A tile's title row: the name on the left, a quiet qualifier on the right. */
+.pw-title {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--pw-text-title);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--pw-text-title-colour);
+  white-space: nowrap;
+}
+.pw-title-note {
+  overflow: hidden;
+  font-family: var(--pw-font-label);
+  font-size: var(--pw-text-label);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  color: var(--pw-text-muted);
 }
 
 button,

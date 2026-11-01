@@ -1,20 +1,75 @@
+/* Slow tiles: quiet labels over large numerals, evenly spread across the tile. */
 .pw-slow-tile {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   height: 100%;
   overflow: hidden;
+  padding: 10px var(--pw-tile-pad);
   font-size: var(--pw-text-value);
-  padding: 0 8px;
+  container-type: size;
 }
 .pw-slow-readouts {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0 8px;
+  justify-content: space-between;
+  gap: 8px 20px;
+  min-width: 0;
 }
-.pw-slow-row { display: flex; flex-direction: column; min-width: 6ch; }
-.pw-slow-tile .pw-readout { font-size: var(--pw-text-value); white-space: nowrap; }
-.pw-slow-tile .pw-readout[data-state='stale'] { color: var(--pw-text-muted); }
-.pw-slow-message { position: absolute; bottom: 0; right: 8px; background: var(--pw-tile-bg); }
-.pw-race-feed { list-style: none; margin: 0; padding: 0; }
+.pw-slow-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pw-slow-tile .pw-readout {
+  overflow: hidden;
+  /* Numerals grow with the tile; the size is chosen, never scaled. */
+  font-size: clamp(var(--pw-text-metric), min(4.6cqw, 30cqh), 56px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pw-slow-row[data-tone='good'] .pw-readout[data-state='live'] { color: var(--pw-sector-personal-best); }
+.pw-slow-row[data-tone='bad'] .pw-readout[data-state='live'] { color: var(--pw-brake); }
+.pw-slow-row[data-tone='accent'] .pw-readout[data-state='live'] { color: var(--pw-accent); text-transform: uppercase; }
+.pw-slow-note { white-space: nowrap; }
+.pw-slow-message {
+  position: absolute;
+  right: var(--pw-tile-pad);
+  bottom: 4px;
+  background: var(--pw-tile-bg);
+}
+
+/* Two headline numbers: the first takes the eye, the second sits at the far edge. */
+.pw-tile[data-tile-type='fuel'] .pw-slow-row:first-child .pw-readout { font-size: clamp(30px, min(7cqw, 34cqh), 72px); }
+.pw-tile[data-tile-type='fuel'] .pw-slow-row:last-child { text-align: right; }
+
+/* Weather: forecast is detail, so it stays at the value size. */
+.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(n + 5) .pw-readout { font-size: var(--pw-text-value); font-weight: 600; line-height: var(--pw-text-metric); }
+@container (max-width: 520px) {
+  .pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(n + 5) { display: none; }
+}
+
+/* Gaps: who on the left of each pair, the number beside it. */
+.pw-tile[data-tile-type='gaps'] .pw-slow-tile { padding-left: 6px; padding-right: 6px; }
+.pw-tile[data-tile-type='gaps'] .pw-slow-readouts { justify-content: flex-start; gap: 16px 48px; }
+.pw-tile[data-tile-type='gaps'] .pw-slow-row {
+  display: grid;
+  grid-template-columns: minmax(70px, auto) auto;
+  grid-template-areas: 'label value' 'note value';
+  align-items: center;
+  gap: 0 16px;
+}
+.pw-tile[data-tile-type='gaps'] .pw-slow-row > .pw-label:first-child { grid-area: label; }
+.pw-tile[data-tile-type='gaps'] .pw-slow-note { grid-area: note; color: var(--pw-text); letter-spacing: 0.02em; }
+.pw-tile[data-tile-type='gaps'] .pw-readout { grid-area: value; font-size: clamp(28px, min(5cqw, 36cqh), 64px); font-weight: 600; }
+.pw-tile[data-tile-type='gaps'] .pw-slow-row:last-child .pw-readout[data-state='live'] { color: var(--pw-energy); }
+
+.pw-tile[data-tile-type='race-control-feed'] .pw-slow-tile { justify-content: flex-start; }
+.pw-race-feed { list-style: none; margin: 0; padding: 0; overflow: hidden; }
 .pw-race-feed li { border-bottom: 1px solid var(--pw-line); padding: 4px 0; }
 .pw-race-feed [data-rewound='true'] { color: var(--pw-text-muted); }
 .pw-race-filter { display: flex; flex-wrap: wrap; gap: 8px; }

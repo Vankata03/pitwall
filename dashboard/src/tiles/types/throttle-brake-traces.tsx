@@ -1,12 +1,29 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
+import type { ReadoutState } from '../../runtime/wire';
 import { useRuntime, useSlow } from '../../runtime/react';
-import { effectiveState, frameReadoutState } from '../../runtime/readout';
+import { effectiveState, frameReadoutState, writeReadout } from '../../runtime/readout';
 import { defineTileModule, type TileProps, type TileSettingsProps } from '../contract';
+import '../frame-tiles.css';
+import { TileTitle } from '../frame-kit';
 import { useFrameTile } from '../use-frame-tile';
 import { CurrentLap } from '../traces/current-lap';
 import { lapTracesFor } from '../traces/lap-traces';
 import { buildPlot, CHANNEL_ORDER, type Channel } from '../traces/plot';
 import { createTraceChart, type TraceChart } from '../traces/chart';
+
+/** Space the tile's padding, title and meters take from the chart, in CSS pixels. */
+const CHART_INSET = { width: 138, height: 54 };
+
+/** One pedal: its value right now, beside the trace of the lap so far. */
+function Meter({ name, label, fill, value }: { name: string; label: string; fill: React.Ref<HTMLElement>; value: React.Ref<HTMLElement> }) {
+  return (
+    <div className="pw-tr-meter" data-channel={name}>
+      <span className="pw-label">{label}</span>
+      <span className="pw-tr-track"><i ref={fill} data-testid={`meter-${name}`} /></span>
+      <b ref={value} className="pw-num pw-readout" data-testid={`meter-${name}-value`} />
+    </div>
+  );
+}
 
 function options(settings: Record<string, unknown>) {
   const channels = CHANNEL_ORDER.filter((c) => Array.isArray(settings.channels) && settings.channels.includes(c));
@@ -28,6 +45,10 @@ function Traces({ car, settings, width, height, units }: TileProps) {
   const referenceLap = info?.[reference]?.lap_number;
   const host = useRef<HTMLDivElement>(null);
   const status = useRef<HTMLSpanElement>(null);
+  const throttleFill = useRef<HTMLElement>(null);
+  const throttleValue = useRef<HTMLElement>(null);
+  const brakeFill = useRef<HTMLElement>(null);
+  const brakeValue = useRef<HTMLElement>(null);
   const chart = useRef<TraceChart | null>(null);
   const live = useRef({ identity: '', lap: new CurrentLap(), consumed: 0, seeded: null as object | null });
 
@@ -64,6 +85,17 @@ function Traces({ car, settings, width, height, units }: TileProps) {
 
   useFrameTile(tile.declaration, car, ({ frame, rings, car: carIndex, connected }) => {
     const state = carIndex === null ? 3 : effectiveState(frameReadoutState(frame, carIndex, 'throttle'), connected);
+    const showing = carIndex !== null && (state === 0 || state === 1);
+    const meter = (fill: HTMLElement | null, value: HTMLElement | null, percent: number) => {
+      if (value) writeReadout(value, state as ReadoutState, `${percent}%`);
+      if (fill) {
+        const height = `${showing ? Math.min(100, percent) : 0}%`;
+        if (fill.style.height !== height) fill.style.height = height;
+        if (fill.dataset.state !== String(state)) fill.dataset.state = String(state);
+      }
+    };
+    meter(throttleFill.current, throttleValue.current, showing ? frame.throttle[carIndex]! : 0);
+    meter(brakeFill.current, brakeValue.current, showing ? frame.brake[carIndex]! : 0);
     const current = live.current;
     const identity = `${frame.epoch || slow.epoch}:${carIndex}`;
     if (current.identity !== identity) {
@@ -92,14 +124,20 @@ function Traces({ car, settings, width, height, units }: TileProps) {
       status.current.textContent = state === 2 ? 'Restricted' : plot.hasData && state === 1 ? 'Stale ◷' : 'No data';
     }
     if (host.current) host.current.style.opacity = state === 1 ? '0.55' : '1';
-    chart.current?.draw(plot, { width: Math.max(1, width - 16), height: Math.max(1, height - 64) });
+    chart.current?.draw(plot, { width: Math.max(1, width - CHART_INSET.width), height: Math.max(1, height - CHART_INSET.height) });
   }, [slow, version, width, height, units, reference, channels.join(',')]);
 
-  return <div style={{ height: '100%', overflow: 'hidden', padding: 8 }}>
-    <div className="pw-label">Throttle/brake traces · {reference === 'best' ? 'Best lap' : 'Previous lap'}</div>
-    <div className="pw-label">{channels.map((c) => `${c[0]!.toUpperCase()}${c.slice(1)}`).join(' · ')} · Solid current / dashed reference</div>
-    <span role="status" ref={status}>No data</span>
-    <div ref={host} role="img" aria-label="Lap traces against distance: solid current lap, dashed reference" />
+  const legend = channels.map((c) => `${c[0]!.toUpperCase()}${c.slice(1)}`).join(' · ');
+  return <div className="pw-tr">
+    <TileTitle note={`${legend} · Dashed ${reference === 'best' ? 'best lap' : 'previous lap'}`}>Driver inputs / distance</TileTitle>
+    <span className="pw-tr-status pw-label" role="status" ref={status}>No data</span>
+    <div className="pw-tr-body">
+      <div className="pw-tr-meters" aria-hidden="true">
+        <Meter name="throttle" label="THR" fill={throttleFill} value={throttleValue} />
+        <Meter name="brake" label="BRK" fill={brakeFill} value={brakeValue} />
+      </div>
+      <div ref={host} role="img" aria-label="Lap traces against distance: solid current lap, dashed reference" />
+    </div>
   </div>;
 }
 

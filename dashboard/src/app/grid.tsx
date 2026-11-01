@@ -15,6 +15,8 @@ export interface DashboardGridProps {
   width: number;
   /** Present only in Stream view: fit rows to the CSS viewport. */
   viewportHeight?: number;
+  /** Row height that fills the page; ROW_HEIGHT when absent. */
+  rowHeight?: number;
   editing: boolean;
   registry: TileRegistry;
   carFor(tile: Tile): ResolvedCar | null;
@@ -32,7 +34,7 @@ export function DashboardGrid(props: DashboardGridProps) {
   const { tiles, screenClass, width, editing, registry } = props;
   const columns = COLUMNS[screenClass];
   const streaming = props.viewportHeight !== undefined;
-  const metrics = props.viewportHeight !== undefined ? streamGridMetrics(tiles, props.viewportHeight) : { rowHeight: ROW_HEIGHT, margin: GRID_MARGIN };
+  const metrics = props.viewportHeight !== undefined ? streamGridMetrics(tiles, props.viewportHeight) : { rowHeight: props.rowHeight ?? ROW_HEIGHT, margin: GRID_MARGIN };
   const layout: GridLayout = tiles.map((t) => {
     const min = registry.get(t.type)?.declaration.minSize;
     return {
