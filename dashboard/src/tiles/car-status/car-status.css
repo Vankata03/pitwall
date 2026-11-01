@@ -90,8 +90,8 @@
 .pw-cs-slot[data-slot='rl'] { grid-area: rl; }
 .pw-cs-slot[data-slot='fr'] { grid-area: fr; }
 .pw-cs-slot[data-slot='fl'] { grid-area: fl; }
-.pw-cs-slot[data-slot='frw'] { grid-area: frw; }
-.pw-cs-slot[data-slot='flw'] { grid-area: flw; }
+.pw-cs-slot[data-slot='frw'] { grid-area: frw; flex-wrap: wrap; }
+.pw-cs-slot[data-slot='flw'] { grid-area: flw; flex-wrap: wrap; }
 .pw-cs-slot[data-slot='car'] {
   grid-area: car;
   display: flex;
@@ -171,6 +171,21 @@
 .pw-cs-bar-fill[data-level='mid'] { background: var(--pw-condition-mid); }
 .pw-cs-bar-fill[data-level='low'] { background: var(--pw-condition-low); }
 
+/* Wing damage: a segmented track, filled to the damage percentage. */
+.pw-cs-damage-bar {
+  display: block;
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 4px;
+  margin-top: 2px;
+  background: repeating-linear-gradient(90deg, var(--pw-meter-empty) 0 10px, transparent 10px 13px);
+  overflow: hidden;
+}
+.pw-cs-damage-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--pw-temp-hot);
+}
 .pw-cs-cols {
   display: grid;
   flex: 1;
@@ -221,8 +236,9 @@
 .pw-cs-col[data-channel='INR'] .pw-cs-meter-fill[data-band='window'] { background: var(--pw-energy); }
 .pw-cs-col .pw-cs-meter-fill[data-band='cold'] { background: var(--pw-temp-cold); }
 .pw-cs-col .pw-cs-meter-fill[data-band='hot'] { background: var(--pw-temp-hot); }
-.pw-cs-col .pw-cs-meter-fill[data-state='stale'],
-.pw-cs-bar-fill[data-state='stale'] { background: var(--pw-text-muted); }
+/* Stale fills go grey like stale numbers, so they beat the channel and band rules above. */
+.pw-cs-col[data-channel] .pw-cs-meter-fill[data-state='stale'],
+.pw-cs-bar .pw-cs-bar-fill[data-state='stale'] { background: var(--pw-text-muted); }
 .pw-cs-value[data-band='cold'] { color: var(--pw-temp-cold); }
 .pw-cs-value[data-band='hot'] { color: var(--pw-temp-hot); }
 .pw-cs-value[data-state='stale'] { color: var(--pw-text-muted); }

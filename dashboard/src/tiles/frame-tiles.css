@@ -217,8 +217,8 @@
 .pw-ers-rows {
   display: grid;
   flex: none;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 6px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 6px 12px;
   padding-top: 8px;
   border-top: 1px solid var(--pw-line);
 }
@@ -228,6 +228,7 @@
 }
 .pw-ers-value[data-tone='energy'] .pw-readout[data-state='live'] { color: var(--pw-energy); }
 .pw-ers-value[data-tone='info'] .pw-readout[data-state='live'] { color: var(--pw-info); }
+.pw-ers-value[data-tone='accent'] .pw-readout[data-state='live'] { color: var(--pw-accent); }
 .pw-ers-value[data-tone='brake'] .pw-readout[data-state='live'] { color: var(--pw-brake); }
 
 /* ---- Track map ---- */
@@ -364,4 +365,10 @@
 .pw-lt-sectors [data-rank='slower'] .pw-readout[data-state='live'] { color: var(--pw-sector-slower); }
 .pw-lt-reference { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid var(--pw-line); padding-top: 4px; margin-top: auto; font-size: var(--pw-text-value); font-weight: 600; }
 .pw-lt-result { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid var(--pw-line); padding-top: 3px; font-size: var(--pw-text-value); font-weight: 600; }
+.pw-tm .pw-title-note > span + span::before { content: ' · '; }
+/* A short tile keeps every sector readout by putting the label beside the time. */
+@container (max-height: 190px) {
+  .pw-lt-sectors > div { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: baseline; }
+  .pw-lt-sectors > div > :last-child { grid-column: 1 / -1; }
+}
 .pw-lt-ref-sectors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

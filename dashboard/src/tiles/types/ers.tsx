@@ -132,6 +132,9 @@ function Ers({ car, density }: TileProps) {
             <Row label="MGU-H harvest" tone="info">
               <SlowReadout readout={ersReadout} connected={connected} format={(e) => kj(e.harvested_this_lap_mguh)} testId="ers-mgu-h" />
             </Row>
+            <Row label="Total" tone="accent">
+              <SlowReadout readout={ersReadout} connected={connected} format={(e) => kj(e.harvested_this_lap_mguk + e.harvested_this_lap_mguh)} testId="ers-total" />
+            </Row>
             <Row label="Deployed" tone="brake">
               <SlowReadout readout={ersReadout} connected={connected} format={(e) => kj(e.deployed_this_lap)} testId="ers-deployed" />
             </Row>

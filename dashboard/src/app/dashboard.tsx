@@ -74,7 +74,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
   const fitted = noticeOnly ? tiles.filter((t) => t.type !== 'notice' || t.y + t.h < lastRow) : tiles;
   const fittedRow = useRef(ROW_HEIGHT);
   if (!edit) fittedRow.current = measured > 0 && available > 0 ? fitRowHeight(fitted, available) : ROW_HEIGHT;
-  const hiddenRow = noticeOnly && !edit && tiles.length > 1 ? fittedRow.current + GRID_MARGIN : 0;
+  const clipped = noticeOnly && !edit && tiles.length > 1 ? { height: (lastRow - 1) * (fittedRow.current + GRID_MARGIN) + GRID_MARGIN, flex: 'none', overflow: 'clip' } : undefined;
   const editedTile = settingsFor ? tiles.find((t) => t.i === settingsFor) : undefined;
   const editedModule = editedTile ? registry.get(editedTile.type) : undefined;
 
@@ -170,7 +170,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
       ) : null}
       <Notices notices={state.notices} onDismiss={(id) => controller.dismissNotice(id)} />
 
-      <main className="pw-main" ref={gridRef} style={hiddenRow ? { marginBottom: -hiddenRow } : undefined}>
+      <main className="pw-main" ref={gridRef} style={clipped}>
         {state.status === 'error' ? (
           <div className="pw-load-error" role="alert">
             <p>Could not load layouts from the collector.</p>

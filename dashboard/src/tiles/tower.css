@@ -17,7 +17,7 @@
   border-bottom: 1px solid var(--pw-line);
 }
 .pw-tower[data-density='regular'] tr {
-  grid-template-columns: 26px minmax(0, 1.7fr) minmax(0, 1.1fr) 30px 18px 34px 38px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1.6fr) minmax(0, 1.2fr) 40px 16px 36px 46px minmax(0, 1fr);
   min-height: 30px;
 }
 .pw-tower[data-density='full'] tr { min-height: 72px; }
@@ -47,6 +47,7 @@
   text-transform: uppercase;
   color: var(--pw-text-muted);
 }
+.pw-tower[data-density='regular'] th:nth-child(5) { color: transparent; }
 .pw-tower td { font-size: var(--pw-text-value); font-variant-numeric: tabular-nums; }
 .pw-tower td,
 .pw-tower th {

@@ -138,6 +138,9 @@ function CarStatus({ density, car, units }: TileProps) {
             <div className="pw-cs-slot pw-cs-line" data-slot={slot} key={slot}>
               <span className="pw-label">{part.label}</span>
               <Value id={`damage-${part.key}`} cell={part.cell} />
+              <span className="pw-cs-damage-bar" aria-hidden="true">
+                <i style={{ width: `${part.percent ?? 0}%` }} />
+              </span>
             </div>
           );
         })}

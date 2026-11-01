@@ -447,6 +447,7 @@
 .pw-footer {
   display: flex;
   justify-content: flex-end;
+  margin-top: auto;
 }
 /* The chrome copy is a touch target; the Notice tile's is one 32px row and cannot be. */
 .pw-footer .pw-short-line {
