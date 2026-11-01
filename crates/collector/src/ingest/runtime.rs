@@ -52,7 +52,12 @@ pub fn run_at(
 ) -> io::Result<()> {
     let mut config = cli.load(&default_path)?;
     let mut live = LiveUdp::bind(address(&config), &config.forward)
-        .map_err(|e| io::Error::other(format!("UDP port {}: {e}", config.udp.port)))?;
+        .map_err(|e| {
+            io::Error::other(format!(
+                "UDP port {}: {e}. Another app holds it. The game does too while running, so start pitwall before the game",
+                config.udp.port
+            ))
+        })?;
     let layouts = crate::layouts::LayoutLibrary::open(paths.layouts.clone())?;
     let tracks = crate::tracks::TrackStore::open(paths.tracks.clone());
     let stream = crate::wire::Stream::new(env!("PITWALL_BUILD_ID"));

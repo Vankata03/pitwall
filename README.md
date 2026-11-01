@@ -33,6 +33,8 @@ Host controls require a loopback URL; viewing and layout editing are open to the
 
 ## Game and screen setup
 
+Start pitwall before the game. While running, the game holds its telemetry port exclusively on Windows, so pitwall cannot bind it if the game started first.
+
 Enable UDP Telemetry in the game's settings. Use UDP Format 2025 or 2026, port 20777,
 and a send rate of 60 Hz. Send to `127.0.0.1` if the game and collector share a PC, or
 to the collector's LAN IP otherwise. The macOS collector needs a game on another machine

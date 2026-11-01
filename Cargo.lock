@@ -1917,7 +1917,6 @@ dependencies = [
  "qrcode",
  "serde",
  "serde_json",
- "socket2",
  "sysinfo",
  "tao",
  "tokio",
