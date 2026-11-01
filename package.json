@@ -2,11 +2,20 @@
   "name": "pitwall",
   "private": true,
   "packageManager": "pnpm@11.24.0",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "pnpm --filter @pitwall/dashboard dev",
     "build": "pnpm --filter @pitwall/dashboard build",
     "test": "pnpm --filter @pitwall/dashboard test",
-    "typecheck": "pnpm --filter @pitwall/dashboard typecheck"
+    "typecheck": "pnpm --filter @pitwall/dashboard typecheck",
+    "test:smoke": "node tools/harness/smoke.mjs",
+    "goldens": "node tools/harness/goldens.mjs",
+    "bench:ingest": "node tools/harness/benchmark.mjs"
+  },
+  "devDependencies": {
+    "@puppeteer/browsers": "2.10.10",
+    "playwright": "1.61.1"
   }
 }
