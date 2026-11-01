@@ -163,15 +163,14 @@ async fn assumed_resend_frame_throughput() {
     while start.elapsed() < Duration::from_secs(31) {
         if let Ok(Some(Ok(message))) =
             tokio::time::timeout(Duration::from_millis(100), ws.next()).await
+            && message.is_binary()
         {
-            if message.is_binary() {
-                let now = std::time::Instant::now();
-                if let Some(previous) = last {
-                    gaps.push(now.duration_since(previous).as_secs_f64() * 1000.0);
-                }
-                last = Some(now);
-                frames += 1;
+            let now = std::time::Instant::now();
+            if let Some(previous) = last {
+                gaps.push(now.duration_since(previous).as_secs_f64() * 1000.0);
             }
+            last = Some(now);
+            frames += 1;
         }
     }
     assert!(sender.wait().unwrap().success());
