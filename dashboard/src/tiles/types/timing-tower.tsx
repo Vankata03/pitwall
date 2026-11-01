@@ -11,6 +11,7 @@ import { defineTileModule, type TileProps, type TileSettingsProps } from '../con
 // Undefined means Follow player; null means a saved focus is not in this session.
 const Focus = createContext<number | null | undefined>(undefined);
 export const TowerFocusProvider = Focus.Provider;
+export { Focus as TowerFocus };
 const data = <T,>(r: JsonReadout<T> | undefined): T | undefined => (r && 'value' in r ? r.value : undefined);
 const lapTime = (ms: number | undefined) =>
   ms ? `${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(3).padStart(6, '0')}` : '—';

@@ -18,35 +18,37 @@ function Value({ id, cell, glyph, band }: { id: string; cell: Cell; glyph?: stri
   );
 }
 
-function Column({ id, label, cell }: { id: string; label: string; cell: TemperatureCell }) {
+function Column({ id, label, cell, unit }: { id: string; label: string; cell: TemperatureCell; unit: string }) {
   return (
-    <div className="pw-cs-col">
+    <div className="pw-cs-col" data-channel={label}>
       <span className="pw-label">{label}</span>
+      <span className="pw-cs-reading">
+        <Value id={id} cell={cell} glyph={cell.glyph} band={cell.band} />
+        <span className="pw-cs-unit">{unit}</span>
+      </span>
       <span className="pw-cs-meter" aria-hidden="true">
         <span
           className="pw-cs-meter-fill"
           data-band={cell.band ?? undefined}
+          data-state={cell.state}
           style={{ height: `${Math.round((cell.fill ?? 0) * 100)}%` }}
         />
       </span>
-      <Value id={id} cell={cell} glyph={cell.glyph} band={cell.band} />
     </div>
   );
 }
 
 function Condition({ cell }: { cell: ConditionCell }) {
   return (
-    <>
-      <Value id="condition" cell={cell} />
-      <span className="pw-cs-bar" aria-hidden="true">
-        <span
-          className="pw-cs-bar-fill"
-          data-testid="condition-bar"
-          data-level={cell.level ?? undefined}
-          style={{ width: `${cell.percent ?? 0}%` }}
-        />
-      </span>
-    </>
+    <span className="pw-cs-bar" aria-hidden="true">
+      <span
+        className="pw-cs-bar-fill"
+        data-testid="condition-bar"
+        data-level={cell.level ?? undefined}
+        data-state={cell.state}
+        style={{ width: `${cell.percent ?? 0}%` }}
+      />
+    </span>
   );
 }
 
@@ -55,19 +57,18 @@ function Wheel({ wheel, units, full }: { wheel: WheelView; units: { temperature:
     <div className="pw-cs-wheel" data-wheel={wheel.id} role="group" aria-label={`${WHEEL_NAMES[wheel.id]} tyre and brake`}>
       <div className="pw-cs-wheel-head">
         <span className="pw-label">{wheel.id} · Tyre</span>
-        <Condition cell={wheel.condition} />
+        <Value id="condition" cell={wheel.condition} />
       </div>
-      <span className="pw-label">Condition remaining</span>
+      <Condition cell={wheel.condition} />
+      <span className="pw-label pw-cs-caption">Condition remaining</span>
       <div className="pw-cs-cols">
-        <Column id="brake" label="BRK" cell={wheel.brake} />
-        <Column id="surface" label="SFC" cell={wheel.surface} />
-        <Column id="inner" label="INR" cell={wheel.inner} />
+        <Column id="brake" label="BRK" cell={wheel.brake} unit={units.temperature} />
+        <Column id="surface" label="SFC" cell={wheel.surface} unit={units.temperature} />
+        <Column id="inner" label="INR" cell={wheel.inner} unit={units.temperature} />
       </div>
-      <div className="pw-cs-line">
-        <span className="pw-label">{units.temperature}</span>
-        <span>
-          <Value id="pressure" cell={wheel.pressure} /> <span className="pw-label">{units.pressure}</span>
-        </span>
+      <div className="pw-cs-line pw-cs-pressure">
+        <span className="pw-label">{units.pressure}</span>
+        <Value id="pressure" cell={wheel.pressure} />
       </div>
       {full ? (
         <div className="pw-cs-line">
@@ -108,10 +109,12 @@ function CarStatus({ density, car, units }: TileProps) {
           </span>
         ) : null}
         <span className="pw-cs-tyre">
-          <Value id="compound" cell={view.compound} />
-          <span className="pw-label">tyre</span>
-          <Value id="age" cell={view.age} />
-          <span className="pw-label">laps</span>
+          <span className="pw-cs-tyre-name">
+            <Value id="compound" cell={view.compound} /> <span className="pw-label">tyres</span>
+          </span>
+          <span className="pw-cs-tyre-age">
+            <Value id="age" cell={view.age} /> <span className="pw-label">laps</span>
+          </span>
         </span>
       </header>
       {message ? (

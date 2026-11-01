@@ -433,6 +433,11 @@
   flex-direction: row;
   align-items: center;
 }
+/* Outside Stream view the chrome carries the short line, so the tile stays out of the way
+   rather than printing the same sentence twice, until someone is arranging tiles. */
+.pw-app:not([data-editing]) .pw-tile[data-tile-type='notice'] {
+  visibility: hidden;
+}
 .pw-short-line {
   font-size: var(--pw-text-label);
   color: var(--pw-text-muted);

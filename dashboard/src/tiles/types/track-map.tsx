@@ -1,8 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useSlow } from '../../runtime/react';
 import { effectiveState, frameReadoutState } from '../../runtime/readout';
 import { CAR_COUNT } from '../../runtime/wire';
+import { trackName } from '../../session/names';
 import { defineTileModule, type TileProps } from '../contract';
+import '../frame-tiles.css';
+import { TileTitle, tokenColor } from '../frame-kit';
+import { TowerFocus } from './timing-tower';
 import { useFrameTile } from '../use-frame-tile';
 
 type Point = [number, number];
@@ -14,6 +18,12 @@ interface TrackMap {
   pit: Point[] | null;
 }
 type Bounds = { minX: number; minZ: number; maxX: number; maxZ: number };
+/** Height the name row takes from the tile. The title floats over the map's empty corner. */
+const CHROME_HEIGHT = 40;
+/** Room around the track for the markers and their numbers. */
+const MAP_INSET = 20;
+const LABEL_WIDTH = 16;
+const LABEL_HEIGHT = 12;
 const finite = (p: readonly number[]) => p.every(Number.isFinite);
 
 function TrackMapTile({ width, height }: TileProps) {
@@ -41,6 +51,16 @@ function TrackMapTile({ width, height }: TileProps) {
   );
   const pit = useMemo(() => (map?.pit ?? []).filter((p) => finite(p)), [map]);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const cars = slow.state?.cars;
+  const focusCar = useContext(TowerFocus) ?? slow.state?.playerCar ?? null;
+  const positions = useMemo(
+    () =>
+      (cars ?? []).map((car) => {
+        const lap = car?.lap;
+        return lap && 'value' in lap && lap.value.car_position > 0 ? lap.value.car_position : null;
+      }),
+    [cars],
+  );
   const summary = useRef<HTMLSpanElement>(null);
   const fitting = useRef<{ identity: string; bounds: Bounds | null }>({
     identity,
@@ -85,21 +105,22 @@ function TrackMapTile({ width, height }: TileProps) {
       const el = canvas.current;
       const ctx = el?.getContext('2d');
       if (!el || !ctx || width <= 0 || height <= 0) return;
-      const h = Math.max(1, height - 40);
+      const w = width;
+      const h = Math.max(1, height - CHROME_HEIGHT);
       const ratio = Math.max(1, window.devicePixelRatio || 1);
-      if (el.width !== Math.round(width * ratio) || el.height !== Math.round(h * ratio)) {
-        el.width = Math.round(width * ratio);
+      if (el.width !== Math.round(w * ratio) || el.height !== Math.round(h * ratio)) {
+        el.width = Math.round(w * ratio);
         el.height = Math.round(h * ratio);
       }
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      ctx.clearRect(0, 0, width, h);
-      const dots: { point: Point; state: number }[] = [];
+      ctx.clearRect(0, 0, w, h);
+      const dots: { point: Point; state: number; index: number }[] = [];
       let restricted = 0;
       for (let i = 0; i < CAR_COUNT; i++) {
         const state = effectiveState(frameReadoutState(frame, i, 'worldX'), connected);
         if (state === 2) restricted++;
         const point: Point = [frame.worldX[i]!, frame.worldZ[i]!];
-        if (state < 2 && finite(point)) dots.push({ point, state });
+        if (state < 2 && finite(point)) dots.push({ point, state, index: i });
       }
       if (summary.current)
         summary.current.textContent = dots.length
@@ -134,16 +155,23 @@ function TrackMapTile({ width, height }: TileProps) {
       const scale = Math.max(
         0.001,
         Math.min(
-          Math.max(1, width - 40) / (b.maxX - b.minX),
-          Math.max(1, h - 40) / (b.maxZ - b.minZ),
+          Math.max(1, w - 2 * MAP_INSET) / (b.maxX - b.minX),
+          Math.max(1, h - 2 * MAP_INSET) / (b.maxZ - b.minZ),
         ),
       );
       const project = ([x, z]: Point): Point => [
-        width / 2 + (x - (b.minX + b.maxX) / 2) * scale,
+        w / 2 + (x - (b.minX + b.maxX) / 2) * scale,
         h / 2 + (z - (b.minZ + b.maxZ) / 2) * scale,
       ];
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#9AA7AD';
+      const track = tokenColor(el, '--pw-track', '#6B8496');
+      const muted = tokenColor(el, '--pw-text-muted', '#9AA7AD');
+      const ink = tokenColor(el, '--pw-text', '#F3F5F6');
+      const accent = tokenColor(el, '--pw-accent', '#FF9C35');
+      const field = tokenColor(el, '--pw-energy', '#56D9CA');
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(3, Math.min(7, Math.min(w, h) / 36));
+      ctx.strokeStyle = track;
       ctx.setLineDash([]);
       ctx.beginPath();
       outline.forEach((p, i) => {
@@ -156,6 +184,9 @@ function TrackMapTile({ width, height }: TileProps) {
       if (map?.complete && first && last && trackLength! - (last[0] - first[0]) * 8 <= 40)
         ctx.lineTo(...project([first[1], first[2]]));
       ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = muted;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
       pit.forEach((p, i) => (i ? ctx.lineTo(...project(p)) : ctx.moveTo(...project(p))));
@@ -185,46 +216,75 @@ function TrackMapTile({ width, height }: TileProps) {
         }
         if (!marker) continue;
         const [x, y] = project(marker);
-        ctx.strokeStyle = '#F3F5F6';
+        ctx.strokeStyle = ink;
         ctx.beginPath();
         ctx.moveTo(x - 4, y - 4);
         ctx.lineTo(x + 4, y + 4);
         ctx.stroke();
-        ctx.fillStyle = '#F3F5F6';
+        ctx.fillStyle = ink;
         ctx.fillText(label, x + 5, y - 5);
       }
-      for (const dot of dots) {
+      // Numbered by race position. The focus car goes last, so it is never hidden.
+      const ordered = [...dots].sort((a, b) => Number(a.index === focusCar) - Number(b.index === focusCar));
+      const taken: Point[] = [];
+      for (const dot of ordered) {
         const [x, y] = project(dot.point);
-        ctx.fillStyle = dot.state === 1 ? '#9AA7AD' : '#FF9C35';
+        const focused = dot.index === focusCar;
+        ctx.fillStyle = dot.state === 1 ? muted : focused ? accent : field;
         ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.arc(x, y, focused && dot.state !== 1 ? 6 : 4, 0, Math.PI * 2);
         ctx.fill();
         if (dot.state === 1) {
-          ctx.strokeStyle = '#F3F5F6';
+          ctx.strokeStyle = ink;
           ctx.beginPath();
           ctx.arc(x, y, 6, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
+      for (const dot of [...ordered].reverse()) {
+        const position = positions[dot.index];
+        if (!position) continue;
+        const [x, y] = project(dot.point);
+        // A crowded field drops numbers rather than stacking them.
+        if (taken.some(([a, b]) => Math.abs(a - x) < LABEL_WIDTH && Math.abs(b - y) < LABEL_HEIGHT)) continue;
+        taken.push([x, y]);
+        ctx.fillStyle = dot.index === focusCar ? accent : ink;
+        ctx.fillText(String(position).padStart(2, '0'), x + 7, y - 7);
+      }
     },
-    [width, height, map, outline, pit, identity, info],
+    [width, height, map, outline, pit, identity, info, positions, focusCar],
   );
   return (
-    <div style={{ height: '100%', overflow: 'hidden' }}>
-      <div className="pw-label" style={{ padding: '4px 8px', minHeight: 20 }}>
-        Track map {info && !map?.complete ? <span>Learning map</span> : null}{' '}
-        {loaded?.identity === identity && loaded.failed ? <span>Map unavailable</span> : null}
-      </div>
+    <div className="pw-tm">
+      <TileTitle
+        note={
+          <>
+            {info && !map?.complete ? <span>Learning map</span> : null}
+            {loaded?.identity === identity && loaded.failed ? <span>Map unavailable</span> : null}
+          </>
+        }
+      >
+        Circuit position
+      </TileTitle>
       <canvas
         ref={canvas}
+        className="pw-tm-map"
         role="img"
         aria-label="Track map: raw car positions, start/finish, sectors and dashed pit lane"
         aria-describedby={summaryId}
-        style={{ display: 'block', width, height: Math.max(1, height - 40) }}
+        style={{ width, height: Math.max(1, height - CHROME_HEIGHT) }}
       />
-      <span ref={summary} id={summaryId} className="pw-label" style={{ padding: '0 8px' }}>
-        —
-      </span>
+      <div className="pw-tm-foot">
+        <span className="pw-tm-name" data-testid="track-name">
+          {trackName(trackId) ?? 'Track'}
+        </span>
+        <span className="pw-tm-facts">
+          <span ref={summary} id={summaryId} className="pw-label">
+            —
+          </span>
+          {trackLength ? <span className="pw-label pw-num">{(trackLength / 1000).toFixed(3)} km</span> : null}
+        </span>
+      </div>
     </div>
   );
 }

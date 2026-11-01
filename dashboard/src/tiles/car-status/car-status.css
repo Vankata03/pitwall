@@ -5,31 +5,55 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   height: 100%;
-  padding: 8px 12px;
-  overflow: auto;
+  padding: 4px 6px 6px;
+  overflow: hidden;
 }
 .pw-cs-head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  flex: none;
+  align-items: flex-start;
   gap: 4px 12px;
 }
 .pw-cs-title {
+  font-family: var(--pw-font-label);
   font-size: var(--pw-text-label);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--pw-text-muted);
 }
 .pw-cs-tyre {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 12px;
   margin-left: auto;
 }
-.pw-cs-retired {
+.pw-cs-tyre-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.pw-cs-tyre-name .pw-cs-value {
+  font-family: var(--pw-font-label);
   font-size: var(--pw-text-label);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.pw-cs-tyre-age {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pw-cs-tyre-age .pw-cs-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+.pw-cs-retired {
+  font-family: var(--pw-font-label);
+  font-size: var(--pw-text-label);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--pw-temp-hot);
 }
@@ -52,22 +76,22 @@
   display: grid;
   flex: 1;
   min-height: 0;
-  gap: 8px;
+  gap: 8px 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-areas: 'rr rl' 'fr fl' 'frw flw';
 }
 .pw-cs[data-density='regular'] .pw-cs-body,
 .pw-cs[data-density='full'] .pw-cs-body {
-  grid-template-columns: minmax(150px, 1fr) minmax(0, 1.4fr) minmax(150px, 1fr);
-  grid-template-rows: 1fr 1fr auto;
+  grid-template-columns: minmax(168px, 2fr) minmax(0, 5fr) minmax(168px, 2fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
   grid-template-areas: 'rr car rl' 'fr car fl' 'frw car flw';
 }
 .pw-cs-slot[data-slot='rr'] { grid-area: rr; }
 .pw-cs-slot[data-slot='rl'] { grid-area: rl; }
 .pw-cs-slot[data-slot='fr'] { grid-area: fr; }
 .pw-cs-slot[data-slot='fl'] { grid-area: fl; }
-.pw-cs-slot[data-slot='frw'] { grid-area: frw; align-self: end; }
-.pw-cs-slot[data-slot='flw'] { grid-area: flw; align-self: end; }
+.pw-cs-slot[data-slot='frw'] { grid-area: frw; }
+.pw-cs-slot[data-slot='flw'] { grid-area: flw; }
 .pw-cs-slot[data-slot='car'] {
   grid-area: car;
   display: flex;
@@ -77,18 +101,26 @@
   min-height: 0;
 }
 .pw-cs-car {
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  filter: drop-shadow(0 16px 12px rgb(0 0 0 / 0.55));
   user-select: none;
   pointer-events: none;
 }
 
 /* ---- Wheel readouts ---- */
+.pw-cs-slot[data-slot='rr'],
+.pw-cs-slot[data-slot='rl'],
+.pw-cs-slot[data-slot='fr'],
+.pw-cs-slot[data-slot='fl'] {
+  min-height: 0;
+}
 .pw-cs-wheel {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+  height: 100%;
   min-width: 0;
 }
 .pw-cs-wheel-head {
@@ -98,12 +130,17 @@
   gap: 8px;
 }
 .pw-cs-wheel-head .pw-cs-value {
-  font-size: 28px;
-  font-weight: 600;
+  font-size: 32px;
+  font-weight: 700;
   line-height: 1;
+  letter-spacing: -0.03em;
 }
 .pw-cs-value {
   font-size: var(--pw-text-value);
+}
+.pw-cs-caption {
+  text-align: right;
+  white-space: nowrap;
 }
 .pw-cs-line {
   display: flex;
@@ -111,11 +148,19 @@
   justify-content: space-between;
   gap: 8px;
 }
+.pw-cs-line .pw-cs-value {
+  font-weight: 600;
+}
+.pw-cs-pressure {
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid var(--pw-line);
+}
 .pw-cs-bar {
   display: block;
+  flex: none;
   height: 4px;
-  background: var(--pw-line);
-  border-radius: 2px;
+  background: var(--pw-meter-empty);
   overflow: hidden;
 }
 .pw-cs-bar-fill {
@@ -128,34 +173,59 @@
 
 .pw-cs-cols {
   display: grid;
+  flex: 1;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
+  min-height: 0;
 }
 .pw-cs-col {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
+  min-height: 0;
+}
+.pw-cs-reading {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  white-space: nowrap;
+}
+.pw-cs-reading .pw-cs-value {
+  font-weight: 600;
+}
+.pw-cs-unit {
+  font-family: var(--pw-font-label);
+  font-size: var(--pw-text-label);
+  color: var(--pw-text-muted);
 }
 .pw-cs-meter {
+  position: relative;
   display: flex;
+  flex: 1;
   align-items: flex-end;
-  width: 12px;
-  height: 56px;
-  background: var(--pw-line);
-  border-radius: 3px;
+  width: 11px;
+  min-height: 16px;
+  margin-top: 3px;
+  background: var(--pw-meter-empty);
   overflow: hidden;
 }
+/* In window each channel keeps its own hue; out of window the band colour takes over. */
 .pw-cs-meter-fill {
   display: block;
   width: 100%;
   background: var(--pw-text-muted);
 }
-.pw-cs-meter-fill[data-band='cold'] { background: var(--pw-temp-cold); }
-.pw-cs-meter-fill[data-band='window'] { background: var(--pw-temp-window); }
-.pw-cs-meter-fill[data-band='hot'] { background: var(--pw-temp-hot); }
+.pw-cs-col[data-channel='BRK'] .pw-cs-meter-fill[data-band='window'] { background: var(--pw-sector-slower); }
+.pw-cs-col[data-channel='SFC'] .pw-cs-meter-fill[data-band='window'] { background: var(--pw-sector-personal-best); }
+.pw-cs-col[data-channel='INR'] .pw-cs-meter-fill[data-band='window'] { background: var(--pw-energy); }
+.pw-cs-col .pw-cs-meter-fill[data-band='cold'] { background: var(--pw-temp-cold); }
+.pw-cs-col .pw-cs-meter-fill[data-band='hot'] { background: var(--pw-temp-hot); }
+.pw-cs-col .pw-cs-meter-fill[data-state='stale'],
+.pw-cs-bar-fill[data-state='stale'] { background: var(--pw-text-muted); }
 .pw-cs-value[data-band='cold'] { color: var(--pw-temp-cold); }
 .pw-cs-value[data-band='hot'] { color: var(--pw-temp-hot); }
+.pw-cs-value[data-state='stale'] { color: var(--pw-text-muted); }
 
 /* Full density: the remaining damage parts. */
 .pw-cs-damage {
