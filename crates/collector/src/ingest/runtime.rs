@@ -28,9 +28,26 @@ fn address(config: &Config) -> SocketAddr {
 }
 
 pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
+    run_controlled(cli, default_path, crate::app::Control::default())
+}
+
+pub fn run_controlled(
+    cli: Cli,
+    default_path: PathBuf,
+    control: crate::app::Control,
+) -> io::Result<()> {
+    run_at(cli, default_path, AppPaths::resolve()?, control)
+}
+
+pub fn run_at(
+    cli: Cli,
+    default_path: PathBuf,
+    paths: AppPaths,
+    control: crate::app::Control,
+) -> io::Result<()> {
     let mut config = cli.load(&default_path)?;
-    let mut live = LiveUdp::bind(address(&config), &config.forward)?;
-    let paths = AppPaths::resolve()?;
+    let mut live = LiveUdp::bind(address(&config), &config.forward)
+        .map_err(|e| io::Error::other(format!("UDP port {}: {e}", config.udp.port)))?;
     let layouts = crate::layouts::LayoutLibrary::open(paths.layouts.clone())?;
     let tracks = crate::tracks::TrackStore::open(paths.tracks.clone());
     let stream = crate::wire::Stream::new(env!("PITWALL_BUILD_ID"));
@@ -66,10 +83,28 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
     let router = crate::wire::routes(shell, stream.clone()).into_router();
     let http_runtime = tokio::runtime::Runtime::new()?;
     let http_address = |c: &Config| SocketAddr::new(c.http.bind, c.http.port);
-    let mut http = http_runtime.block_on(crate::http::HttpListener::bind(
-        http_address(&config),
-        router,
-    ))?;
+    let mut http = http_runtime
+        .block_on(crate::http::HttpListener::bind(
+            http_address(&config),
+            router,
+        ))
+        .map_err(|e| io::Error::other(format!("HTTP port {}: {e}", config.http.port)))?;
+    let mut discovery = crate::discovery::Discovery::new();
+    discovery.advertise(&config);
+    crate::app::autostart(config.app.start_with_windows, &cli)?;
+    {
+        let mut state = control.state.lock().unwrap();
+        state.url = crate::app::dashboard_url(&config);
+        state.ready = true;
+        state.line = "Waiting for game".into();
+    }
+    crate::app::log(
+        &paths,
+        &format!(
+            "Listening: UDP {}, HTTP {}",
+            config.udp.port, config.http.port
+        ),
+    );
     let (models, mut selected) = tokio::sync::watch::channel((
         crate::model::SessionModel::default(),
         crate::wire::CollectorStatus::default(),
@@ -166,7 +201,7 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
         );
     }
     let mut last_error = None;
-    loop {
+    while !control.stopped() {
         if worker.is_finished() {
             return worker
                 .join()
@@ -185,7 +220,14 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
                 None
             };
             if next.http != config.http {
-                http_runtime.block_on(http.restart(http_address(&next)))?;
+                http_runtime
+                    .block_on(http.restart(http_address(&next)))
+                    .map_err(|e| io::Error::other(format!("HTTP port {}: {e}", next.http.port)))?;
+                discovery.advertise(&next);
+                control.state.lock().unwrap().url = crate::app::dashboard_url(&next);
+            }
+            if next.app != config.app {
+                crate::app::autostart(next.app.start_with_windows, &cli)?;
             }
             if let Some(update) = update {
                 updates
@@ -214,12 +256,30 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
                 let message = error.to_string();
                 status_page.reload_error(Some(message.clone()));
                 if last_error.as_ref() != Some(&message) {
+                    crate::app::log(
+                        &paths,
+                        &format!("Config reload rejected; keeping active settings: {message}"),
+                    );
                     eprintln!("Config reload rejected; keeping active settings: {message}");
+                    control.state.lock().unwrap().line = message.clone();
+                    #[cfg(any(windows, target_os = "macos"))]
+                    if !cli.console {
+                        let _ = notify_rust::Notification::new()
+                            .summary("pitwall settings rejected")
+                            .body(&message)
+                            .show();
+                    }
                     last_error = Some(message);
                 }
             }
         }
         while let Ok((status, track, latency)) = statuses.try_recv() {
+            let line = if status.ingest.packet_rate_hz < 1.0 {
+                "Waiting for game".into()
+            } else {
+                format!("Receiving {:.0} Hz", status.ingest.packet_rate_hz)
+            };
+            control.state.lock().unwrap().line = last_error.clone().unwrap_or(line);
             status_page.update(
                 config.clone(),
                 crate::wire::CollectorStatus {
@@ -256,4 +316,11 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
         }
         thread::sleep(Duration::from_millis(250));
     }
+    drop(updates);
+    worker
+        .join()
+        .map_err(|_| io::Error::other("UDP receive thread panicked"))??;
+    recorder.lock().unwrap().sync();
+    crate::app::log(&paths, "Collector stopped");
+    Ok(())
 }
