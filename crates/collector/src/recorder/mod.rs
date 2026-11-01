@@ -63,6 +63,7 @@ enum Message {
 enum Job {
     /// A recording was just closed: recompress it, then apply retention.
     Finalized(PathBuf),
+    Delete(String, Sender<io::Result<()>>),
     Rescan,
     Sync(Sender<()>),
     Stop,
@@ -176,6 +177,22 @@ impl Recorder {
     /// Rebuild missing sidecars and apply retention, for files copied into the folder.
     pub fn rescan(&self) {
         let _ = self.jobs.send(Job::Rescan);
+    }
+
+    /// Delete a closed recording on the maintenance queue, after recompression.
+    /// Loaded replays are protected; callers must supply a validated file name.
+    pub fn delete(&self, name: &str) -> io::Result<mpsc::Receiver<io::Result<()>>> {
+        if name.starts_with('.') || name.contains(['/', '\\', ':']) || !name.ends_with(".pitrec") {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid recording name",
+            ));
+        }
+        let (ack, result) = mpsc::channel();
+        self.jobs
+            .send(Job::Delete(name.into(), ack))
+            .map_err(|_| io::Error::other("recorder stopped"))?;
+        Ok(result)
     }
 
     /// Mark a recording (by file name) as loaded in replay until the guard drops.
@@ -394,6 +411,24 @@ fn maintain(
             }
             Job::Sync(ack) => {
                 let _ = ack.send(());
+            }
+            Job::Delete(name, ack) => {
+                let loaded = loaded.lock().unwrap();
+                let result = if loaded.contains_key(&name) {
+                    Err(io::Error::new(
+                        io::ErrorKind::ResourceBusy,
+                        "recording loaded in replay",
+                    ))
+                } else {
+                    let path = dir.join(name);
+                    fs::remove_file(&path).and_then(|()| {
+                        match fs::remove_file(path.with_extension("json")) {
+                            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+                            _ => Ok(()),
+                        }
+                    })
+                };
+                let _ = ack.send(result);
             }
             Job::Stop => break,
         }

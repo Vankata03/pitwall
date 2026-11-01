@@ -96,6 +96,28 @@ impl Controller {
             stream.tick(transport, wire::Source::Live, live, context);
         }
     }
+    /// Current transport state for the status page, including load failures.
+    pub fn status(&self) -> Option<wire::ReplayState> {
+        let i = self.inner.lock().unwrap();
+        if let Some(a) = &i.active {
+            let mut state = a.replay.state(None);
+            if let Some(error) = &i.error {
+                state.banner = error.clone();
+            }
+            Some(state)
+        } else if i.loading || i.error.is_some() {
+            Some(wire::ReplayState {
+                position: 0.0,
+                speed: 1.0,
+                paused: true,
+                banner: i.error.clone().unwrap_or_else(|| "Loading replay".into()),
+                load_progress: i.progress,
+                background_live: None,
+            })
+        } else {
+            None
+        }
+    }
     async fn start(&self, name: String) -> Result<(), StatusCode> {
         if name.is_empty()
             || name.contains(['/', '\\', ':'])

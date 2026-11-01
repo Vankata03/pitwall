@@ -151,6 +151,26 @@ crate's own licence file travels with its source.
 
 | Crate | Version | Licence |
 | --- | --- | --- |
+| bitflags | 2.13.2 | MIT OR Apache-2.0 |
+| ntapi | 0.4.3 | Apache-2.0 OR MIT |
+| objc2-core-foundation | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| objc2-io-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| qrcode | 0.14.1 | MIT OR Apache-2.0 |
+| sysinfo | 0.37.2 | MIT |
+| winapi | 0.3.9 | MIT/Apache-2.0 |
+| winapi-i686-pc-windows-gnu | 0.4.0 | MIT/Apache-2.0 |
+| winapi-x86_64-pc-windows-gnu | 0.4.0 | MIT/Apache-2.0 |
+| windows | 0.61.3 | MIT OR Apache-2.0 |
+| windows-collections | 0.2.0 | MIT OR Apache-2.0 |
+| windows-core | 0.61.2 | MIT OR Apache-2.0 |
+| windows-future | 0.2.1 | MIT OR Apache-2.0 |
+| windows-implement | 0.60.2 | MIT OR Apache-2.0 |
+| windows-interface | 0.59.3 | MIT OR Apache-2.0 |
+| windows-link | 0.1.3 | MIT OR Apache-2.0 |
+| windows-numerics | 0.2.0 | MIT OR Apache-2.0 |
+| windows-result | 0.3.4 | MIT OR Apache-2.0 |
+| windows-strings | 0.4.2 | MIT OR Apache-2.0 |
+| windows-threading | 0.1.0 | MIT OR Apache-2.0 |
 | atomic-waker | 1.1.2 | Apache-2.0 OR MIT |
 | axum | 0.8.9 | MIT |
 | axum-core | 0.5.6 | MIT |

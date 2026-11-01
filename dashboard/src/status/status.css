@@ -1,0 +1,14 @@
+.pw-status { max-width: 960px; margin: auto; padding: 24px; font-size: var(--pw-text-value); line-height: 1.6; }
+.pw-status section { margin-block: 24px; padding: 20px; background: var(--pw-tile-bg); border: 1px solid var(--pw-line); border-radius: 4px; }
+.pw-status h1 { font-size: 28px; }
+.pw-status h2 { font-size: 20px; margin-top: 0; }
+.pw-status a { color: var(--pw-temp-cold); }
+.pw-status dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.pw-status dd { margin-left: 8px; font-variant-numeric: tabular-nums; }
+.pw-status li { margin-block: 8px; overflow-wrap: anywhere; }
+.pw-status label { display: block; margin-block: 12px; }
+.pw-status input:not([type=checkbox]), .pw-status textarea { display: block; width: 100%; max-width: 28em; padding: 6px; }
+.pw-status button { min-height: var(--pw-hit); padding: 8px 12px; cursor: pointer; }
+.pw-status-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-block: 8px; }
+.pw-status [role=alert] { border-left: 3px solid var(--pw-accent); padding-left: 12px; }
+.pw-status img { background: white; }

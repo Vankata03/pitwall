@@ -17,3 +17,5 @@ pub mod tracks;
 pub mod wire;
 
 pub mod replay;
+
+pub mod status;
