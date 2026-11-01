@@ -26,16 +26,25 @@ function browserStorage(): StorageLike {
 
 const stream = streamFromUrl(globalThis.location.search);
 const device = createDevice(browserStorage());
+let missingStreamLayout: string | null = null;
+// Plain LAN HTTP is not a secure context; randomUUID is unavailable there.
+const streamClient = Array.from(globalThis.crypto.getRandomValues(new Uint32Array(4)), (value) => value.toString(16)).join('-');
+const reportMissing = () => fetch('/api/status/missing-stream', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ client: streamClient, name: missingStreamLayout }),
+}).then((response) => { if (!response.ok) console.error('Stream layout report rejected', response.status); }).catch(console.error);
+if (stream.enabled) setInterval(() => { void reportMissing(); }, 30000);
 const controller = createLayoutController({
   api: createLayoutsApi(),
   device,
   fixedLayout: stream.enabled ? stream.layout : layoutNameFromUrl(globalThis.location.search),
   stream: stream.enabled,
+  onMissingStreamLayout: (name) => { missingStreamLayout = name; void reportMissing(); },
   onEditingChange: (editing) => runtime.setEditing(editing),
 });
 
 runtime.start();
-void controller.start();
+if (globalThis.location.pathname !== '/status') void controller.start();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

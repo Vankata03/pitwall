@@ -42,6 +42,15 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
         unix_seconds,
     )?));
     let replay = crate::replay::Controller::new(paths.recordings.clone(), recorder.clone());
+    let status_page = crate::status::Status::new(
+        paths.clone(),
+        cli.config_path.clone().unwrap_or(default_path.clone()),
+        cli.clone(),
+        config.clone(),
+        recorder.clone(),
+    );
+    status_page.set_replay(replay.clone());
+    let recording_enabled = Arc::new(std::sync::atomic::AtomicBool::new(config.recording.enabled));
     let shell = crate::http::HttpShell::new(crate::http::TrustedHosts::discover()?);
     // Browsers request this even before the dashboard ships an icon.
     let shell = shell.route(
@@ -53,6 +62,7 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
     let shell = crate::layouts::routes(shell, layouts.clone());
     let shell = crate::tracks::routes(shell, tracks.clone());
     let shell = crate::replay::routes(shell, replay.clone());
+    let shell = crate::status::routes(shell, status_page.clone());
     let router = crate::wire::routes(shell, stream.clone()).into_router();
     let http_runtime = tokio::runtime::Runtime::new()?;
     let http_address = |c: &Config| SocketAddr::new(c.http.bind, c.http.port);
@@ -78,7 +88,8 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
             });
         }
     });
-    let recording = config.recording.clone();
+    let worker_recording = recording_enabled.clone();
+    let worker_recorder = recorder.clone();
     let (updates, receiver) = mpsc::channel();
     let (status_sender, statuses) = mpsc::sync_channel(1);
     let worker =
@@ -89,10 +100,11 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
                 let mut last_status = Instant::now();
                 let mut model = crate::model::SessionModel::default();
                 let mut tap = |at: u64, bytes: &[u8]| {
-                    if recording.enabled {
-                        recorder.lock().unwrap().datagram(at, bytes);
+                    if worker_recording.load(std::sync::atomic::Ordering::Relaxed) {
+                        worker_recorder.lock().unwrap().datagram(at, bytes);
                     }
                 };
+                let mut latency = Vec::new();
                 loop {
                     loop {
                         match receiver.try_recv() {
@@ -102,11 +114,17 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
                         }
                     }
                     let now = || origin.elapsed().as_micros().min(u64::MAX as u128) as u64;
-                    for received in live.poll(256, now, &mut tap)? {
+                    let processing_start = Instant::now();
+                    let received = live.poll(256, now, &mut tap)?;
+                    let had_input = !received.is_empty();
+                    for received in received {
                         if let Ok((parsed, Disposition::Apply)) = received.result {
                             model.apply(Duration::from_micros(received.arrival_time_us), &parsed);
                             tracks.observe(&model);
                         }
+                    }
+                    if had_input && latency.len() < 4096 {
+                        latency.push(processing_start.elapsed().as_secs_f64() * 1000.0);
                     }
                     model.advance(Duration::from_micros(now()));
                     let status = live.status(now());
@@ -123,7 +141,17 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
                         },
                     ));
                     if last_status.elapsed() >= Duration::from_secs(1) {
-                        let _ = status_sender.try_send(live.status(now()));
+                        let track = match model.session() {
+                            crate::model::Readout::Live(v) | crate::model::Readout::Stale(v) => {
+                                Some((v.track_id, v.track_length))
+                            }
+                            _ => None,
+                        };
+                        let _ = status_sender.try_send((
+                            live.status(now()),
+                            track,
+                            std::mem::take(&mut latency),
+                        ));
                         last_status = Instant::now();
                     }
                     thread::sleep(Duration::from_millis(1));
@@ -167,20 +195,45 @@ pub fn run(cli: Cli, default_path: PathBuf) -> io::Result<()> {
                     eprintln!("Applied UDP/forwarding settings: {}", address(&next));
                 }
             }
+            if next.recording.size_cap_gb != config.recording.size_cap_gb {
+                recorder
+                    .lock()
+                    .unwrap()
+                    .set_size_cap(next.recording.size_cap_gb.saturating_mul(1_000_000_000));
+            }
+            recording_enabled.store(next.recording.enabled, std::sync::atomic::Ordering::Relaxed);
             config = next;
             Ok(())
         })();
         match reload {
-            Ok(()) => last_error = None,
+            Ok(()) => {
+                last_error = None;
+                status_page.reload_error(None);
+            }
             Err(error) => {
                 let message = error.to_string();
+                status_page.reload_error(Some(message.clone()));
                 if last_error.as_ref() != Some(&message) {
                     eprintln!("Config reload rejected; keeping active settings: {message}");
                     last_error = Some(message);
                 }
             }
         }
-        while let Ok(status) = statuses.try_recv() {
+        while let Ok((status, track, latency)) = statuses.try_recv() {
+            status_page.update(
+                config.clone(),
+                crate::wire::CollectorStatus {
+                    packet_rate_hz: status.ingest.packet_rate_hz.round() as u32,
+                    dropped: status.ingest.dropped_frames as u32,
+                    parse_errors: status.ingest.parse_errors as u32,
+                    uid_zero: status.ingest.uid_zero as u32,
+                    closed_uid: status.ingest.closed_uid as u32,
+                    forwarding_errors: status.forwarding_errors as u32,
+                    last_format: status.ingest.last_format,
+                },
+                track,
+                latency,
+            );
             if cli.console {
                 eprintln!(
                     "Receiving {} Hz; dropped frames: {}; UID 0: {}; closed UID: {}; forwarding errors: {}",
