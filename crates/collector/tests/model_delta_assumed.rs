@@ -551,3 +551,42 @@ fn assumed_time_trial_mixed_packets_late_history_and_line_offsets_reach_frame() 
         }
     }
 }
+
+#[test]
+fn assumed_live_samples_after_a_sector_never_touch_shared_history() {
+    let mut m = SessionModel::default();
+    let mut p = lap(0.0, 1, 0, 0);
+    let mut sample = |number: u8, ms: u32, sector: u8, last: u32| {
+        p.header.session_time = ms as f32 / 1000.0 + (number - 1) as f32 * 90.0;
+        if let Packet::Lap(d) = &mut p.packet {
+            for v in d.lap_data.iter_mut().flatten() {
+                v.current_lap_num = number;
+                v.last_lap_time_in_ms = last;
+                v.current_lap_time_in_ms = ms;
+                v.lap_distance = ms as f32 / 90_000.0 * 7000.0;
+                v.sector = sector;
+                v.sector1_time_ms_part = if sector > 0 { 30_000 } else { 0 };
+                v.sector2_time_ms_part = if sector > 1 { 30_000 } else { 0 };
+            }
+        }
+        p.clone()
+    };
+    for ms in (0..45_000).step_by(1000) {
+        apply(&mut m, &sample(1, ms, u8::from(ms >= 30_000), 0));
+    }
+    // Sector 1 is recorded; from here on every packet repeats it with a later timestamp.
+    let held = m.clone();
+    for ms in (45_000..59_000).step_by(17) {
+        apply(&mut m, &sample(1, ms, 1, 0));
+        assert!(m.shares_history(&held), "live sample at {ms} ms rebuilt history");
+    }
+    apply(&mut m, &sample(1, 61_000, 2, 0));
+    assert!(!m.shares_history(&held), "a new sector is a history change");
+    let held = m.clone();
+    for ms in (61_000..89_000).step_by(17) {
+        apply(&mut m, &sample(1, ms, 2, 0));
+        assert!(m.shares_history(&held), "live sample at {ms} ms rebuilt history");
+    }
+    apply(&mut m, &sample(2, 100, 0, 90_000));
+    assert!(!m.shares_history(&held), "a completed lap is a history change");
+}

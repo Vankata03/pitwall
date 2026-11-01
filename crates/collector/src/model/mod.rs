@@ -326,7 +326,8 @@ pub struct SessionModel {
 
 impl SessionModel {
     /// Constant-size identity check of immutable history generations, independent of lap count.
-    pub(crate) fn shares_history(&self, other: &Self) -> bool {
+    /// Public so integration tests can pin that live samples never rebuild history.
+    pub fn shares_history(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.race_control, &other.race_control)
             && self
                 .cars
