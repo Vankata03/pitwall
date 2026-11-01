@@ -8,5 +8,5 @@ fn main() -> std::io::Result<()> {
     let root = std::path::PathBuf::from(args.next().expect("data directory"));
     let paths = AppPaths::from_data_dir(&root);
     let cli = Cli::parse(args).map_err(std::io::Error::other)?;
-    runtime::run_with_paths(cli, paths.config.clone(), paths)
+    runtime::run_at(cli, paths.config.clone(), paths, Default::default())
 }
