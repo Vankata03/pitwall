@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Device } from '../device/device';
 import { arrangementOf, type Tile } from '../layout/model';
+import { fitRowHeight, ROW_HEIGHT } from '../layout/screen';
 import type { LayoutController } from '../layout/controller';
 import { Banners, SlowDrawNotice, useSlow } from '../runtime/react';
 import {
@@ -15,12 +16,13 @@ import {
 import { ShortLine } from '../shared/short-line';
 import type { TileRegistry } from '../tiles/registry';
 import { TowerFocusProvider } from '../tiles/types/timing-tower';
+import { RaceStrip } from './race-strip';
 import { ReplayControls } from './replay-controls';
 import { AddTile } from './add-tile';
 import { DisplayMenu } from './display-menu';
 import { FocusPicker } from './focus-picker';
 import { DashboardGrid } from './grid';
-import { useControllerState, useDeviceSettings, useElementWidth, useScreenClass, useViewportSize } from './hooks';
+import { useAvailableHeight, useControllerState, useDeviceSettings, useElementWidth, useScreenClass, useViewportSize } from './hooks';
 import { LayoutSwitcher } from './layout-switcher';
 import { Notices } from './notices';
 import { type StreamOptions, streamUnits } from './stream';
@@ -52,6 +54,8 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
   const playerCar = playerCarOf(wire);
   const revision = layoutsRevisionOf(wire);
   const [gridRef, measured] = useElementWidth<HTMLElement>();
+  const footerRef = useRef<HTMLElement>(null);
+  const available = useAvailableHeight(gridRef, footerRef, viewport.height);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,6 +66,9 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
   const screenClass = streaming ? stream?.screenClass ?? viewportClass : edit?.screenClass ?? viewportClass;
   const shown = edit?.draft ?? current;
   const tiles = shown ? arrangementOf(shown, screenClass) : [];
+  // Rows fill the page, and hold still in edit mode so a tile being dragged never resizes the rest.
+  const fittedRow = useRef(ROW_HEIGHT);
+  if (!edit) fittedRow.current = measured > 0 && available > 0 ? fitRowHeight(tiles, available) : ROW_HEIGHT;
   const editedTile = settingsFor ? tiles.find((t) => t.i === settingsFor) : undefined;
   const editedModule = editedTile ? registry.get(editedTile.type) : undefined;
 
@@ -71,6 +78,8 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
   };
 
   const focused = !streaming && settings.focus ? resolveFocus({ participants, playerCar, focus: settings.focus }) : undefined;
+  const headerCar = resolveFocus({ participants, playerCar, focus: settings.focus });
+  const headerIndex = 'index' in headerCar ? headerCar.index : null;
   const towerFocus = !focused ? undefined : 'index' in focused ? focused.index : null;
 
   if (streaming && stream) {
@@ -93,6 +102,13 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
       <ReplayControls replay={wire?.context?.replay} car={playerCar ?? 0} />
       <header className="pw-chrome">
         <h1 className="pw-wordmark">pitwall</h1>
+        <FocusPicker
+          participants={participants}
+          focus={settings.focus}
+          focused={participants.find((p) => p.index === headerIndex)}
+          onChange={(identity) => device.setFocus(identity)}
+        />
+        <RaceStrip focusIndex={headerIndex} />
         <div className="pw-chrome-controls">
           {current ? (
             <LayoutSwitcher
@@ -105,7 +121,6 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
               onDelete={(name) => void controller.remove(name)}
             />
           ) : null}
-          <FocusPicker participants={participants} focus={settings.focus} onChange={(identity) => device.setFocus(identity)} />
           <DisplayMenu units={settings.units} onChange={(units) => device.setUnits(units)}>
             <SlowDrawNotice />
           </DisplayMenu>
@@ -165,6 +180,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
               tiles={tiles}
               screenClass={screenClass}
               width={measured > 0 ? measured : FALLBACK_WIDTH}
+              rowHeight={fittedRow.current}
               editing={edit !== null}
               registry={registry}
               carFor={carFor}
@@ -177,7 +193,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
         </TowerFocusProvider>
       </main>
 
-      <footer className="pw-footer">
+      <footer className="pw-footer" ref={footerRef}>
         <ShortLine />
       </footer>
 

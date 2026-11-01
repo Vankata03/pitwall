@@ -11,22 +11,155 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
-  padding: 8px 0;
+  gap: 8px 24px;
+  padding: 12px 0;
   border-bottom: 1px solid var(--pw-line);
 }
 .pw-wordmark {
   margin: 0;
-  font-size: 28px;
-  font-weight: 600;
+  font-size: var(--pw-text-display);
+  font-weight: 800;
+  line-height: 1;
   letter-spacing: -0.04em;
+  color: var(--pw-text);
 }
+.pw-wordmark::after {
+  content: '.';
+  color: var(--pw-accent);
+}
+
+/* The car's name is the control: an invisible native select sits over it. */
+.pw-focus-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 240px;
+}
+.pw-focus-name {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--pw-accent);
+}
+.pw-focus-name > svg {
+  flex: none;
+  color: var(--pw-text-muted);
+}
+.pw-focus-name select {
+  position: absolute;
+  inset: -8px 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.pw-focus-name:has(select:focus-visible) {
+  outline: 2px solid var(--pw-accent);
+  outline-offset: 4px;
+  border-radius: var(--pw-radius-inner);
+}
+
+.pw-race-strip {
+  display: flex;
+  flex: 1 1 320px;
+  align-items: center;
+  gap: 8px 24px;
+  min-width: 0;
+  min-height: var(--pw-hit);
+  padding: 4px 16px;
+  overflow: hidden;
+  border-left: 3px solid var(--pw-accent);
+  background: var(--pw-tile-bg-raised);
+  font-family: var(--pw-font-label);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pw-race-strip-name {
+  font-family: var(--pw-font);
+  font-size: var(--pw-text-title);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--pw-accent);
+}
+.pw-race-strip-quiet {
+  color: var(--pw-text-muted);
+}
+
 .pw-chrome-controls {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
   margin-left: auto;
+}
+
+/* ---- Replay transport: one quiet line above the header. ---- */
+.pw-replay-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--pw-line);
+  font-size: var(--pw-text-value);
+}
+.pw-replay-controls p {
+  margin: 0;
+  color: var(--pw-text-muted);
+}
+.pw-replay-controls fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.pw-replay-controls legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.pw-replay-controls label,
+.pw-replay-controls form {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--pw-text-muted);
+}
+.pw-replay-controls button,
+.pw-replay-controls select,
+.pw-replay-controls input[type='number'] {
+  min-height: var(--pw-hit);
+  padding: 0 12px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-radius);
+  background: var(--pw-tile-bg);
+  color: var(--pw-text);
+}
+.pw-replay-controls input[type='number'] {
+  width: 7ch;
+  padding: 0 8px;
+}
+.pw-replay-controls input[type='range'] {
+  width: 180px;
+  accent-color: var(--pw-accent);
+}
+.pw-replay-controls span {
+  font-variant-numeric: tabular-nums;
 }
 
 .pw-button,
@@ -35,8 +168,8 @@
 .pw-icon-button {
   min-height: var(--pw-hit);
   border: 1px solid var(--pw-line);
-  border-radius: 6px;
-  background: var(--pw-tile-bg);
+  border-radius: var(--pw-radius);
+  background: transparent;
   color: var(--pw-text);
   transition-property: background-color, border-color, scale;
   transition-duration: 120ms;
@@ -98,7 +231,7 @@
   text-align: left;
 }
 .pw-switcher .pw-popover-button {
-  min-width: 160px;
+  min-width: 150px;
   justify-content: space-between;
 }
 .pw-switcher .pw-popover-button > span {
@@ -193,7 +326,7 @@
   justify-content: center;
   min-height: var(--pw-hit);
   border: 1px solid var(--pw-line);
-  border-radius: 6px;
+  border-radius: var(--pw-radius);
 }
 .pw-segment input:checked + span {
   border-color: var(--pw-accent);
@@ -216,7 +349,7 @@
 }
 .pw-banner {
   border: 1px solid var(--pw-line);
-  border-radius: 6px;
+  border-radius: var(--pw-radius);
   background: var(--pw-tile-bg);
 }
 .pw-banner + .pw-banner {
@@ -230,7 +363,7 @@
   padding: 0 0 0 12px;
   border: 1px solid var(--pw-line);
   border-left: 3px solid var(--pw-accent);
-  border-radius: 6px;
+  border-radius: var(--pw-radius);
   background: var(--pw-tile-bg);
 }
 .pw-notice[data-kind='error'] {
@@ -243,7 +376,7 @@
   margin-top: 8px;
   padding: 8px 12px;
   border: 1px solid var(--pw-accent);
-  border-radius: 6px;
+  border-radius: var(--pw-radius);
   background: color-mix(in srgb, var(--pw-accent) 10%, var(--pw-tile-bg));
 }
 .pw-edit-error {
@@ -267,9 +400,17 @@
   height: 100%;
   overflow: hidden;
   border: 1px solid var(--pw-line);
-  border-radius: 6px;
+  border-radius: var(--pw-radius);
   background: var(--pw-tile-bg);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.02);
   color: var(--pw-text);
+}
+/* The centre of the board stays open: the car is not boxed in. */
+.pw-tile[data-tile-type='car-status'],
+.pw-tile[data-tile-type='gaps'],
+.pw-tile[data-tile-type='sm'] {
+  border-color: transparent;
+  box-shadow: none;
 }
 .pw-tile-message,
 .pw-unknown,
@@ -299,7 +440,8 @@
   text-underline-offset: 2px;
 }
 .pw-footer {
-  border-top: 1px solid var(--pw-line);
+  display: flex;
+  justify-content: flex-end;
 }
 /* The chrome copy is a touch target; the Notice tile's is one 32px row and cannot be. */
 .pw-footer .pw-short-line {
@@ -359,7 +501,7 @@
 }
 .react-grid-item.react-grid-placeholder {
   background: var(--pw-accent);
-  border-radius: 6px;
+  border-radius: var(--pw-radius);
 }
 .react-grid-item {
   transition-timing-function: var(--pw-ease);

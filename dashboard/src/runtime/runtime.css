@@ -1,16 +1,12 @@
 /* Shared readout and banner styling. Tiles add their own layout; these rules carry the four
    readout states so every tile shows them the same way. */
+/* Stale: the muted colour plus a dotted rule under the digits (spec section 10). The rule is
+   the marker, so colour never carries the state alone, and it takes no room, so a value keeps
+   its place and a centred numeral stays centred. */
 .pw-readout[data-state='stale'] {
-  color: color-mix(in srgb, currentColor 70%, transparent);
-}
-/* The marker lives in a reserved slot, so a state change never reflows the tile. */
-.pw-readout::after {
-  content: '\00a0';
-  display: inline-block;
-  width: 1ch;
-}
-.pw-readout[data-state='stale']::after {
-  content: '\25cc';
+  color: var(--pw-text-muted);
+  text-decoration: underline dotted 1px;
+  text-underline-offset: 0.18em;
 }
 .pw-readout[data-state='restricted'],
 .pw-readout[data-state='absent'] {
@@ -28,7 +24,6 @@
   align-items: baseline;
   padding: 0.25rem 0.75rem;
   font-size: 14px;
-  border-bottom: 1px solid currentColor;
 }
 .pw-banner small {
   font-size: 11px;
