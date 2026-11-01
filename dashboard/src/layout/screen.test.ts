@@ -6,6 +6,7 @@ import {
   ROW_HEIGHT,
   cellsToPixels,
   densityRulesFromCells,
+  fitRowHeight,
   screenClassOf,
 } from './screen';
 
@@ -108,4 +109,16 @@ test('Stream rows fit viewport including gaps and retain empty rows in the arran
   expect(streamGridMetrics([{ y: 0, h: 1 }], 1080)).toEqual({ rowHeight: 1080, margin: 8 });
   const tiny = streamGridMetrics([{ y: 0, h: 100 }], 100);
   expect(tiny.rowHeight * 100 + tiny.margin * 99).toBe(100);
+});
+
+test('rows share the height left under the chrome, in whole pixels', () => {
+  expect(fitRowHeight([{ y: 0, h: 10 }], 500)).toBe(42); // (500 − 9 × 8) / 10
+});
+
+test('32 px is the floor, so a layout taller than the screen still scrolls', () => {
+  expect(fitRowHeight([{ y: 0, h: 10 }], 200)).toBe(ROW_HEIGHT);
+});
+
+test('a short layout stops growing at 64 px', () => {
+  expect(fitRowHeight([{ y: 0, h: 10 }], 5000)).toBe(64);
 });

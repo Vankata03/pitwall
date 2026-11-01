@@ -126,10 +126,10 @@ function Ers({ car, density }: TileProps) {
         </div>
         {showRows ? (
           <div className="pw-ers-rows">
-            <Row label="MGU-K harvest" tone="energy">
+            <Row label="MGU-K" tone="energy">
               <SlowReadout readout={ersReadout} connected={connected} format={(e) => kj(e.harvested_this_lap_mguk)} testId="ers-mgu-k" />
             </Row>
-            <Row label="MGU-H harvest" tone="info">
+            <Row label="MGU-H" tone="info">
               <SlowReadout readout={ersReadout} connected={connected} format={(e) => kj(e.harvested_this_lap_mguh)} testId="ers-mgu-h" />
             </Row>
             <Row label="Total" tone="accent">
