@@ -135,7 +135,7 @@ impl Stream {
     }
     pub fn tick(&self, now: Duration, source: Source, model: &SessionModel, context: Context) {
         let mut i = self.0.lock().unwrap();
-        let reset = i.model_epoch != model.epoch() || i.source != source;
+        let mut reset = i.model_epoch != model.epoch() || i.source != source;
         i.model = model.clone();
         i.state = State::capture(model, context);
         let entries = history(model);
@@ -144,6 +144,7 @@ impl Stream {
             .into_iter()
             .map(|e| (e.id.clone(), serde_json::to_value(e).unwrap()))
             .collect();
+        reset |= i.history.keys().any(|id| !history.contains_key(id));
         let changes: Vec<_> = order
             .iter()
             .filter(|id| i.history.get(*id) != history.get(*id))

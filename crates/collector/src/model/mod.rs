@@ -315,6 +315,8 @@ pub struct SessionModel {
     last_arrival: Option<Duration>,
     cars: [Arc<Car>; MAX_CARS],
     menu_interval: Duration,
+    menu_arrivals: [Option<Duration>; 17],
+    menu_samples: std::collections::VecDeque<Duration>,
     header: Option<PacketHeader>,
     session: Group<PacketSessionData>,
     pit_window: Group<PitWindow>,
@@ -335,6 +337,8 @@ impl Default for SessionModel {
             last_arrival: None,
             cars: std::array::from_fn(|_| Arc::new(Car::default())),
             menu_interval: Duration::from_secs(1) / 60,
+            menu_arrivals: [None; 17],
+            menu_samples: Default::default(),
             header: None,
             session: Group::default(),
             pit_window: Group::default(),
@@ -431,6 +435,25 @@ impl SessionModel {
                 menu_interval: self.menu_interval,
                 ..Self::default()
             };
+        }
+        // Measure only menu-rate groups, using the same recorded arrival clock in
+        // live and replay. Median rejects burst jitter; pauses never change the rate.
+        let id = usize::from(datagram.header.packet_id);
+        if [0, 2, 6, 7, 13, 16].contains(&id) {
+            if let Some(previous) = self.menu_arrivals[id] {
+                let interval = arrival_time.saturating_sub(previous);
+                if interval >= Duration::from_millis(8) && interval <= Duration::from_millis(75) {
+                    self.menu_samples.push_back(interval);
+                    if self.menu_samples.len() > 31 {
+                        self.menu_samples.pop_front();
+                    }
+                    let mut samples: Vec<_> = self.menu_samples.iter().copied().collect();
+                    samples.sort_unstable();
+                    self.menu_interval = samples[samples.len() / 2]
+                        .clamp(Duration::from_secs(1) / 60, Duration::from_millis(50));
+                }
+            }
+            self.menu_arrivals[id] = Some(arrival_time);
         }
         self.advance(arrival_time);
         if self.lifecycle == Lifecycle::Ended

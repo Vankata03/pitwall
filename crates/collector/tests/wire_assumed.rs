@@ -389,3 +389,71 @@ fn assumed_session_total_laps_reaches_state() {
     let value = serde_json::to_value(State::capture(&model, Context::default())).unwrap();
     assert_eq!(value["session"]["value"]["totalLaps"], 44);
 }
+
+#[test]
+fn assumed_history_removal_resets_connected_screens() {
+    use pitwall_collector::telemetry::Packet;
+    let s = Stream::new("test");
+    let mut m = SessionModel::default();
+    let mut lap = packet(2, 0.);
+    if let Packet::Lap(l) = &mut lap.packet {
+        l.lap_data[0].as_mut().unwrap().result_status = 2;
+    }
+    m.apply(Duration::ZERO, &lap);
+    let mut p = packet(11, 1.);
+    if let Packet::SessionHistory(h) = &mut p.packet {
+        h.car_idx = 0;
+        h.num_tyre_stints = 3;
+        for (index, stint) in h.tyre_stints_history_data.iter_mut().take(3).enumerate() {
+            stint.end_lap = (index as u8 + 1) * 3;
+            stint.tyre_actual_compound = 16;
+        }
+    }
+    m.apply(Duration::ZERO, &p);
+    s.tick(Duration::ZERO, Source::Live, &m, Default::default());
+    let screen = s.subscribe();
+    drain(&screen);
+    let epoch = s.epoch();
+    if let Packet::SessionHistory(h) = &mut p.packet {
+        h.num_tyre_stints = 2;
+    }
+    m.apply(Duration::from_millis(10), &p);
+    s.tick(
+        Duration::from_millis(10),
+        Source::Live,
+        &m,
+        Default::default(),
+    );
+    assert_eq!(s.epoch(), epoch + 1);
+    let messages = drain(&screen);
+    let snapshot = messages.iter().find(|m| m["type"] == "snapshot").unwrap();
+    assert_eq!(
+        snapshot["history"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["kind"] == "stint")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn assumed_twenty_hz_arrivals_stay_live_for_three_game_intervals() {
+    use pitwall_collector::model::Readout;
+    let mut m = SessionModel::default();
+    let mut lap = packet(2, 0.);
+    if let pitwall_collector::telemetry::Packet::Lap(l) = &mut lap.packet {
+        l.lap_data[0].as_mut().unwrap().result_status = 2;
+    }
+    m.apply(Duration::ZERO, &lap);
+    for n in 0..20 {
+        let mut p = packet(6, n as f32 * 0.05);
+        p.header.frame_identifier = n;
+        m.apply(Duration::from_millis(u64::from(n) * 50), &p);
+    }
+    m.advance(Duration::from_millis(1050));
+    assert!(matches!(m.car(0).unwrap().telemetry(), Readout::Live(_)));
+    m.advance(Duration::from_millis(1100));
+    assert!(matches!(m.car(0).unwrap().telemetry(), Readout::Stale(_)));
+}
