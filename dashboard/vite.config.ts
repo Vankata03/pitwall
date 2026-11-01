@@ -2,7 +2,12 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), {
+    name: 'pitwall-build-id',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'build-id.txt', source: process.env.PITWALL_BUILD_ID ?? 'dev' });
+    },
+  }],
   build: { target: 'chrome127' },
   // The collector reports its own build ID in `hello`; a page built with another ID reloads.
   // Both sides take it from PITWALL_BUILD_ID at build time.

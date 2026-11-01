@@ -19,3 +19,6 @@ pub mod wire;
 pub mod replay;
 
 pub mod status;
+
+pub mod app;
+pub mod discovery;

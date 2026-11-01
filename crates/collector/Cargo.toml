@@ -23,6 +23,14 @@ ts-rs = { version = "12.0.1", features = ["serde-json-impl"] }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 
+ctrlc = "3.5"
+mdns-sd = "0.21"
+
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+tray-icon = "0.21"
+tao = "0.34"
+notify-rust = "4"
+
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["test-util"] }

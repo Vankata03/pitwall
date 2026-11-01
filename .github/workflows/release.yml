@@ -1,0 +1,47 @@
+name: Portable release packages
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: pitwall.exe
+          - os: macos-14
+            target: aarch64-apple-darwin
+            binary: pitwall
+    runs-on: ${{ matrix.os }}
+    env:
+      PITWALL_BUILD_ID: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: ${{ matrix.target }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: cargo test --workspace --locked --target ${{ matrix.target }}
+      - run: cargo build --release --locked --target ${{ matrix.target }} --bin pitwall
+      - name: Stage portable files
+        shell: bash
+        run: |
+          mkdir package
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} package/
+          cp README.md THIRD-PARTY-NOTICES.md RELEASE-NOTES.md package/
+          printf '%s\n' "$PITWALL_BUILD_ID" > package/BUILD-ID.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pitwall-${{ matrix.target }}
+          path: package/
+          if-no-files-found: error

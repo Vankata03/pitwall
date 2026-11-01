@@ -77,7 +77,7 @@ export function StatusPage() {
         <p>Processing measures each UDP poll and model update batch. Datagram-to-draw latency is unmeasured.</p>
         <h3>Missing Stream view layouts</h3>{status.missingStreamLayouts.length ? <ul>{status.missingStreamLayouts.map((name) => <li key={name}>{name}</li>)}</ul> : <p>None reported.</p>}
       </section>
-      <section><h2>Connect another screen</h2><img src="/api/status/qr" width="192" height="192" alt="QR code for the first candidate URL" />
+      <section id="discovery"><h2>Connect another screen</h2><img src="/api/status/qr" width="192" height="192" alt="QR code for the first candidate URL" />
         <ul>{status.urls.map((url) => <li key={url}><a href={url}>{url}</a></li>)}</ul>
         <p>The QR code uses the default-route interface when available. pitwall.local is a best-effort alternative.</p>
         <p>Viewing is open over plain HTTP, without a login. Use a trusted LAN. Settings and host controls require a loopback connection: open localhost on the collector computer.</p>
