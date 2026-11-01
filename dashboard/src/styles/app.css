@@ -400,3 +400,12 @@
   display: flex;
   justify-content: flex-end;
 }
+
+.pw-stream {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+.pw-stream .pw-grid {
+  min-height: 0;
+}

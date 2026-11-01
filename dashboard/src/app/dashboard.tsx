@@ -19,24 +19,33 @@ import { AddTile } from './add-tile';
 import { DisplayMenu } from './display-menu';
 import { FocusPicker } from './focus-picker';
 import { DashboardGrid } from './grid';
-import { useControllerState, useDeviceSettings, useElementWidth, useScreenClass } from './hooks';
+import { useControllerState, useDeviceSettings, useElementWidth, useScreenClass, useViewportSize } from './hooks';
 import { LayoutSwitcher } from './layout-switcher';
 import { Notices } from './notices';
+import { type StreamOptions, streamUnits } from './stream';
 import { TileSettingsDialog } from './tile-settings';
 
 export interface DashboardServices {
   controller: LayoutController;
   device: Device;
   registry: TileRegistry;
+  stream?: StreamOptions;
 }
 
 /** Width the grid is laid out at before it has been measured. */
 const FALLBACK_WIDTH = 1264;
 
-export function Dashboard({ controller, device, registry }: DashboardServices) {
+export function Dashboard({ controller, device, registry, stream }: DashboardServices) {
   const state = useControllerState(controller);
   const settings = useDeviceSettings(device);
   const viewportClass = useScreenClass();
+  const viewport = useViewportSize();
+  const streaming = stream?.enabled === true;
+  useEffect(() => {
+    if (!streaming) return;
+    document.documentElement.dataset.stream = 'true';
+    return () => { delete document.documentElement.dataset.stream; };
+  }, [streaming]);
   const wire = useSlow((s) => s.state);
   const participants = useMemo(() => participantsOf(wire), [wire]);
   const playerCar = playerCarOf(wire);
@@ -49,7 +58,7 @@ export function Dashboard({ controller, device, registry }: DashboardServices) {
   }, [controller, revision]);
 
   const { edit, current } = state;
-  const screenClass = edit?.screenClass ?? viewportClass;
+  const screenClass = streaming ? stream?.screenClass ?? viewportClass : edit?.screenClass ?? viewportClass;
   const shown = edit?.draft ?? current;
   const tiles = shown ? arrangementOf(shown, screenClass) : [];
   const editedTile = settingsFor ? tiles.find((t) => t.i === settingsFor) : undefined;
@@ -57,11 +66,26 @@ export function Dashboard({ controller, device, registry }: DashboardServices) {
 
   const carFor = (tile: Tile): ResolvedCar | null => {
     if (registry.get(tile.type)?.declaration.binding !== 'follows-car') return null;
-    return resolveBinding(carSettingOf(tile.settings), { participants, playerCar, focus: settings.focus });
+    return resolveBinding(carSettingOf(tile.settings), { participants, playerCar, focus: streaming ? null : settings.focus });
   };
 
-  const focused = settings.focus ? resolveFocus({ participants, playerCar, focus: settings.focus }) : undefined;
+  const focused = !streaming && settings.focus ? resolveFocus({ participants, playerCar, focus: settings.focus }) : undefined;
   const towerFocus = !focused ? undefined : 'index' in focused ? focused.index : null;
+
+  if (streaming && stream) {
+    return (
+      <main className="pw-stream">
+        <TowerFocusProvider value={undefined}>
+          {current ? <DashboardGrid
+            tiles={tiles} screenClass={screenClass} width={viewport.width}
+            viewportHeight={viewport.height} editing={false} registry={registry}
+            carFor={carFor} units={streamUnits(stream, settings.units)}
+            onMoveResize={() => {}} onOpenSettings={() => {}} onRemove={() => {}}
+          /> : null}
+        </TowerFocusProvider>
+      </main>
+    );
+  }
 
   return (
     <div className="pw-app" data-editing={edit ? 'true' : undefined}>

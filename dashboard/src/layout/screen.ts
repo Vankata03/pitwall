@@ -26,12 +26,14 @@ export function cellsToPixels(
   screenClass: ScreenClass,
   containerWidth: number,
   size: TileSize,
+  rowHeight = ROW_HEIGHT,
+  margin = GRID_MARGIN,
 ): { width: number; height: number } {
   const columns = COLUMNS[screenClass];
-  const column = (containerWidth - GRID_MARGIN * (columns - 1)) / columns;
+  const column = (containerWidth - margin * (columns - 1)) / columns;
   return {
-    width: size.w * column + Math.max(0, size.w - 1) * GRID_MARGIN,
-    height: size.h * ROW_HEIGHT + Math.max(0, size.h - 1) * GRID_MARGIN,
+    width: size.w * column + Math.max(0, size.w - 1) * margin,
+    height: size.h * rowHeight + Math.max(0, size.h - 1) * margin,
   };
 }
 
@@ -61,4 +63,13 @@ export function densityRulesFromCells(cells: readonly DensityCells[]): DensityRu
     const px = cellsToPixels('wide', NARROWEST_WIDE_CONTAINER, { w, h });
     return { density, minWidth: Math.floor(px.width), minHeight: Math.floor(px.height) };
   });
+}
+
+/** Divide the viewport between rows after reserving gaps, so the last row never scrolls.
+ * Count positions as well as heights: intentional empty rows remain empty on air. */
+export function streamGridMetrics(tiles: readonly { y: number; h: number }[], viewportHeight: number): { rowHeight: number; margin: number } {
+  const rows = Math.max(1, ...tiles.map((tile) => tile.y + tile.h));
+  const height = Math.max(0, viewportHeight);
+  const margin = Math.min(GRID_MARGIN, height / (2 * rows));
+  return { rowHeight: (height - margin * (rows - 1)) / rows, margin };
 }
