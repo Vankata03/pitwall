@@ -24,7 +24,8 @@
 }
 .pw-slow-tile .pw-readout {
   overflow: hidden;
-  font-size: var(--pw-text-metric);
+  /* Numerals grow with the tile; the size is chosen, never scaled. */
+  font-size: clamp(var(--pw-text-metric), min(4.6cqw, 30cqh), 56px);
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.01em;
@@ -43,7 +44,7 @@
 }
 
 /* Two headline numbers: the first takes the eye, the second sits at the far edge. */
-.pw-tile[data-tile-type='fuel'] .pw-slow-row:first-child .pw-readout { font-size: 30px; }
+.pw-tile[data-tile-type='fuel'] .pw-slow-row:first-child .pw-readout { font-size: clamp(30px, min(7cqw, 34cqh), 72px); }
 .pw-tile[data-tile-type='fuel'] .pw-slow-row:last-child { text-align: right; }
 
 /* Weather: forecast is detail, so it stays at the value size. */
@@ -64,9 +65,10 @@
 }
 .pw-tile[data-tile-type='gaps'] .pw-slow-row > .pw-label:first-child { grid-area: label; }
 .pw-tile[data-tile-type='gaps'] .pw-slow-note { grid-area: note; color: var(--pw-text); letter-spacing: 0.02em; }
-.pw-tile[data-tile-type='gaps'] .pw-readout { grid-area: value; font-size: 28px; font-weight: 600; }
+.pw-tile[data-tile-type='gaps'] .pw-readout { grid-area: value; font-size: clamp(28px, min(5cqw, 36cqh), 64px); font-weight: 600; }
 .pw-tile[data-tile-type='gaps'] .pw-slow-row:last-child .pw-readout[data-state='live'] { color: var(--pw-energy); }
 
+.pw-tile[data-tile-type='race-control-feed'] .pw-slow-tile { justify-content: flex-start; }
 .pw-race-feed { list-style: none; margin: 0; padding: 0; overflow: hidden; }
 .pw-race-feed li { border-bottom: 1px solid var(--pw-line); padding: 4px 0; }
 .pw-race-feed [data-rewound='true'] { color: var(--pw-text-muted); }

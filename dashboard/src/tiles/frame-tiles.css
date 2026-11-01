@@ -84,7 +84,22 @@
   color: var(--pw-text-muted);
 }
 .pw-dial {
+  flex: none;
   align-self: center;
+}
+/* With the dial, the speed sits inside it. The offset is the padding, title and strip above. */
+.pw-srg[data-density='full'] .pw-srg-speed {
+  position: absolute;
+  top: calc(54px + var(--pw-dial) / 2);
+  right: var(--pw-tile-pad);
+  left: var(--pw-tile-pad);
+  translate: 0 -50%;
+}
+.pw-srg[data-density='full'] .pw-big {
+  font-size: calc(var(--pw-dial) * 0.3);
+}
+.pw-srg[data-density='full'] .pw-srg-row {
+  margin-top: auto;
 }
 .pw-shift-strip {
   display: flex;
@@ -354,7 +369,7 @@
 .pw-lt-delta[data-state='live'][data-sign='ahead'] { color: var(--pw-sector-personal-best); }
 .pw-lt-delta[data-state='live'][data-sign='behind'] { color: var(--pw-sector-slower); }
 .pw-lt-sectors { display: grid; flex: none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.pw-lt-sectors > div { gap: 0; border-top: 2px solid var(--pw-sector-personal-best); padding-top: 4px; font-size: var(--pw-text-value); font-weight: 600; line-height: 1.25; }
+.pw-lt-sectors > div { gap: 0; border-top: 2px solid var(--pw-sector-personal-best); padding-top: 4px; font-size: clamp(var(--pw-text-value), min(3.6cqw, 9cqh), 28px); font-weight: 600; line-height: 1.25; }
 .pw-lt-sectors > div[data-rank=''] { border-top-color: var(--pw-line); }
 .pw-lt-sectors .pw-label { font-weight: 400; }
 .pw-lt-sectors [data-rank='session-best'] { border-top-color: var(--pw-sector-session-best); }

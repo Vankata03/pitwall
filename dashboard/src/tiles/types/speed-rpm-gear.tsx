@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import { speed as speedIn } from '../../device/units';
 import { effectiveState, frameReadoutState, readoutStateName, wholeTileMessage } from '../../runtime/readout';
 import { ReadoutState } from '../../runtime/wire';
@@ -102,7 +102,7 @@ function SpeedRpmGear({ car, units, density, width, height }: TileProps) {
   );
 
   return (
-    <div className="pw-frame-tile pw-srg" ref={root} data-density={density}>
+    <div className="pw-frame-tile pw-srg" ref={root} data-density={density} style={{ '--pw-dial': `${dialSize}px` } as CSSProperties}>
       <div className="pw-frame-body">
         {showStrip ? <TileTitle>Speed / RPM</TileTitle> : null}
         {showStrip ? (

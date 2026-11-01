@@ -100,6 +100,14 @@
   margin-left: auto;
 }
 
+@media (max-width: 767px) {
+  .pw-race-strip {
+    flex-wrap: wrap;
+    padding-block: 6px;
+    white-space: normal;
+  }
+}
+
 /* ---- Replay transport: one quiet line above the header. ---- */
 .pw-replay-controls {
   display: flex;
@@ -405,10 +413,10 @@
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.02);
   color: var(--pw-text);
 }
-/* The centre of the board stays open: the car is not boxed in. */
+/* The board's centre stays open around the car: the car and whatever sits with it are not boxed in. */
 .pw-tile[data-tile-type='car-status'],
-.pw-tile[data-tile-type='gaps'],
-.pw-tile[data-tile-type='sm'] {
+.pw-grid:has(.pw-tile[data-tile-type='car-status']) .pw-tile[data-tile-type='gaps'],
+.pw-grid:has(.pw-tile[data-tile-type='car-status']) .pw-tile[data-tile-type='sm'] {
   border-color: transparent;
   box-shadow: none;
 }
