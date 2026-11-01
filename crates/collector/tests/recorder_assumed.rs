@@ -170,7 +170,7 @@ fn assumed_final_classification_closes_and_names_the_recording() {
     for (t, bytes) in &sent {
         rec.datagram(*t, bytes);
     }
-    rec.sync();
+    rec.sync().unwrap();
 
     assert_eq!(recordings(&dir), ["2026-10-31_1430_Monza_Race.pitrec"]);
     assert!(files(&dir, ".part").is_empty());
@@ -200,7 +200,7 @@ fn assumed_open_recording_is_a_part_file_until_it_closes() {
     let dir = fresh_dir("part");
     let mut rec = start(&dir);
     feed_session(&mut rec, 2025, 10, S, 70);
-    rec.sync();
+    rec.sync().unwrap();
     assert_eq!(files(&dir, ".part"), ["10-2025.pitrec.part"]);
     assert!(recordings(&dir).is_empty());
     rec.shutdown();
@@ -214,7 +214,7 @@ fn assumed_session_under_sixty_seconds_is_dropped() {
     let mut rec = start(&dir);
     feed_session(&mut rec, 2025, 10, S, 59);
     rec.datagram(60 * S, &classification(2025, 10, 1));
-    rec.sync();
+    rec.sync().unwrap();
     assert!(recordings(&dir).is_empty());
     assert!(files(&dir, ".json").is_empty());
     assert!(files(&dir, ".part").is_empty());
@@ -255,7 +255,7 @@ fn assumed_new_uid_closes_previous_and_closed_identity_never_reopens() {
     // Late packets of the closed session go nowhere.
     rec.datagram(200 * S, &telemetry(2025, 10, 999));
     rec.datagram(201 * S, &classification(2025, 20, 3));
-    rec.sync();
+    rec.sync().unwrap();
 
     let names = recordings(&dir);
     assert_eq!(names.len(), 2, "{names:?}");
@@ -295,10 +295,10 @@ fn assumed_silence_and_session_end_do_not_close_the_recording() {
     rec.datagram(72 * S, &session_ended(2025, 10));
     // Over an hour of silence, then the same UID resumes.
     rec.datagram(5_000 * S, &telemetry(2025, 10, 1));
-    rec.sync();
+    rec.sync().unwrap();
     assert!(recordings(&dir).is_empty(), "still open");
     rec.datagram(5_001 * S, &classification(2025, 10, 3));
-    rec.sync();
+    rec.sync().unwrap();
     let names = recordings(&dir);
     assert_eq!(names.len(), 1);
     assert_eq!(read(&dir.join(&names[0])).len(), 71 + 3);
@@ -309,7 +309,7 @@ fn assumed_without_classification_the_file_stays_open_until_exit() {
     let dir = fresh_dir("exit");
     let mut rec = start(&dir);
     feed_session(&mut rec, 2025, 10, S, 70);
-    rec.sync();
+    rec.sync().unwrap();
     assert!(recordings(&dir).is_empty());
     rec.shutdown();
     assert_eq!(recordings(&dir).len(), 1);
@@ -365,7 +365,7 @@ fn assumed_crash_leftovers_are_recovered_like_a_normal_close() {
     fs::write(dir.join("stale.pitrec.tmp"), b"half a swap").unwrap();
 
     let rec = start(&dir);
-    rec.sync();
+    rec.sync().unwrap();
 
     assert_eq!(recordings(&dir), ["2026-10-30_0905_Monza_Race.pitrec"]);
     assert!(files(&dir, ".part").is_empty());
@@ -396,7 +396,7 @@ fn assumed_missing_sidecar_is_rebuilt_at_start_and_on_rescan() {
 
     fs::remove_file(&json).unwrap();
     let rec = start(&dir);
-    rec.sync();
+    rec.sync().unwrap();
     let mut after = sidecar(&dir, &name);
     assert_eq!(after["track"], "Monza");
     assert_eq!(after["laps"], 4);
@@ -407,7 +407,7 @@ fn assumed_missing_sidecar_is_rebuilt_at_start_and_on_rescan() {
     fs::copy(dir.join(&name), dir.join("copied.pitrec")).unwrap();
     assert_eq!(list(&dir).unwrap().len(), 1);
     rec.rescan();
-    rec.sync();
+    rec.sync().unwrap();
     assert_eq!(list(&dir).unwrap().len(), 2);
     after = sidecar(&dir, "copied.pitrec");
     assert_eq!(after["track"], "Monza");
@@ -443,7 +443,7 @@ fn size(dir: &Path, name: &str) -> u64 {
 }
 fn cap_start(dir: &Path, cap: u64) -> Recorder {
     let rec = start_with(RecorderConfig::new(dir.to_owned(), cap));
-    rec.sync();
+    rec.sync().unwrap();
     rec
 }
 
@@ -472,7 +472,7 @@ fn assumed_retention_spares_the_recording_loaded_in_replay() {
     let rec = cap_start(&dir, u64::MAX);
     let guard = rec.mark_loaded(&n[0]);
     rec.set_size_cap(1);
-    rec.sync();
+    rec.sync().unwrap();
     assert_eq!(
         recordings(&dir),
         [n[0].clone()],
@@ -480,7 +480,7 @@ fn assumed_retention_spares_the_recording_loaded_in_replay() {
     );
     drop(guard);
     rec.rescan();
-    rec.sync();
+    rec.sync().unwrap();
     assert!(recordings(&dir).is_empty());
 }
 
@@ -493,18 +493,110 @@ fn assumed_a_stalled_writer_never_blocks_the_tap() {
     let bytes = telemetry(2025, 10, 1);
     // Anchors with an empty queue are accepted, so the span always exceeds 60 s.
     rec.datagram(S, &bytes);
-    rec.sync();
+    rec.sync().unwrap();
     let flood = 20_000u64;
     for i in 0..flood {
         rec.datagram(2 * S + i * 5_000, &bytes);
     }
-    rec.sync();
+    rec.sync().unwrap();
     rec.datagram(200 * S, &bytes);
-    rec.sync();
+    rec.sync().unwrap();
     let sent = flood + 2;
     let dropped = rec.dropped();
     rec.shutdown();
     let names = recordings(&dir);
     let kept = read(&dir.join(&names[0])).len() as u64;
     assert_eq!(kept + dropped, sent);
+}
+
+#[test]
+fn assumed_malformed_classification_is_recorded_without_closing_the_session() {
+    for format in [2025, 2026] {
+        let dir = fresh_dir(&format!("malformed-classification-{format}"));
+        let mut rec = start(&dir);
+        let mut malformed = classification(format, 10, 1);
+        malformed.truncate(pitwall_collector::telemetry::HEADER_SIZE);
+        assert!(pitwall_collector::telemetry::parse_datagram(&malformed).is_err());
+        let sent = [
+            session_packet(format, 10),
+            malformed,
+            telemetry(format, 10, 1),
+        ];
+        for (at, bytes) in [0, 10 * S, 70 * S].into_iter().zip(&sent) {
+            rec.datagram(at, bytes);
+        }
+        rec.shutdown();
+        let names = recordings(&dir);
+        assert_eq!(names.len(), 1);
+        let kept: Vec<_> = read(&dir.join(&names[0]))
+            .into_iter()
+            .map(|r| r.datagram)
+            .collect();
+        assert_eq!(kept, sent);
+    }
+}
+
+#[test]
+fn assumed_successful_pin_during_retention_prevents_deletion() {
+    let (dir, names) = three_days("pin-during-sweep");
+    let rec = cap_start(&dir, u64::MAX);
+    // A long sweep gives pinning a chance to run after the listing was captured.
+    let source = dir.join(&names[0]);
+    let side = fs::read(source.with_extension("json")).unwrap();
+    for index in 0..1500 {
+        let path = dir.join(format!("{index:04}.pitrec"));
+        fs::copy(&source, &path).unwrap();
+        fs::write(path.with_extension("json"), &side).unwrap();
+    }
+    rec.set_size_cap(0);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while dir.join("0000.pitrec").exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "retention did not start"
+        );
+        std::thread::yield_now();
+    }
+    let pinned = set_pinned(&dir, "1499.pitrec", true);
+    rec.sync().unwrap();
+    match pinned {
+        Ok(()) => {
+            assert!(dir.join("1499.pitrec").exists(), "successful pin was lost");
+            assert_eq!(sidecar(&dir, "1499.pitrec")["pinned"], true);
+        }
+        // Retention may win the race, but then pinning must report failure.
+        Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::NotFound),
+    }
+    rec.shutdown();
+}
+
+#[test]
+fn assumed_sync_flushes_the_active_recording_without_closing_it() {
+    let dir = fresh_dir("sync-active");
+    let mut rec = start(&dir);
+    let first = session_packet(2026, 10);
+    rec.datagram(S, &first);
+    rec.sync().unwrap();
+    let part = dir.join("10-2026.pitrec.part");
+    let kept = read(&part);
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].datagram, first);
+    let second = telemetry(2026, 10, 1);
+    rec.datagram(2 * S, &second);
+    rec.sync().unwrap();
+    let kept = read(&part);
+    assert_eq!(kept.len(), 2);
+    assert_eq!(kept[1].datagram, second);
+    assert!(recordings(&dir).is_empty());
+    rec.shutdown();
+}
+
+#[test]
+fn assumed_sync_reports_writer_failures() {
+    let dir = fresh_dir("sync-error");
+    let mut rec = start(&dir);
+    fs::create_dir(dir.join("10-2026.pitrec.part")).unwrap();
+    rec.datagram(S, &session_packet(2026, 10));
+    assert!(rec.sync().is_err());
+    rec.shutdown();
 }

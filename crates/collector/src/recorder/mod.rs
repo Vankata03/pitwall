@@ -56,7 +56,7 @@ impl RecorderConfig {
 
 enum Message {
     Datagram(u64, Vec<u8>),
-    Sync(Sender<()>),
+    Sync(Sender<io::Result<()>>),
     Shutdown,
 }
 
@@ -65,7 +65,7 @@ enum Job {
     Finalized(PathBuf),
     Delete(String, Sender<io::Result<()>>),
     Rescan,
-    Sync(Sender<()>),
+    Sync(Sender<io::Result<()>>, io::Result<()>),
     Stop,
 }
 
@@ -161,11 +161,14 @@ impl Recorder {
 
     /// Wait until everything queued so far is written, closed files are
     /// recompressed and retention has run. For tests and orderly hosts, never ingest.
-    pub fn sync(&self) {
+    /// Returns an error if the writer failed or stopped before acknowledging.
+    pub fn sync(&self) -> io::Result<()> {
         let (ack, done) = mpsc::channel();
-        if self.queue.send(Message::Sync(ack)).is_ok() {
-            let _ = done.recv();
-        }
+        self.queue
+            .send(Message::Sync(ack))
+            .map_err(|_| io::Error::other("recorder writer stopped"))?;
+        done.recv()
+            .map_err(|_| io::Error::other("recorder stopped before sync"))?
     }
 
     /// Change the size cap (a host setting); applied at the next retention pass.
@@ -182,12 +185,7 @@ impl Recorder {
     /// Delete a closed recording on the maintenance queue, after recompression.
     /// Loaded replays are protected; callers must supply a validated file name.
     pub fn delete(&self, name: &str) -> io::Result<mpsc::Receiver<io::Result<()>>> {
-        if name.starts_with('.') || name.contains(['/', '\\', ':']) || !name.ends_with(".pitrec") {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "invalid recording name",
-            ));
-        }
+        validate_recording_name(name)?;
         let (ack, result) = mpsc::channel();
         self.jobs
             .send(Job::Delete(name.into(), ack))
@@ -254,6 +252,7 @@ struct Writing {
     /// Identities closed during this run; never reopened, never persisted.
     closed: HashSet<(u64, u16)>,
     current: Option<Open>,
+    last_error: Option<(io::ErrorKind, String)>,
 }
 
 impl Writing {
@@ -264,6 +263,7 @@ impl Writing {
             jobs,
             closed: HashSet::new(),
             current: None,
+            last_error: None,
         }
     }
 
@@ -272,8 +272,12 @@ impl Writing {
             match queue.recv_timeout(Duration::from_secs(1)) {
                 Ok(Message::Datagram(at, bytes)) => self.datagram(at, &bytes),
                 Ok(Message::Sync(ack)) => {
+                    self.flush();
+                    let result = self.last_error.as_ref().map_or(Ok(()), |(kind, message)| {
+                        Err(io::Error::new(*kind, message.clone()))
+                    });
                     // Forward through maintenance so the caller also waits for it.
-                    let _ = self.jobs.send(Job::Sync(ack));
+                    let _ = self.jobs.send(Job::Sync(ack, result));
                 }
                 // Silence closes nothing; it only makes buffered records durable.
                 Err(RecvTimeoutError::Timeout) => self.flush(),
@@ -305,6 +309,7 @@ impl Writing {
                 Ok(open) => self.current = Some(open),
                 Err(error) => {
                     eprintln!("Recorder could not open a file for session {id:?}: {error}");
+                    self.last_error = Some((error.kind(), error.to_string()));
                     self.closed.insert(id);
                     return;
                 }
@@ -318,7 +323,9 @@ impl Writing {
             return self.fail(error);
         }
         open.summary.observe(at, bytes);
-        if bytes[6] == FINAL_CLASSIFICATION_PACKET {
+        if bytes[6] == FINAL_CLASSIFICATION_PACKET
+            && crate::telemetry::parse_datagram(bytes).is_ok()
+        {
             self.close_current();
         }
     }
@@ -346,6 +353,7 @@ impl Writing {
 
     /// A write failed: stop recording this session and keep what was flushed.
     fn fail(&mut self, error: io::Error) {
+        self.last_error = Some((error.kind(), error.to_string()));
         if let Some(open) = self.current.take() {
             eprintln!("Recorder stopped session {:?}: {error}", open.identity);
             self.closed.insert(open.identity);
@@ -374,7 +382,10 @@ impl Writing {
                 let _ = self.jobs.send(Job::Finalized(recording));
             }
             Ok(None) => {}
-            Err(error) => eprintln!("Recorder could not close {}: {error}", part.display()),
+            Err(error) => {
+                self.last_error = Some((error.kind(), error.to_string()));
+                eprintln!("Recorder could not close {}: {error}", part.display());
+            }
         }
     }
 }
@@ -409,8 +420,8 @@ fn maintain(
                 let _ = library::repair(dir);
                 sweep();
             }
-            Job::Sync(ack) => {
-                let _ = ack.send(());
+            Job::Sync(ack, result) => {
+                let _ = ack.send(result);
             }
             Job::Delete(name, ack) => {
                 let loaded = loaded.lock().unwrap();
@@ -420,17 +431,46 @@ fn maintain(
                         "recording loaded in replay",
                     ))
                 } else {
-                    let path = dir.join(name);
-                    fs::remove_file(&path).and_then(|()| {
-                        match fs::remove_file(path.with_extension("json")) {
+                    let result_path = recording_path(dir, &name);
+                    result_path
+                        .and_then(|path| fs::remove_file(&path).map(|()| path))
+                        .and_then(|path| match fs::remove_file(path.with_extension("json")) {
                             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
                             _ => Ok(()),
-                        }
-                    })
+                        })
                 };
                 let _ = ack.send(result);
             }
             Job::Stop => break,
         }
     }
+}
+
+/// Validate a single recording filename before joining it to the library directory.
+pub fn validate_recording_name(name: &str) -> io::Result<()> {
+    if name.is_empty()
+        || name.starts_with('.')
+        || name.contains(['/', '\\', ':'])
+        || !name.ends_with(".pitrec")
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid recording name",
+        ));
+    }
+    Ok(())
+}
+
+/// Resolve an existing regular recording, rejecting symlinks and traversal.
+pub fn recording_path(dir: &Path, name: &str) -> io::Result<PathBuf> {
+    validate_recording_name(name)?;
+    let path = dir.join(name);
+    let metadata = fs::symlink_metadata(&path)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid recording file",
+        ));
+    }
+    Ok(path)
 }

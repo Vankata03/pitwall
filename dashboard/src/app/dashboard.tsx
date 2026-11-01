@@ -15,6 +15,7 @@ import {
 import { ShortLine } from '../shared/short-line';
 import type { TileRegistry } from '../tiles/registry';
 import { TowerFocusProvider } from '../tiles/types/timing-tower';
+import { ReplayControls } from './replay-controls';
 import { AddTile } from './add-tile';
 import { DisplayMenu } from './display-menu';
 import { FocusPicker } from './focus-picker';
@@ -55,7 +56,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
 
   useEffect(() => {
     if (revision !== undefined) void controller.revisionChanged(revision);
-  }, [controller, revision]);
+  }, [controller, revision, wire]);
 
   const { edit, current } = state;
   const screenClass = streaming ? stream?.screenClass ?? viewportClass : edit?.screenClass ?? viewportClass;
@@ -89,6 +90,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
 
   return (
     <div className="pw-app" data-editing={edit ? 'true' : undefined}>
+      <ReplayControls replay={wire?.context?.replay} car={playerCar ?? 0} />
       <header className="pw-chrome">
         <h1 className="pw-wordmark">pitwall</h1>
         <div className="pw-chrome-controls">

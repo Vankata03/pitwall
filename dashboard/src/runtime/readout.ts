@@ -57,6 +57,12 @@ export function effectiveState(state: ReadoutState, connected: boolean): Readout
   return !connected && state === ReadoutState.Live ? ReadoutState.Stale : state;
 }
 
+/** Convert a JSON readout through the shared connection rule. */
+export function effectiveReadoutState(readout: { state: ReadoutStateName } | null | undefined, connected: boolean): ReadoutState {
+  const state = readout ? NAMES.indexOf(readout.state) as ReadoutState : ReadoutState.Absent;
+  return effectiveState(state, connected);
+}
+
 /** A stale value still has data to show; restricted and absent do not. */
 export function hasAnyData(states: Iterable<ReadoutState>): boolean {
   for (const s of states) if (s === ReadoutState.Live || s === ReadoutState.Stale) return true;
@@ -90,6 +96,6 @@ export function readoutStateName(state: ReadoutState): ReadoutStateName {
 
 /** Format generated JSON readouts through the same four-state presentation rule. */
 export function jsonReadoutView<T>(readout: Readout<T>, format: (value: T) => string): ReadoutView {
-  const state = NAMES.indexOf(readout.state) as ReadoutState;
+  const state = effectiveReadoutState(readout, true);
   return readoutView(state, 'value' in readout ? format(readout.value) : '');
 }

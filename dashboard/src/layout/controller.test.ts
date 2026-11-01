@@ -203,6 +203,39 @@ describe('several screens', () => {
   });
 });
 
+describe('audit regressions', () => {
+  test.each(['list', 'get'] as const)('retries a failed %s refresh at the same revision', async (method) => {
+    const { controller, server } = setup({ extra: [mine], stored: { 'pitwall.layout': 'Mine' } });
+    await controller.start();
+    const changed = layoutOf('Mine');
+    changed.arrangements.wide = [tile('notice', 'notice', 0, 7, 24, 1)];
+    server.layouts.set('Mine', changed);
+    server.revision++;
+    const failure = vi.spyOn(server, method).mockRejectedValueOnce(new Error('temporary disconnect'));
+    await controller.revisionChanged(server.revision);
+    expect(controller.getSnapshot().current?.arrangements.wide[0]?.y).toBe(0);
+    await controller.revisionChanged(server.revision);
+    expect(controller.getSnapshot().current?.arrangements.wide[0]?.y).toBe(7);
+    expect(failure).toHaveBeenCalledTimes(2);
+  });
+
+  test('a late selection response cannot replace the latest choice or device memory', async () => {
+    const { controller, server, device } = setup();
+    await controller.start();
+    let finishDriver!: (layout: ReturnType<typeof layoutOf>) => void;
+    vi.spyOn(server, 'get').mockImplementation(async (name) => {
+      if (name === 'Driver') return new Promise((resolve) => { finishDriver = resolve; });
+      return layoutOf(name, true);
+    });
+    const driver = controller.select('Driver');
+    await controller.select('Race');
+    finishDriver(layoutOf('Driver', true));
+    await driver;
+    expect(controller.getSnapshot().current?.name).toBe('Race');
+    expect(device.getSnapshot().layout).toBe('Race');
+  });
+});
+
 describe('edit mode', () => {
   test('Edit tells the runtime, and Done and Cancel tell it again', async () => {
     const { controller, editing } = setup({ extra: [mine], stored: { 'pitwall.layout': 'Mine' } });

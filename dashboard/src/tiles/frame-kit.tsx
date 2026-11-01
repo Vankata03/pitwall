@@ -5,7 +5,7 @@
  * puts 60 Hz data into React state.
  */
 import type { CarState } from '../generated/wire/CarState';
-import { readoutView, writeReadout, type ReadoutElement } from '../runtime/readout';
+import { effectiveReadoutState, readoutView, writeReadout, type ReadoutElement } from '../runtime/readout';
 import { useSlow } from '../runtime/react';
 import { lifecycleOf, ReadoutState, type Lifecycle } from '../runtime/wire';
 import type { ResolvedCar } from '../session/cars';
@@ -33,13 +33,8 @@ export const TIME_TRIAL = 18;
 // ---- Slow readouts ----------------------------------------------------------
 
 type JsonReadout<T> = { state: 'live'; value: T } | { state: 'stale'; value: T } | { state: 'restricted' } | { state: 'absent' };
-const STATE_OF = { live: 0, stale: 1, restricted: 2, absent: 3 } as const;
-
-/** The wire state of a JSON readout; a missing readout is absent, and a live one reads stale while disconnected. */
-export function slowState<T>(readout: JsonReadout<T> | null | undefined, connected: boolean): ReadoutState {
-  const s = readout ? STATE_OF[readout.state] : ReadoutState.Absent;
-  return !connected && s === ReadoutState.Live ? ReadoutState.Stale : (s as ReadoutState);
-}
+/** JSON and frame tiles share the same readout conversion. */
+export const slowState = effectiveReadoutState;
 
 export function valueOf<T>(readout: JsonReadout<T> | null | undefined): T | undefined {
   return readout && 'value' in readout ? readout.value : undefined;

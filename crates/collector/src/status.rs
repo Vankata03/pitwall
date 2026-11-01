@@ -101,6 +101,9 @@ fn error(e: io::Error) -> StatusCode {
     if e.kind() == io::ErrorKind::ResourceBusy {
         return StatusCode::CONFLICT;
     }
+    if e.kind() == io::ErrorKind::InvalidInput {
+        return StatusCode::BAD_REQUEST;
+    }
     if e.kind() == io::ErrorKind::NotFound {
         StatusCode::NOT_FOUND
     } else {
@@ -121,14 +124,12 @@ fn urls(config: &Config) -> Vec<String> {
     addresses.sort();
     addresses.dedup();
     // Connect chooses the default route without sending any datagram.
-    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
-        if socket.connect("192.0.2.1:9").is_ok() {
-            if let Ok(local) = socket.local_addr() {
-                if let Some(at) = addresses.iter().position(|ip| *ip == local.ip()) {
-                    addresses.swap(0, at);
-                }
-            }
-        }
+    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0")
+        && socket.connect("192.0.2.1:9").is_ok()
+        && let Ok(local) = socket.local_addr()
+        && let Some(at) = addresses.iter().position(|ip| *ip == local.ip())
+    {
+        addresses.swap(0, at);
     }
     addresses
         .into_iter()
@@ -287,15 +288,7 @@ async fn recordings(State(s): State<Status>) -> Result<Json<Value>, StatusCode> 
     )))
 }
 fn recording(i: &Inner, name: &str) -> Result<PathBuf, StatusCode> {
-    if name.starts_with('.') || name.contains(['/', '\\', ':']) || !name.ends_with(".pitrec") {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-    let path = i.paths.recordings.join(name);
-    let meta = fs::symlink_metadata(&path).map_err(error)?;
-    if !meta.is_file() || meta.file_type().is_symlink() {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-    Ok(path)
+    crate::recorder::recording_path(&i.paths.recordings, name).map_err(error)
 }
 #[derive(Deserialize)]
 struct Pin {

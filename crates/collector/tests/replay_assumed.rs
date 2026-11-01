@@ -180,7 +180,7 @@ async fn assumed_loaded_replay_publishes_seek_epochs_protects_retention_and_retu
     let recorder = Arc::new(Mutex::new(
         Recorder::start(RecorderConfig::new(dir.clone(), u64::MAX), || 0).unwrap(),
     ));
-    recorder.lock().unwrap().sync();
+    recorder.lock().unwrap().sync().unwrap();
     let controller = Controller::new(dir.clone(), recorder.clone());
     let app =
         replay::routes(HttpShell::new(TrustedHosts::new([])), controller.clone()).into_router();
@@ -239,7 +239,7 @@ async fn assumed_loaded_replay_publishes_seek_epochs_protects_retention_and_retu
             .contains("recording in the background")
     );
     recorder.lock().unwrap().set_size_cap(0);
-    recorder.lock().unwrap().sync();
+    recorder.lock().unwrap().sync().unwrap();
     assert!(saved.exists(), "loaded recording survives retention");
     assert_eq!(
         post(&app, "seek", r#"{"position":31}"#).await,
@@ -254,7 +254,7 @@ async fn assumed_loaded_replay_publishes_seek_epochs_protects_retention_and_retu
     assert_eq!(stopped["source"], "live");
     assert!(stopped["state"]["context"]["replay"].is_null());
     recorder.lock().unwrap().rescan();
-    recorder.lock().unwrap().sync();
+    recorder.lock().unwrap().sync().unwrap();
     assert!(!saved.exists(), "stop releases retention guard");
     assert_eq!(
         std::fs::read_dir(&dir).unwrap().count(),

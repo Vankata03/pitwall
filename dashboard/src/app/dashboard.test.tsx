@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { stateMsg } from '../runtime/fixtures';
 import { layoutOf, tile } from '../layout/fake-server';
 import { SHORT_LINE } from '../shared/short-line';
 import { createRegistry, mount, mockViewport } from './harness';
@@ -434,6 +435,25 @@ describe('loading', () => {
     expect(await screen.findByText('Could not load layouts from the collector.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
+});
+
+
+test('a repeated State revision retries a transient layout refresh failure', async () => {
+  const view = mount({ extra: [layoutOf('Mine')], stored: { 'pitwall.layout': 'Mine' } });
+  await ready(view);
+  act(() => view.sendState(session()));
+  await waitFor(() => expect(view.runtime.stores.slow.getSnapshot().state).not.toBeNull());
+  const changed = layoutOf('Mine');
+  changed.arrangements.wide = [tile('notice', 'notice', 0, 7, 24, 1)];
+  view.server.layouts.set('Mine', changed);
+  view.server.revision++;
+  const list = vi.spyOn(view.server, 'list').mockRejectedValueOnce(new Error('temporary disconnect'));
+  const update = () => view.runtime.stores.ingest(stateMsg(1, session({ context: { revisions: { layouts: 1, tracks: 0 } } })));
+  act(update);
+  await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+  expect(view.controller.getSnapshot().current?.arrangements.wide[0]?.y).toBe(0);
+  act(update);
+  await waitFor(() => expect(view.controller.getSnapshot().current?.arrangements.wide[0]?.y).toBe(7));
 });
 
 describe('Stream view', () => {

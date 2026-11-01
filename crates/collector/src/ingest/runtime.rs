@@ -163,18 +163,8 @@ pub fn run_at(
                     }
                     model.advance(Duration::from_micros(now()));
                     let status = live.status(now());
-                    models.send_replace((
-                        model.clone(),
-                        crate::wire::CollectorStatus {
-                            packet_rate_hz: status.ingest.packet_rate_hz.round() as u32,
-                            dropped: status.ingest.dropped_frames as u32,
-                            parse_errors: status.ingest.parse_errors as u32,
-                            uid_zero: status.ingest.uid_zero as u32,
-                            closed_uid: status.ingest.closed_uid as u32,
-                            forwarding_errors: status.forwarding_errors as u32,
-                            last_format: status.ingest.last_format,
-                        },
-                    ));
+                    models
+                        .send_replace((model.clone(), crate::wire::CollectorStatus::from(&status)));
                     if last_status.elapsed() >= Duration::from_secs(1) {
                         let track = match model.session() {
                             crate::model::Readout::Live(v) | crate::model::Readout::Stale(v) => {
@@ -282,15 +272,7 @@ pub fn run_at(
             control.state.lock().unwrap().line = last_error.clone().unwrap_or(line);
             status_page.update(
                 config.clone(),
-                crate::wire::CollectorStatus {
-                    packet_rate_hz: status.ingest.packet_rate_hz.round() as u32,
-                    dropped: status.ingest.dropped_frames as u32,
-                    parse_errors: status.ingest.parse_errors as u32,
-                    uid_zero: status.ingest.uid_zero as u32,
-                    closed_uid: status.ingest.closed_uid as u32,
-                    forwarding_errors: status.forwarding_errors as u32,
-                    last_format: status.ingest.last_format,
-                },
+                crate::wire::CollectorStatus::from(&status),
                 track,
                 latency,
             );
@@ -320,7 +302,21 @@ pub fn run_at(
     worker
         .join()
         .map_err(|_| io::Error::other("UDP receive thread panicked"))??;
-    recorder.lock().unwrap().sync();
+    recorder.lock().unwrap().sync()?;
     crate::app::log(&paths, "Collector stopped");
     Ok(())
+}
+
+impl From<&super::udp::LiveStatus> for crate::wire::CollectorStatus {
+    fn from(status: &super::udp::LiveStatus) -> Self {
+        Self {
+            packet_rate_hz: status.ingest.packet_rate_hz.round() as u32,
+            dropped: status.ingest.dropped_frames as u32,
+            parse_errors: status.ingest.parse_errors as u32,
+            uid_zero: status.ingest.uid_zero as u32,
+            closed_uid: status.ingest.closed_uid as u32,
+            forwarding_errors: status.forwarding_errors as u32,
+            last_format: status.ingest.last_format,
+        }
+    }
 }
