@@ -114,7 +114,8 @@ async fn pitwall_classic_wide_arrangement_matches_the_spec_table() {
         ("throttle-brake-traces", [0, 14, 10, 7]),
         ("stint", [10, 14, 8, 7]),
         ("timing-tower", [18, 14, 6, 7]),
-        ("notice", [0, 21, 24, 1]),
+        ("live-delta", [0, 21, 24, 6]),
+        ("notice", [0, 27, 24, 1]),
     ];
     assert_eq!(tiles(&layout, "wide").len(), expected.len());
     for (id, at) in expected {
@@ -170,6 +171,7 @@ async fn every_preset_has_valid_wide_tablet_and_phone_arrangements_with_a_notice
         "car-status" => (8, 6),
         "timing-tower" => (4, 6),
         "stint" => (6, 4),
+        "live-delta" => (6, 3),
         other => panic!("unexpected tile type {other}"),
     };
 
@@ -198,7 +200,7 @@ async fn every_preset_has_valid_wide_tablet_and_phone_arrangements_with_a_notice
 }
 
 #[tokio::test]
-async fn phone_arrangements_are_one_column_with_lap_timing_and_gaps_first() {
+async fn phone_arrangements_start_with_lap_timing_live_delta_then_gaps() {
     let library = LayoutLibrary::open(temp_file()).unwrap();
     let app = app(&library);
     for name in ["Pitwall%20Classic", "Driver"] {
@@ -206,7 +208,8 @@ async fn phone_arrangements_are_one_column_with_lap_timing_and_gaps_first() {
         let mut phone: Vec<&Value> = tiles(&layout, "phone").iter().collect();
         phone.sort_by_key(|tile| tile["y"].as_u64().unwrap());
         assert_eq!(phone[0]["type"], "lap-timing");
-        assert_eq!(phone[1]["type"], "gaps");
+        assert_eq!(phone[1]["type"], "live-delta");
+        assert_eq!(phone[2]["type"], "gaps");
     }
 }
 

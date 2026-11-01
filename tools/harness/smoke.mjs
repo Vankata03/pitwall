@@ -77,7 +77,11 @@ try {
               if (message.type === 'snapshot') window.__smoke.state = { ...message.state, epoch: message.epoch };
             } else {
               window.__smoke.frames++;
-              window.__smoke.epoch = new DataView(event.data).getUint32(0, true);
+              const frame = new DataView(event.data);
+              window.__smoke.epoch = frame.getUint32(0, true);
+              // Live delta reads the followed player's best delta, in signed milliseconds.
+              window.__smoke.deltaBest = frame.getInt32(16 + 24, true);
+              window.__smoke.deltaState = (frame.getUint16(16 + 38, true) >> 8) & 3;
             }
           });
         }
@@ -95,6 +99,18 @@ try {
         return !speed || /^2[0-9]{2}$/.test(speed.textContent ?? '');
       });
       await page.screenshot({ path: path.join(output, `${preset.name.replaceAll(' ', '-')}-${position}.png`), fullPage: true });
+    }
+    if (expected.includes('live-delta')) {
+      await post('pause', { paused: false });
+      await page.waitForTimeout(650); // Retain several real Frames between paints, beyond the seek snapshot.
+      await post('pause', { paused: true });
+      await page.waitForTimeout(100);
+      const actual = await page.locator('[data-testid="live-delta-value"]').textContent();
+      const sample = await page.evaluate(() => window.__smoke);
+      if (sample.deltaState < 2) {
+        assert.equal(actual, `${sample.deltaBest < 0 ? '−' : '+'}${(Math.abs(sample.deltaBest) / 1000).toFixed(3)}`);
+      }
+      await page.locator('.pw-live-delta').screenshot({ path: path.join(output, `${preset.name.replaceAll(' ', '-')}-live-delta.png`) });
     }
     await page.close();
   }

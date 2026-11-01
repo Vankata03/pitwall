@@ -462,3 +462,38 @@ fn assumed_former_best_survives_long_session_for_rewind_and_checkpoints_are_pure
         2
     );
 }
+
+#[test]
+fn assumed_each_lap_data_update_reaches_the_frame_without_waiting_for_state() {
+    use pitwall_collector::wire::{Message, Source, Stream};
+    let mut model = SessionModel::default();
+    point(&mut model, 1, 0., 0, 0, 0.);
+    point(&mut model, 1, 10., 1000, 0, 1.);
+    point(&mut model, 2, 0., 0, 2000, 2.);
+    let stream = Stream::new("delta-test");
+    let screen = stream.subscribe();
+    for (i, (ms, expected)) in [(700, -50_i32), (701, -49), (702, -48)]
+        .into_iter()
+        .enumerate()
+    {
+        // No telemetry or State-rate clock advance is needed for the delta to change.
+        point(&mut model, 2, 7.5, ms, 2000, 2.7);
+        stream.tick(
+            Duration::from_millis(17 * (i as u64 + 1)),
+            Source::Live,
+            &model,
+            Default::default(),
+        );
+        let mut latest = None;
+        while let Some(message) = screen.pop() {
+            if let Message::Frame(bytes) = message {
+                latest = Some(bytes);
+            }
+        }
+        let bytes = latest.expect("each changed Lap Data sample must publish a Frame");
+        assert_eq!(
+            i32::from_le_bytes(bytes[40..44].try_into().unwrap()),
+            expected
+        );
+    }
+}
