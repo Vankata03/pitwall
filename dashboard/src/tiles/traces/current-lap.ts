@@ -14,12 +14,23 @@ export interface LapSamples {
 export const BUCKET_METRES = 5;
 /** A fall of lap distance this large is the start line, not a spin or a reverse. */
 const NEW_LAP_DROP_METRES = 500;
+/**
+ * Samples further apart than this are not joined: a real break (dropped Frames, a pit
+ * teleport) must show as a gap rather than a line drawn through data nobody saw. The same
+ * bound the collector applies inside a reference lap (spec section 6).
+ */
+const MAX_INTERPOLATION_METRES = 100;
 const MAX_BUCKETS = 20_000;
 
 /**
  * The lap in progress, built from Frame (spec section 8: a screen builds the current lap
- * from Frame). One slot per 5 m bucket of lap distance, the latest sample winning, so
- * memory stays flat however long the lap runs and nothing is allocated per sample.
+ * from Frame). One slot per 5 m bucket of lap distance, so memory stays flat however long
+ * the lap runs and nothing is allocated per sample.
+ *
+ * Each slot holds the value at the bucket's exact distance, linearly interpolated between the
+ * two samples either side of it. This is how the collector builds the reference laps, so the
+ * solid and dashed lines share one representation, and the trace stays continuous whatever the
+ * telemetry rate: at 300 km/h a 10 Hz stream is 8 m between samples, wider than a bucket.
  */
 export class CurrentLap {
   /** Bumped on every change, so the render loop can tell the trace is stale. */
@@ -29,8 +40,11 @@ export class CurrentLap {
   private brake = new Float64Array(2048);
   private filled = new Uint8Array(2048);
   private lastBucket = -1;
+  // The previous accepted sample, for interpolating the buckets between it and the next.
   private lastDistance = NaN;
-  private lastValues: [number, number, number] = [NaN, NaN, NaN];
+  private lastSpeed = NaN;
+  private lastThrottle = NaN;
+  private lastBrake = NaN;
   private firstBucket = -1;
 
   /** One sample; throttle and brake in percent, any of the three NaN when withheld. */
@@ -39,20 +53,33 @@ export class CurrentLap {
     const bucket = Math.floor(distance / BUCKET_METRES);
     if (bucket >= MAX_BUCKETS) return;
     if (this.lastBucket >= 0 && (this.lastBucket - bucket) * BUCKET_METRES > NEW_LAP_DROP_METRES) this.clear();
+    const gap = distance - this.lastDistance; // NaN for the first sample of a lap
+    if (gap === 0) return; // standing still: nothing new along the lap
     this.grow(bucket);
     if (this.firstBucket < 0) this.firstBucket = bucket;
-    const values: [number, number, number] = [speedKmh, throttlePercent / 100, brakePercent / 100];
-    const gap = distance - this.lastDistance;
-    if (gap > 0 && gap <= 100) {
-      for (let b = this.lastBucket + 1; b < bucket; b++) {
+    const throttle = throttlePercent / 100;
+    const brake = brakePercent / 100;
+    if (gap > 0 && gap <= MAX_INTERPOLATION_METRES) {
+      // Every bucket boundary this step crossed, ending at the sample itself if it sits on one.
+      // A NaN at either end interpolates to NaN, so a withheld channel still breaks the line.
+      for (let b = this.lastBucket + 1; b <= bucket; b++) {
         const f = (b * BUCKET_METRES - this.lastDistance) / gap;
-        const v = values.map((value, i) => this.lastValues[i]! + f * (value - this.lastValues[i]!));
-        this.put(b, v[0]!, v[1]!, v[2]!);
+        this.put(
+          b,
+          this.lastSpeed + f * (speedKmh - this.lastSpeed),
+          this.lastThrottle + f * (throttle - this.lastThrottle),
+          this.lastBrake + f * (brake - this.lastBrake),
+        );
       }
+    } else if (distance === bucket * BUCKET_METRES) {
+      // No neighbour to interpolate from (first sample, a big jump), but it sits on a boundary.
+      // A step back, as when a car spins or flashes back, lands here too and rebases the next step.
+      this.put(bucket, speedKmh, throttle, brake);
     }
-    this.put(bucket, ...values);
     this.lastDistance = distance;
-    this.lastValues = values;
+    this.lastSpeed = speedKmh;
+    this.lastThrottle = throttle;
+    this.lastBrake = brake;
     this.lastBucket = bucket;
     this.version++;
   }

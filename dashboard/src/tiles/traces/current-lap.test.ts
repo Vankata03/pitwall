@@ -1,19 +1,30 @@
 import { expect, test } from 'vitest';
 import type { Trace } from '../../generated/wire/Trace';
-import { CurrentLap } from './current-lap';
+import { BUCKET_METRES, CurrentLap } from './current-lap';
 
-test('samples are placed in 5 m buckets, the latest sample in a bucket winning', () => {
+test('buckets hold the value at their exact distance; samples between boundaries only shape it', () => {
   const lap = new CurrentLap();
-  lap.record(0.4, 100, 0, 200);
-  lap.record(5.2, 80, 0, 210);
-  lap.record(6.9, 60, 10, 215); // same bucket as 5.2
+  lap.record(0, 100, 0, 200);
+  lap.record(5, 80, 0, 210);
+  lap.record(6.9, 60, 10, 215); // between boundaries: no bucket of its own
   lap.record(10, 0, 100, 150);
   expect(lap.samples()).toEqual({
     distance: [0, 5, 10],
-    speed: [200, 215, 150],
-    throttle: [1, 0.6, 0],
-    brake: [0, 0.1, 1],
+    speed: [200, 210, 150],
+    throttle: [1, 0.8, 0],
+    brake: [0, 0, 1],
   });
+});
+
+test('a bucket between two samples is interpolated to its own distance, not copied from either', () => {
+  const lap = new CurrentLap();
+  lap.record(0, 0, 100, 100);
+  lap.record(8, 80, 20, 180);
+  const s = lap.samples();
+  expect(s.distance).toEqual([0, 5]);
+  expect(s.throttle[1]).toBeCloseTo(0.5);
+  expect(s.brake[1]).toBeCloseTo(0.5);
+  expect(s.speed[1]).toBeCloseTo(150);
 });
 
 test('missing data leaves a gap and never a zero, and a negative distance is dropped', () => {
@@ -22,19 +33,22 @@ test('missing data leaves a gap and never a zero, and a negative distance is dro
   lap.record(5, NaN, NaN, NaN);
   lap.record(-3, 50, 0, 100);
   lap.record(10, 50, 0, 100);
+  lap.record(15, 50, 0, 100);
   const s = lap.samples();
-  expect(s.distance).toEqual([0, 5, 10]);
-  expect(s.throttle).toEqual([1, null, 0.5]);
-  expect(s.speed).toEqual([200, null, 100]);
+  expect(s.distance).toEqual([0, 5, 10, 15]);
+  // The withheld sample breaks both steps that touch it.
+  expect(s.throttle).toEqual([1, null, null, 0.5]);
+  expect(s.speed).toEqual([200, null, null, 100]);
 });
 
 test('a drop of distance back to the start line begins a new lap', () => {
   const lap = new CurrentLap();
   lap.record(5000, 100, 0, 300);
   lap.record(5300, 100, 0, 300);
-  lap.record(2, 90, 0, 120);
-  expect(lap.samples().distance).toEqual([0]);
-  expect(lap.samples().throttle).toEqual([0.9]);
+  lap.record(0, 90, 0, 120);
+  lap.record(10, 90, 0, 120);
+  expect(lap.samples().distance).toEqual([0, 5, 10]);
+  expect(lap.samples().throttle).toEqual([0.9, 0.9, 0.9]);
 });
 
 test('a small step back, as when a car spins, overwrites instead of resetting', () => {
@@ -90,4 +104,45 @@ test('interpolation keeps missing channels and gaps over 100 m broken', () => {
   expect(lap.samples().throttle.slice(1, 8)).toEqual(Array(7).fill(null));
   lap.record(150, 100, 0, 300);
   expect(lap.samples().distance).not.toContain(100);
+});
+
+for (const hz of [10, 20, 30, 60]) {
+  test(`${hz} Hz at 300 km/h gives one continuous, correctly interpolated sample per bucket`, () => {
+    const lap = new CurrentLap();
+    const metresPerSample = 300 / 3.6 / hz;
+    // Throttle ramps with distance, so any bucket the trace skipped or mis-filled shows.
+    for (let n = 0; n * metresPerSample <= 1000; n++) {
+      const d = n * metresPerSample;
+      lap.record(d, d / 10, 100 - d / 10, 300);
+    }
+    const s = lap.samples();
+    const last = Math.floor(Math.floor(1000 / metresPerSample) * metresPerSample / BUCKET_METRES);
+    expect(s.distance).toEqual(Array.from({ length: last + 1 }, (_, i) => i * BUCKET_METRES));
+    expect(s.throttle.every((v) => v !== null && v >= 0 && v <= 1)).toBe(true);
+    for (let i = 0; i <= last; i++) expect(s.throttle[i]! * 100).toBeCloseTo(s.distance[i]! / 10, 6);
+  });
+}
+
+test('a gap of exactly 100 m is joined and one past it is not', () => {
+  const joined = new CurrentLap();
+  joined.record(0, 0, 0, 300);
+  joined.record(100, 100, 0, 300);
+  expect(joined.samples().throttle.every((v) => v !== null)).toBe(true);
+  const broken = new CurrentLap();
+  broken.record(0, 0, 0, 300);
+  broken.record(100.5, 100, 0, 300);
+  expect(broken.samples().distance).toEqual([0]);
+});
+
+test('a withheld channel breaks only itself and recovers on the next pair of real samples', () => {
+  const lap = new CurrentLap();
+  lap.record(0, 0, 100, 300);
+  lap.record(20, NaN, 100, 300);
+  lap.record(40, 100, 100, 300);
+  lap.record(60, 100, 100, 300);
+  const s = lap.samples();
+  expect(s.brake.every((v) => v === 1)).toBe(true);
+  expect(s.throttle[0]).toBe(0);
+  expect(s.throttle.slice(1, 9)).toEqual(Array(8).fill(null));
+  expect(s.throttle.slice(9)).toEqual([1, 1, 1, 1]);
 });

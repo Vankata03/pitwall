@@ -133,6 +133,19 @@ test('draws the current lap from Frame against distance, throttle and brake in p
   expect(lastPlot().series.every((s) => s.channel !== 'speed')).toBe(true);
 });
 
+test('draws a continuous current lap from 10 Hz Frames at 300 km/h, 8 m apart and off the bucket grid', async () => {
+  const { runtime, paint, frame } = setup();
+  show(runtime);
+  await settle();
+  for (let n = 0; n <= 12; n++) frame(n + 1, n * (300 / 3.6 / 10), 100 - n * 5, n * 5);
+  paint();
+  const x = lastPlot().x;
+  expect(x.length).toBeGreaterThan(15);
+  expect(x).toEqual(x.map((_, i) => i * 5));
+  expect(channelValues('throttle', 'current')!.every((v) => v !== null)).toBe(true);
+  expect(channelValues('brake', 'current')!.every((v) => v !== null)).toBe(true);
+});
+
 test('fetches the best lap as the default reference and overlays it', async () => {
   replies.set(url(0, 3), trace(3));
   const { runtime, paint, frame } = setup();
