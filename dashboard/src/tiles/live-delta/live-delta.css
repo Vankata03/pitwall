@@ -1,0 +1,14 @@
+.pw-live-delta .pw-frame-body { gap: 4px; }
+.pw-live-delta-value {
+  display: block;
+  font-size: clamp(56px, 8cqw, 88px);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pw-live-delta { container-type: inline-size; }
+.pw-live-delta-value[data-state='live'][data-sign='ahead'] { color: var(--pw-sector-personal-best); }
+.pw-live-delta-value[data-state='live'][data-sign='behind'] { color: var(--pw-sector-slower); }
+.pw-live-delta canvas { display: block; max-width: 100%; min-height: 0; }
+.pw-live-delta[data-density='compact'] .pw-frame-body { justify-content: center; }

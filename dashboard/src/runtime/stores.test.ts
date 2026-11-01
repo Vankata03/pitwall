@@ -153,7 +153,7 @@ describe('frame store and rings', () => {
     expect(s.frame.version).toBe(v + 2);
   });
 
-  test('rings hold recent samples for present cars only', () => {
+  test('rings hold recent samples and missing cars break traces', () => {
     live(1);
     for (let i = 1; i <= 6; i++) {
       s.ingest(
@@ -168,7 +168,7 @@ describe('frame store and rings', () => {
     const car = s.frame.rings[2]!;
     expect(car.speed.toArray()).toEqual([30, 40, 50, 60]); // capacity 4
     expect(car.sessionTime.toArray()).toEqual([3, 4, 5, 6]);
-    expect(s.frame.rings[7]!.speed.length).toBe(0); // absent slot
+    expect(s.frame.rings[7]!.speed.toArray()).toEqual([NaN, NaN, NaN, NaN]); // absent slot breaks traces
   });
 
   test('rings reset with the epoch', () => {
