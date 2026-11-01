@@ -9,7 +9,7 @@ interface Config {
   recording: { enabled: boolean; size_cap_gb: number };
   app: { start_with_windows: boolean };
 }
-interface Diagnostics {
+interface CollectorStatusResponse {
   udpPort: number; reloadError?: string | null; host: boolean; collector: CollectorStatus; urls: string[]; missingStreamLayouts: string[];
   track: [number, number] | null; cpuPercent: number | null; memoryBytes: number | null;
   processingP95Ms: number | null; processingP99Ms: number | null; recorderDropped: number;
@@ -23,14 +23,14 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
   return response.json() as Promise<T>;
 }
 export function StatusPage() {
-  const [status, setStatus] = useState<Diagnostics | null>(null);
+  const [status, setStatus] = useState<CollectorStatusResponse | null>(null);
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   async function refresh() {
-    const [next, files] = await Promise.all([request<Diagnostics>('/api/status'), request<Recording[]>('/api/recordings')]);
+    const [next, files] = await Promise.all([request<CollectorStatusResponse>('/api/status'), request<Recording[]>('/api/recordings')]);
     setStatus(next); setRecordings(files);
     return next;
   }
