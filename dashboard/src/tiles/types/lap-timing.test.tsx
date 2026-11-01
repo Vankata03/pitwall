@@ -267,6 +267,8 @@ test('the completed result stays until sector 1 of the next lap is complete, the
   drive(rt, { currentLapTime: 15000, deltaBest: -90 }, {}, 33);
   expect(text('lt-time')).toBe('1:24.381'); // still the result, ticks nothing
   expect(text('lt-lap-label')).toBe('Lap 18 complete');
+  expect(text('lt-s1-time')).toMatch(/^27\.102/); // sectors stay with the result
+  expect(text('lt-delta')).toBe(`${MINUS}0.090`); // but the headline delta is live again
 
   rt.state({
     cars: {
@@ -426,3 +428,28 @@ for (const reference of ['best', 'previous']) {
     expect(text('lt-delta')).toBe('—');
   });
 }
+
+test('the headline delta holds the official delta for the first five seconds, then runs live', () => {
+  const rt = liveRuntime();
+  rt.state({ cars: { 3: justFinished() } });
+  mount(rt, <Tile {...props(regular)} />);
+  drive(rt, { currentLapTime: 100, deltaBest: -5 });
+  expect(text('lt-delta')).toBe(`${MINUS}0.184`);
+  drive(rt, { currentLapTime: 4999, deltaBest: -90 }, {}, 33);
+  expect(text('lt-delta')).toBe(`${MINUS}0.184`);
+  drive(rt, { currentLapTime: 5000, deltaBest: -90 }, {}, 50);
+  expect(text('lt-delta')).toBe(`${MINUS}0.090`);
+  expect(text('lt-time')).toBe('1:24.381');
+  expect(text('lt-lap-label')).toBe('Lap 18 complete');
+});
+
+test('personal best and rival deltas stay the held completed-lap difference past five seconds', () => {
+  for (const reference of ['personal-best', 'rival']) {
+    const rt = liveRuntime();
+    ttSession(rt, { ...justFinished(), personalBest: timeTrial(84000, 27000, 28500, 28500), rival: timeTrial(84000, 27000, 28500, 28500) });
+    mount(rt, <Tile {...props({ ...regular, settings: { reference } })} />);
+    drive(rt, { currentLapTime: 15000, deltaBest: -90 });
+    expect(text('lt-delta')).toBe('+0.381');
+    cleanup();
+  }
+});

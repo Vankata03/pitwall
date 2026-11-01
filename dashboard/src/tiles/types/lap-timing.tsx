@@ -27,6 +27,8 @@ const time = (ms: number, lap = false): string => {
   const seconds = Math.floor(ms / 1000) % 60;
   return `${lap || ms >= 60000 ? `${Math.floor(ms / 60000)}:${String(seconds).padStart(2, '0')}` : seconds}.${String(ms % 1000).padStart(3, '0')}`;
 };
+/** How far into the next lap the headline delta stops showing the finished lap's (spec section 6). */
+const HOLD_DELTA_MS = 5000;
 const deltaText = (ms: number) => signed(ms / 1000, 3);
 
 /** Rank against earlier valid sectors, excluding the displayed lap itself. */
@@ -80,8 +82,10 @@ function LapTiming({ car, settings, density }: TileProps) {
   useFrameTile(declaration, car, ({ frame, car: i, connected: online }) => {
     const clockState = completed ? effectiveState(ReadoutState.Live, online) : i === null ? ReadoutState.Absent : effectiveState(frameReadoutState(frame, i, 'currentLapTime'), online);
     const field = reference === 'previous' ? 'deltaPrevious' : 'deltaBest';
-    // Keep the official time and sectors, but resume the running delta after five seconds.
-    const holdDelta = completed && (extra || i === null || frame.currentLapTime[i]! < 5000);
+    // The result keeps its time and sectors until sector 1 completes, but its delta gives way to the
+    // live one once the next lap has run a few seconds. The extra references (personal best,
+    // rival) have no live delta, so theirs is held for as long as the result is.
+    const holdDelta = completed && (extra || i === null || frame.currentLapTime[i]! < HOLD_DELTA_MS);
     const difference = holdDelta ? extra ? refTime ? completed.lap_time_ms - refTime : null : completed.delta_ms : i === null || extra ? null : frame[field][i]!;
     const deltaState = difference === null ? ReadoutState.Absent : holdDelta ? effectiveState(ReadoutState.Live, online) : effectiveState(frameReadoutState(frame, i!, field), online);
     write(clock.current, clockState, time(completed?.lap_time_ms ?? (i === null ? 0 : frame.currentLapTime[i]!), true));
