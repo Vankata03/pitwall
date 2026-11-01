@@ -578,15 +578,24 @@ fn assumed_live_samples_after_a_sector_never_touch_shared_history() {
     let held = m.clone();
     for ms in (45_000..59_000).step_by(17) {
         apply(&mut m, &sample(1, ms, 1, 0));
-        assert!(m.shares_history(&held), "live sample at {ms} ms rebuilt history");
+        assert!(
+            m.shares_history(&held),
+            "live sample at {ms} ms rebuilt history"
+        );
     }
     apply(&mut m, &sample(1, 61_000, 2, 0));
     assert!(!m.shares_history(&held), "a new sector is a history change");
     let held = m.clone();
     for ms in (61_000..89_000).step_by(17) {
         apply(&mut m, &sample(1, ms, 2, 0));
-        assert!(m.shares_history(&held), "live sample at {ms} ms rebuilt history");
+        assert!(
+            m.shares_history(&held),
+            "live sample at {ms} ms rebuilt history"
+        );
     }
     apply(&mut m, &sample(2, 100, 0, 90_000));
-    assert!(!m.shares_history(&held), "a completed lap is a history change");
+    assert!(
+        !m.shares_history(&held),
+        "a completed lap is a history change"
+    );
 }
