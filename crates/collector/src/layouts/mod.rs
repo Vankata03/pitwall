@@ -112,13 +112,14 @@ pub fn generate(wide: &[Tile], class: ScreenClass) -> Vec<Tile> {
     let mut ordered: Vec<&Tile> = wide.iter().collect();
     ordered.sort_by_key(|tile| (tile.y, tile.x));
 
-    let (mut cursor_x, mut row_y, mut row_height) = (0, 0, 0);
+    let (mut cursor_x, mut row_y, mut row_height) = (0u32, 0u32, 0u32);
     ordered
         .into_iter()
         .map(|tile| {
             let w = tile.w.min(columns);
             if cursor_x + w > columns {
-                row_y += row_height;
+                // Saves reject overflow; also tolerate older malformed files.
+                row_y = row_y.saturating_add(row_height);
                 cursor_x = 0;
                 row_height = 0;
             }

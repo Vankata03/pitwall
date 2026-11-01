@@ -170,8 +170,9 @@ export function createLayoutController(options: ControllerOptions): LayoutContro
     set({ layouts: list.layouts });
   }
 
-  async function fallBack(text: string): Promise<void> {
+  async function fallBack(text: string, started = generation): Promise<void> {
     const classic = await api.get(DEFAULT_LAYOUT);
+    if (started !== generation) return;
     if (!classic) {
       set({ status: 'error', current: null });
       return;
@@ -181,17 +182,19 @@ export function createLayoutController(options: ControllerOptions): LayoutContro
     notify('moved', text);
   }
 
-  async function show(name: string): Promise<boolean> {
+  async function show(name: string, started = generation): Promise<boolean> {
     const found = await api.get(name);
+    if (started !== generation) return false;
     if (!found) return false;
     set({ current: found, status: 'ready' });
     return true;
   }
 
   let missingStreamLayout: string | null = null;
-  async function showStream(): Promise<void> {
+  async function showStream(started = generation): Promise<void> {
     const wanted = options.fixedLayout ?? DEFAULT_LAYOUT;
     const found = await api.get(wanted);
+    if (started !== generation) return;
     set({ current: found, status: 'ready' });
     const missing = found ? null : wanted;
     if (missing !== missingStreamLayout) {
@@ -254,17 +257,20 @@ export function createLayoutController(options: ControllerOptions): LayoutContro
       signaled = revision;
       if (revision === known) return;
       const started = generation;
+      let completed = false;
       try {
         const list = await api.list();
         if (started !== generation) return;
-        known = list.revision;
         set({ layouts: list.layouts });
         if (options.stream) {
-          await showStream();
+          await showStream(started);
+          if (started !== generation) return;
+          known = list.revision;
+          completed = true;
           return;
         }
         const here = state.current;
-        if (!here) return;
+        if (!here) { known = list.revision; completed = true; return; }
         if (!list.layouts.some((l) => l.name === here.name)) {
           if (editing()) {
             notify(
@@ -274,31 +280,44 @@ export function createLayoutController(options: ControllerOptions): LayoutContro
           } else {
             await fallBack(
               `"${here.name}" was deleted or renamed on another screen. Showing ${DEFAULT_LAYOUT}.`,
+              started,
             );
           }
+          if (started !== generation) return;
+          known = list.revision;
+          completed = true;
           return;
         }
         const latest = await api.get(here.name);
-        if (started !== generation || !latest || sameJson(latest, here)) return;
+        if (started !== generation || !latest) return;
+        known = list.revision;
+        completed = true;
+        if (sameJson(latest, here)) return;
         set({ current: latest });
         if (editing()) {
           notify('conflict', `"${here.name}" was saved on another screen. Done will replace it with your edits.`);
         }
       } catch {
-        // The next revision change retries.
+        // The next State announcement retries, even at the same revision.
+      } finally {
+        if (!completed && signaled === revision) signaled = null;
       }
     },
 
     async select(name) {
       if (editing()) return;
       generation++;
+      const started = generation;
       try {
-        if (await show(name)) remember(name);
+        const shown = await show(name, started);
+        if (started !== generation) return;
+        if (shown) remember(name);
         else {
           notify('error', `"${name}" no longer exists.`);
           await loadLayouts();
         }
       } catch (error) {
+        if (started !== generation) return;
         notify('error', messageOf(error));
       }
     },

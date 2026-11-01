@@ -258,10 +258,21 @@ fn validate(layout: &Layout) -> Result<(), LayoutError> {
     for (class, tiles) in classes {
         let Some(tiles) = tiles else { continue };
         let mut seen = std::collections::HashSet::new();
-        for Tile { i, w, h, .. } in tiles {
+        let mut stacked_height = 0u32;
+        for Tile { i, x, y, w, h, .. } in tiles {
             if *w == 0 || *h == 0 {
                 return Err(LayoutError::InvalidLayout(format!(
                     "{class} tile {i} has no size"
+                )));
+            }
+            // Narrow screens may stack every tile. Both stored rectangles and
+            // that generated arrangement must fit the coordinate representation.
+            stacked_height = stacked_height.checked_add(*h).ok_or_else(|| {
+                LayoutError::InvalidLayout(format!("{class} arrangement height overflows"))
+            })?;
+            if x.checked_add(*w).is_none() || y.checked_add(*h).is_none() {
+                return Err(LayoutError::InvalidLayout(format!(
+                    "{class} tile {i} coordinates overflow"
                 )));
             }
             if !seen.insert(i) {

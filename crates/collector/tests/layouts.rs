@@ -484,3 +484,37 @@ async fn mutations_without_the_lan_trust_headers_are_refused() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
 }
+
+#[tokio::test]
+async fn overflowing_layouts_are_rejected_without_replacing_a_saved_layout() {
+    let library = LayoutLibrary::open(temp_file()).unwrap();
+    let app = app(&library);
+    let original = custom("Mine");
+    assert_eq!(
+        call(&app, Method::PUT, "/api/layouts/Mine", Some(original))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    let (_, before) = call(&app, Method::GET, "/api/layouts/Mine", None).await;
+    for field in ["stack", "x", "y"] {
+        let mut body = custom("Mine");
+        body["arrangements"]["wide"] = json!([
+            {"i":"a","type":"notice","x":0,"y":0,"w":4,"h":1},
+            {"i":"b","type":"notice","x":0,"y":1,"w":4,"h":1},
+            {"i":"c","type":"notice","x":0,"y":2,"w":4,"h":1}
+        ]);
+        if field == "stack" {
+            for tile in body["arrangements"]["wide"].as_array_mut().unwrap() {
+                tile["h"] = json!(u32::MAX / 2);
+                tile["y"] = json!(0);
+            }
+        } else {
+            body["arrangements"]["wide"][0][field] = json!(u32::MAX);
+        }
+        let (status, _) = call(&app, Method::PUT, "/api/layouts/Mine", Some(body)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{field}");
+        let (_, after) = call(&app, Method::GET, "/api/layouts/Mine", None).await;
+        assert_eq!(after, before);
+    }
+}

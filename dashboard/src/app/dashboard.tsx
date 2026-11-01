@@ -55,7 +55,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
 
   useEffect(() => {
     if (revision !== undefined) void controller.revisionChanged(revision);
-  }, [controller, revision]);
+  }, [controller, revision, wire]);
 
   const { edit, current } = state;
   const screenClass = streaming ? stream?.screenClass ?? viewportClass : edit?.screenClass ?? viewportClass;
