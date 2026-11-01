@@ -89,10 +89,26 @@ impl Forwarding {
 }
 
 fn bind(address: SocketAddr) -> io::Result<UdpSocket> {
-    let socket = UdpSocket::bind(address)
+    let socket = open_socket(address)
         .map_err(|error| io::Error::new(error.kind(), format!("UDP bind {address}: {error}")))?;
     socket.set_nonblocking(true)?;
     Ok(socket)
+}
+
+/// The game holds its own telemetry port while running, so on Windows a plain
+/// bind fails whenever the game started first.
+#[cfg(windows)]
+fn open_socket(address: SocketAddr) -> io::Result<UdpSocket> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let socket = Socket::new(Domain::for_address(address), Type::DGRAM, Some(Protocol::UDP))?;
+    socket.set_reuse_address(true)?;
+    socket.bind(&address.into())?;
+    Ok(socket.into())
+}
+
+#[cfg(not(windows))]
+fn open_socket(address: SocketAddr) -> io::Result<UdpSocket> {
+    UdpSocket::bind(address)
 }
 
 /// Prepare away from the receive loop. Failure leaves the old listener and

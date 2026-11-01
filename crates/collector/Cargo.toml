@@ -48,3 +48,6 @@ path = "../../tools/pitrec/main.rs"
 [[bin]]
 name = "pitrec-resend"
 path = "../../tools/resend/main.rs"
+
+[target.'cfg(windows)'.dependencies]
+socket2 = "0.6"
