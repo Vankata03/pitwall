@@ -4,3 +4,7 @@ target/
 dist/
 .env
 *.pwcap
+.cache/
+artifacts/
+.bench-base/
+__pycache__/

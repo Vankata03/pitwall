@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
 
@@ -33,9 +34,90 @@ jobs:
       - name: Dashboard tests and build
         run: |
           pnpm test
+          pnpm typecheck
+          node --test tools/harness/goldens.test.mjs tools/harness/benchmark-gate.test.mjs
           pnpm build
       - name: Collector tests and release build
         run: |
           cargo test --workspace --locked --offline --target ${{ env.CARGO_TARGET }}
           cargo test --workspace --release --locked --offline --target ${{ env.CARGO_TARGET }}
           cargo build --release --locked --offline --target ${{ env.CARGO_TARGET }} --bin pitwall
+
+  browser-smoke:
+    name: Windows preset smoke (${{ matrix.browser }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [pinned, chromium-127]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - run: pnpm install --frozen-lockfile
+      - name: Install pinned browser
+        if: matrix.browser == 'pinned'
+        run: pnpm exec playwright install chromium
+      - name: Install Chromium 127 compatibility browser
+        if: matrix.browser == 'chromium-127'
+        run: pnpm exec browsers install chrome@127.0.6533.88 --path .cache/chrome
+      - run: pnpm build
+      - run: cargo build --locked --example smoke_host
+      - name: Smoke every preset at three replay seek points
+        run: pnpm test:smoke ${{ matrix.browser == 'chromium-127' && '--chromium-127' || '' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preset-smoke-${{ matrix.browser }}
+          path: artifacts/smoke/
+          if-no-files-found: error
+
+  ingest-benchmark:
+    name: Windows ingest regression (25%)
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'perf')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: actions/cache@v4
+        with:
+          path: .cache/goldens
+          key: goldens-${{ hashFiles('tests/goldens/manifest.json') }}
+      - run: pnpm install --frozen-lockfile
+      - name: Fetch and verify SHA-256 pinned recordings
+        run: pnpm goldens
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Check full golden slot
+        id: golden
+        shell: bash
+        run: node -e "const fs=require('fs'); const m=require('./tests/goldens/manifest.json'); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'ready='+Boolean(m.slots['2026-spa-practice-full'])+'\n')"
+      - uses: actions/checkout@v4
+        if: steps.golden.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          path: .bench-base
+      - name: Build head and base dashboards
+        if: steps.golden.outputs.ready == 'true'
+        run: |
+          pnpm build
+          pnpm --dir .bench-base install --frozen-lockfile
+          pnpm --dir .bench-base build
+      - name: Compare base and change on the same Windows runner
+        run: pnpm bench:ingest .bench-base
+        env:
+          GH_TOKEN: ${{ github.token }}
