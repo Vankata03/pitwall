@@ -1,4 +1,4 @@
-import type { Density } from '../contract';
+import type { Density } from '../../runtime/tile';
 
 /** Tile padding from `frame-tiles.css`, the label line and the gap between parts. */
 const PAD_X = 32;

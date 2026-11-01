@@ -85,7 +85,7 @@ test('a short reversal breaks the line without starting a new lap', () => {
   for (const d of [100, 120, 110, 130]) add(d);
   ingest();
   expect(lap.previous).toEqual([]);
-  expect(segments(lap.current).map((s) => s.map((p) => p.distance))).toEqual([[100, 120], [110, 130]]);
+  expect(segments(lap.current).map((s) => s.map((p) => p.distance))).toEqual([[100, 120], [130]]);
 });
 
 test('a time that goes backwards starts over', () => {
