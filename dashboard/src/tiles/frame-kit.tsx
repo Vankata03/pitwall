@@ -4,6 +4,7 @@
  * Frame values themselves are written straight into the DOM from `draw()`; nothing here
  * puts 60 Hz data into React state.
  */
+import type { ReactNode } from 'react';
 import type { CarState } from '../generated/wire/CarState';
 import { effectiveReadoutState, readoutView, writeReadout, type ReadoutElement } from '../runtime/readout';
 import { useSlow } from '../runtime/react';
@@ -69,6 +70,18 @@ export function StateReadout({ state, text, testId }: { state: ReadoutState; tex
     <span className="pw-readout" data-state={view.state} data-testid={testId}>
       {view.text}
     </span>
+  );
+}
+
+// ---- Title ------------------------------------------------------------------
+
+/** A tile's title row, with an optional quiet note on the right. */
+export function TileTitle({ children, note }: { children: ReactNode; note?: ReactNode }) {
+  return (
+    <div className="pw-title">
+      <span>{children}</span>
+      {note ? <span className="pw-title-note">{note}</span> : null}
+    </div>
   );
 }
 

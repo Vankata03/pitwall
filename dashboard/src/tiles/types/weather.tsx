@@ -21,7 +21,7 @@ export default defineTileModule({
       { label: 'Air', value: mapValue(session, s => temp(s.airTemperature)) },
       { label: 'Track', value: mapValue(session, s => temp(s.trackTemperature)) },
       { label: 'Rain chance', value: mapValue(forecast, f => `${f.rain_percentage}%`) },
-      { label: 'Sky', value: mapValue(session, s => sky(s.weather)) },
+      { label: 'Sky', value: mapValue(session, s => sky(s.weather)), tone: 'accent' as const },
       { label: 'Forecast', value: mapValue(forecast, f => density === 'compact' ? `${sky(f.weather)} +${f.time_offset}m` : `+${f.time_offset} min: ${sky(f.weather)}`) },
     ];
     if (density !== 'compact') rows.push({ label: 'Forecast air / track', value: mapValue(forecast, f => `${temp(f.air_temperature)} / ${temp(f.track_temperature)}`) });

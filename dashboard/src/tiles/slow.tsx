@@ -16,14 +16,22 @@ export function mapValue<T, U>(readout: Readout<T> | undefined, fn: (value: T) =
   const value = fn(readout.value);
   return value === null || value === undefined ? { state: 'absent' } : { state: readout.state, value };
 }
-export interface Row { label: string; value: Readout<string>; }
+export interface Row {
+  label: string;
+  value: Readout<string>;
+  /** A quiet line under the label, such as which car a gap is to. */
+  note?: string | undefined;
+  /** Accent for the value; colour only repeats what the value's text or sign already says. */
+  tone?: 'good' | 'bad' | 'accent' | undefined;
+}
 export function SlowTile({ title, snapshot, rows, children }: { title: string; snapshot: SlowSnapshot; rows: Row[]; children?: ReactNode }) {
   const connected = snapshot.connection === 'open';
   const message = wholeTileMessage(rows.map(r => effectiveReadoutState(r.value, connected)), { connected, lifecycle: lifecycleOf(snapshot.state) });
   return <section className="pw-slow-tile" aria-label={title}>
-    <div className="pw-slow-readouts">{rows.map(r => <div className="pw-slow-row" key={r.label}>
+    <div className="pw-slow-readouts">{rows.map(r => <div className="pw-slow-row" key={r.label} data-tone={r.tone}>
       <span className="pw-label">{r.label}</span>
       <Value state={effectiveReadoutState(r.value, connected)} value={'value' in r.value ? r.value.value : ''} />
+      {r.note ? <span className="pw-label pw-slow-note">{r.note}</span> : null}
     </div>)}</div>
     {children}
     {message ? <span className="pw-slow-message pw-label" role="status">{message}</span> : null}

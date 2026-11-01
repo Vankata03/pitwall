@@ -1,5 +1,6 @@
 import type { Readout } from '../../generated/wire/Readout';
 import { useSlow } from '../../runtime/react';
+import { carLabel, participantsOf } from '../../session/cars';
 import { defineTileModule, type TileProps } from '../contract';
 import { boundCar, mapValue, SlowTile } from '../slow';
 
@@ -21,6 +22,14 @@ export default defineTileModule({
       behind = mapValue(next?.gaps, g => g.to_car_in_front_ms === null ? null : `−${(g.to_car_in_front_ms / 1000).toFixed(3)} s`);
       if ('value' in behind && (c.lap.state === 'stale' || next?.lap.state === 'stale')) behind = { state: 'stale', value: behind.value };
     }
-    return <SlowTile title="Gaps" snapshot={snapshot} rows={[{ label: 'Ahead', value: ahead }, { label: 'Behind', value: behind }]} />;
+    const position = c?.lap && 'value' in c.lap ? c.lap.value.car_position : 0;
+    const who = (at: number) => {
+      const other = position > 0 ? participantsOf(snapshot.state).find(p => p.position === at) : undefined;
+      return other ? `P${at} · ${carLabel(other)}` : undefined;
+    };
+    return <SlowTile title="Gaps" snapshot={snapshot} rows={[
+      { label: 'Ahead', value: ahead, note: who(position - 1) },
+      { label: 'Behind', value: behind, note: who(position + 1) },
+    ]} />;
   },
 });

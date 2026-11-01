@@ -64,27 +64,21 @@ function GForce({ car, density, width, height }: TileProps) {
             aria-label="G-force: lateral against longitudinal acceleration on a circle. The readouts beside it give the numbers."
           />
         ) : null}
+        <div className="pw-stat pw-gf-total">
+          <span className="pw-label">G-force</span>
+          <span className="pw-gf-unit">
+            <span className="pw-num pw-readout pw-metric" ref={total} data-testid="g-total" /> <span className="pw-label">G</span>
+          </span>
+        </div>
         <div className="pw-gf-values">
-          <div className="pw-stat">
-            <span className="pw-label">Lateral</span>
-            <span>
-              <span className="pw-num pw-readout pw-value" ref={lateral} data-testid="g-lateral" /> <span className="pw-label">G</span>
-            </span>
+          <div className="pw-gf-axis">
+            <span className="pw-label">Lat</span>
+            <span className="pw-num pw-readout pw-value" ref={lateral} data-testid="g-lateral" />
           </div>
-          <div className="pw-stat">
-            <span className="pw-label">Longitudinal</span>
-            <span>
-              <span className="pw-num pw-readout pw-value" ref={longitudinal} data-testid="g-longitudinal" /> <span className="pw-label">G</span>
-            </span>
+          <div className="pw-gf-axis">
+            <span className="pw-label">Lon</span>
+            <span className="pw-num pw-readout pw-value" ref={longitudinal} data-testid="g-longitudinal" />
           </div>
-          {showCircle ? (
-            <div className="pw-stat">
-              <span className="pw-label">Total</span>
-              <span>
-                <span className="pw-num pw-readout pw-value" ref={total} data-testid="g-total" /> <span className="pw-label">G</span>
-              </span>
-            </div>
-          ) : null}
         </div>
       </div>
       <TileMessage />

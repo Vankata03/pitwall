@@ -4,11 +4,13 @@
   position: relative;
   height: 100%;
   min-width: 0;
-  padding: 12px 16px;
+  padding: 12px var(--pw-tile-pad);
   overflow: hidden;
   background: var(--pw-tile-bg);
   color: var(--pw-text);
   font-family: var(--pw-font);
+  /* Hero numerals take their size from the tile, so a bigger tile means bigger type, not scaling. */
+  container-type: size;
 }
 .pw-frame-body {
   display: flex;
@@ -38,44 +40,61 @@
 .pw-stat {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
+.pw-stat-end {
+  align-items: flex-end;
+  text-align: right;
+}
 .pw-big {
-  font-size: 56px;
-  font-weight: 600;
-  line-height: 1;
+  font-size: clamp(56px, min(26cqw, 44cqh), 190px);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+}
+.pw-metric {
+  font-size: var(--pw-text-metric);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
 
 /* ---- Speed/RPM/gear ---- */
 .pw-srg-speed {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 0;
 }
 .pw-srg-row {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--pw-line);
 }
 .pw-gear {
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 1.1;
   color: var(--pw-accent);
+}
+.pw-gear[data-state='stale'] {
+  color: var(--pw-text-muted);
 }
 .pw-dial {
   align-self: center;
 }
 .pw-shift-strip {
   display: flex;
-  gap: 3px;
+  flex: none;
+  gap: 4px;
 }
 .pw-shift-strip > span {
   flex: 1;
-  height: 12px;
-  border-radius: 2px;
-  background: var(--pw-line);
+  height: 10px;
+  background: var(--pw-meter-empty);
 }
 .pw-shift-strip > span[data-on='true'][data-zone='low'] {
   background: var(--pw-sector-personal-best);
@@ -87,21 +106,30 @@
   background: var(--pw-temp-hot);
 }
 .pw-shift-strip[data-state='stale'] > span[data-on='true'] {
-  opacity: 0.6;
+  background: var(--pw-text-muted);
 }
 
 /* ---- G-force ---- */
 .pw-gf-body {
   flex-direction: row;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
+}
+.pw-gf-total {
+  flex: 1;
 }
 .pw-gf-values {
   display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 8px 16px;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
+}
+.pw-gf-axis {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
 }
 .pw-gf-circle {
   flex: none;
@@ -112,16 +140,18 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 4px;
+  gap: 6px;
 }
 .pw-sm-state {
-  min-width: 8ch;
+  min-width: min(100%, 180px);
   padding: 4px 16px;
   border: 1px solid var(--pw-line);
-  border-radius: 4px;
-  font-size: 20px;
-  font-weight: 600;
+  border-radius: var(--pw-radius-inner);
+  background: var(--pw-tile-bg-raised);
+  font-size: 18px;
+  font-weight: 700;
   letter-spacing: 0.06em;
+  color: var(--pw-text-muted);
 }
 /* On is a filled box as well as a word, so colour is never the only cue. */
 .pw-sm-state[data-mode='active'],
@@ -134,19 +164,26 @@
   border-color: var(--pw-energy);
   color: var(--pw-energy);
 }
-.pw-sm-state[data-state='stale'] {
-  opacity: 0.7;
+/* The detail line is a nicety: a short tile keeps the label and the state. */
+@container (max-height: 100px) {
+  .pw-sm [data-testid='sm-detail'] {
+    display: none;
+  }
 }
 
 /* ---- ERS ---- */
 .pw-ers-head {
   display: flex;
+  flex: 1;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  min-height: 0;
 }
 .pw-ers-percent {
-  font-size: 40px;
-  min-width: 4ch;
+  flex: none;
+  min-width: 3.1ch;
+  font-size: clamp(30px, min(9cqw, 30cqh), 72px);
+  letter-spacing: -0.03em;
 }
 .pw-battery {
   display: flex;
@@ -156,22 +193,42 @@
 }
 .pw-battery > span {
   flex: 1;
-  height: 20px;
-  border-radius: 2px;
-  background: var(--pw-line);
+  height: 26px;
+  background: var(--pw-meter-empty);
 }
 .pw-battery > span[data-on='true'] {
   background: var(--pw-energy);
 }
 .pw-battery[data-state='stale'] > span[data-on='true'] {
-  opacity: 0.6;
+  background: var(--pw-text-muted);
+}
+.pw-ers-mode {
+  flex: none;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--pw-energy) 45%, transparent);
+  border-radius: var(--pw-radius-inner);
+  background: color-mix(in srgb, var(--pw-energy) 12%, transparent);
+  font-size: var(--pw-text-label);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pw-energy);
 }
 .pw-ers-rows {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 8px 16px;
-  margin-top: auto;
+  flex: none;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 6px 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--pw-line);
 }
+.pw-ers-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+.pw-ers-value[data-tone='energy'] .pw-readout[data-state='live'] { color: var(--pw-energy); }
+.pw-ers-value[data-tone='info'] .pw-readout[data-state='live'] { color: var(--pw-info); }
+.pw-ers-value[data-tone='brake'] .pw-readout[data-state='live'] { color: var(--pw-brake); }
 
 /* ---- Lap timing: delta first, sectors below, reference at full density. ---- */
 .pw-lt-head { display: flex; justify-content: space-between; gap: 12px; }
