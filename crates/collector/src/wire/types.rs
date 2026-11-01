@@ -46,6 +46,8 @@ pub struct ReplayState {
 pub struct SessionState {
     pub track_id: i8,
     pub track_length: u16,
+    pub sector2_lap_distance_start: f32,
+    pub sector3_lap_distance_start: f32,
     pub session_type: u8,
     pub total_laps: u8,
     pub weather: u8,
@@ -119,6 +121,8 @@ impl State {
         let session = model.session().map(|s| SessionState {
             track_id: s.track_id,
             track_length: s.track_length,
+            sector2_lap_distance_start: s.sector2_lap_distance_start,
+            sector3_lap_distance_start: s.sector3_lap_distance_start,
             session_type: s.session_type,
             total_laps: s.total_laps,
             weather: s.weather,
