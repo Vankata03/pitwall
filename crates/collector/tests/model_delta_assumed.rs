@@ -462,3 +462,92 @@ fn assumed_former_best_survives_long_session_for_rewind_and_checkpoints_are_pure
         2
     );
 }
+
+#[test]
+fn assumed_time_trial_mixed_packets_late_history_and_line_offsets_reach_frame() {
+    use pitwall_collector::wire::frame;
+    for offset in [-2.0, 1.7] {
+        let mut m = SessionModel::default();
+        let mut session = packet(2026, 1, 0.0);
+        if let Packet::Session(s) = &mut session.packet {
+            s.session_type = 18;
+            s.track_length = 7007;
+        }
+        apply(&mut m, &session);
+        let mut l = lap(0.0, 1, 0, 1);
+        let mut motion = packet(2026, 0, 0.0);
+        let mut telemetry = packet(2026, 6, 0.0);
+        let mut history = packet(2026, 11, 0.0);
+        // Out-lap in pits, invalid flying lap, valid lap, then the next lap.
+        for number in 1..=4 {
+            for step in 0..=1440 {
+                let ms = step * 60;
+                let t = (number - 1) as f32 * 86.4 + ms as f32 / 1000.0;
+                l.header.session_time = t;
+                if let Packet::Lap(d) = &mut l.packet {
+                    for v in d.lap_data.iter_mut().flatten() {
+                        v.current_lap_num = number;
+                        v.current_lap_time_in_ms = ms;
+                        v.last_lap_time_in_ms = if number > 1 { 86400 } else { 0 };
+                        v.lap_distance = offset + ms as f32 / 86400.0 * 7007.0;
+                        v.current_lap_invalid = u8::from(number < 3);
+                        v.pit_status = u8::from(number == 1);
+                        v.sector = if ms < 28800 {
+                            0
+                        } else if ms < 57600 {
+                            1
+                        } else {
+                            2
+                        };
+                        v.sector1_time_ms_part = if ms >= 28800 { 28800 } else { 0 };
+                        v.sector2_time_ms_part = if ms >= 57600 { 28800 } else { 0 };
+                    }
+                }
+                motion.header.session_time = t;
+                telemetry.header.session_time = t;
+                if step % 2 == 0 {
+                    apply(&mut m, &telemetry);
+                    apply(&mut m, &motion);
+                }
+                apply(&mut m, &l);
+                if step % 2 != 0 {
+                    apply(&mut m, &motion);
+                    apply(&mut m, &telemetry);
+                }
+                if number > 1 && step == 17 {
+                    history.header.session_time = t;
+                    if let Packet::SessionHistory(h) = &mut history.packet {
+                        h.car_idx = 0;
+                        h.num_laps = number;
+                        for (i, v) in h
+                            .lap_history_data
+                            .iter_mut()
+                            .take(number as usize)
+                            .enumerate()
+                        {
+                            v.lap_time_in_ms = if i + 1 < number as usize { 86401 } else { 0 };
+                            v.lap_valid_bit_flags = if i >= 2 { 15 } else { 0 };
+                            v.sector1_time_ms_part = 28800;
+                            v.sector2_time_ms_part = 28800;
+                            v.sector3_time_ms_part =
+                                if i + 1 < number as usize { 28801 } else { 0 };
+                        }
+                    }
+                    apply(&mut m, &history);
+                }
+                if number == 4 && [100, 600].contains(&step) {
+                    for reference in [Reference::Best, Reference::Previous] {
+                        assert!(matches!(
+                            m.car(0).unwrap().live_delta(reference),
+                            Readout::Live(_)
+                        ));
+                    }
+                    let bytes = frame::encode(&m, 1, 1);
+                    let word = u16::from_le_bytes(bytes[54..56].try_into().unwrap());
+                    assert_eq!((word >> 8) & 15, 0, "both delta fields must be Live");
+                    assert!(i32::from_le_bytes(bytes[40..44].try_into().unwrap()).abs() < 5);
+                }
+            }
+        }
+    }
+}

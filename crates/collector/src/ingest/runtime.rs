@@ -133,6 +133,7 @@ pub fn run_at(
             .spawn(move || -> io::Result<()> {
                 let origin = Instant::now();
                 let mut last_status = Instant::now();
+                let mut last_publish = Instant::now();
                 let mut model = crate::model::SessionModel::default();
                 let mut tap = |at: u64, bytes: &[u8]| {
                     if worker_recording.load(std::sync::atomic::Ordering::Relaxed) {
@@ -163,8 +164,15 @@ pub fn run_at(
                     }
                     model.advance(Duration::from_micros(now()));
                     let status = live.status(now());
-                    models
-                        .send_replace((model.clone(), crate::wire::CollectorStatus::from(&status)));
+                    // Publish arrivals immediately, but do not clone and wake the publisher
+                    // on every empty 1 ms poll. Idle freshness needs only the slow cadence.
+                    if had_input || last_publish.elapsed() >= Duration::from_millis(200) {
+                        models.send_replace((
+                            model.clone(),
+                            crate::wire::CollectorStatus::from(&status),
+                        ));
+                        last_publish = Instant::now();
+                    }
                     if last_status.elapsed() >= Duration::from_secs(1) {
                         let track = match model.session() {
                             crate::model::Readout::Live(v) | crate::model::Readout::Stale(v) => {

@@ -136,22 +136,32 @@ impl Stream {
     pub fn tick(&self, now: Duration, source: Source, model: &SessionModel, context: Context) {
         let mut i = self.0.lock().unwrap();
         let mut reset = i.model_epoch != model.epoch() || i.source != source;
+        // History generations change on summary corrections, not on every live sample.
+        // The hot Frame path checks 24 shared identities instead of serializing a session.
+        let mut changes = Vec::new();
+        if reset || !i.model.shares_history(model) {
+            let entries = history(model);
+            let order: Vec<_> = entries.iter().map(|e| e.id.clone()).collect();
+            let history: BTreeMap<_, _> = entries
+                .into_iter()
+                .map(|e| (e.id.clone(), serde_json::to_value(e).unwrap()))
+                .collect();
+            reset |= i.history.keys().any(|id| !history.contains_key(id));
+            changes = order
+                .iter()
+                .filter(|id| i.history.get(*id) != history.get(*id))
+                .map(|id| history[id].clone())
+                .collect();
+            i.history = history;
+            i.history_order = order;
+        }
         i.model = model.clone();
-        i.state = State::capture(model, context);
-        let entries = history(model);
-        let order: Vec<_> = entries.iter().map(|e| e.id.clone()).collect();
-        let history: BTreeMap<_, _> = entries
-            .into_iter()
-            .map(|e| (e.id.clone(), serde_json::to_value(e).unwrap()))
-            .collect();
-        reset |= i.history.keys().any(|id| !history.contains_key(id));
-        let changes: Vec<_> = order
-            .iter()
-            .filter(|id| i.history.get(*id) != history.get(*id))
-            .map(|id| history[id].clone())
-            .collect();
-        i.history = history;
-        i.history_order = order;
+        let state_due = i
+            .state_at
+            .is_none_or(|at| now.saturating_sub(at) >= Duration::from_millis(200));
+        if reset || state_due {
+            i.state = State::capture(model, context);
+        }
         if reset {
             i.epoch = i.epoch.wrapping_add(1);
             i.model_epoch = model.epoch();

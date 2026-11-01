@@ -324,6 +324,18 @@ pub struct SessionModel {
     time_trial: Group<crate::telemetry::PacketTimeTrialData>,
 }
 
+impl SessionModel {
+    /// Constant-size identity check of immutable history generations, independent of lap count.
+    pub(crate) fn shares_history(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.race_control, &other.race_control)
+            && self
+                .cars
+                .iter()
+                .zip(&other.cars)
+                .all(|(a, b)| Arc::ptr_eq(&a.derived, &b.derived))
+    }
+}
+
 impl Default for SessionModel {
     fn default() -> Self {
         Self {

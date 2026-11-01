@@ -42,7 +42,7 @@ test('a small step back, as when a car spins, overwrites instead of resetting', 
   lap.record(100, 100, 0, 100);
   lap.record(120, 100, 0, 100);
   lap.record(110, 0, 100, 50);
-  expect(lap.samples().distance).toEqual([100, 110, 120]);
+  expect(lap.samples().distance).toEqual([100, 105, 110, 115, 120]);
 });
 
 test('a fetched lap-so-far fills only what the live samples have not covered', () => {
@@ -71,4 +71,23 @@ test('reset empties the lap and bumps the version for the render loop', () => {
   lap.reset();
   expect(lap.samples().distance).toEqual([]);
   expect(lap.version).toBeGreaterThan(before);
+});
+
+for (const steps of [[0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3], [0, 0.05, 0.183, 0.23, 0.41]]) {
+  test(`300 km/h sparse samples fill every bucket: ${steps}`, () => {
+    const lap = new CurrentLap();
+    for (const t of steps) lap.record(t * 300 / 3.6, 100 - t * 100, t * 100, 300);
+    const s = lap.samples();
+    expect(s.distance).toEqual(Array.from({ length: Math.floor(steps.at(-1)! * 300 / 3.6 / 5) + 1 }, (_, i) => i * 5));
+    expect(s.throttle.every(v => v !== null)).toBe(true);
+  });
+}
+test('interpolation keeps missing channels and gaps over 100 m broken', () => {
+  const lap = new CurrentLap();
+  lap.record(0, 100, 0, 300);
+  lap.record(20, NaN, 0, 300);
+  lap.record(40, 50, 0, 300);
+  expect(lap.samples().throttle.slice(1, 8)).toEqual(Array(7).fill(null));
+  lap.record(150, 100, 0, 300);
+  expect(lap.samples().distance).not.toContain(100);
 });

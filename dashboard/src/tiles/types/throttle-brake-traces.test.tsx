@@ -128,8 +128,8 @@ test('draws the current lap from Frame against distance, throttle and brake in p
   frame(3, 20, 0, 80);
   paint();
   expect(lastPlot().x).toEqual([0, 5, 10, 15, 20]);
-  expect(channelValues('throttle', 'current')).toEqual([100, null, 50, null, 0]);
-  expect(channelValues('brake', 'current')).toEqual([0, null, 0, null, 80]);
+  expect(channelValues('throttle', 'current')).toEqual([100, 75, 50, 25, 0]);
+  expect(channelValues('brake', 'current')).toEqual([0, 0, 0, 40, 80]);
   expect(lastPlot().series.every((s) => s.channel !== 'speed')).toBe(true);
 });
 

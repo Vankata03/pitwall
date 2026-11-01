@@ -413,3 +413,16 @@ test('switching cars replaces the held result and clearing car data removes it',
   expect(text('lt-time')).toBe('—');
   expect(text('lt-s1-time')).toBe('—');
 });
+
+for (const reference of ['best', 'previous']) {
+  test(`held completed time allows live ${reference} delta after five seconds of S1`, () => {
+    const rt = liveRuntime();
+    ttSession(rt, justFinished());
+    mount(rt, <Tile {...props({ ...regular, settings: { reference } })} />);
+    drive(rt, { currentLapTime: 5000, deltaBest: -91, deltaPrevious: 123 });
+    expect(text('lt-time')).toBe('1:24.381');
+    expect(text('lt-delta')).toBe(reference === 'best' ? `${MINUS}0.091` : '+0.123');
+    drive(rt, { currentLapTime: 6000 }, { deltaBest: Absent, deltaPrevious: Absent }, 33);
+    expect(text('lt-delta')).toBe('—');
+  });
+}

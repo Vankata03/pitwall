@@ -80,8 +80,10 @@ function LapTiming({ car, settings, density }: TileProps) {
   useFrameTile(declaration, car, ({ frame, car: i, connected: online }) => {
     const clockState = completed ? effectiveState(ReadoutState.Live, online) : i === null ? ReadoutState.Absent : effectiveState(frameReadoutState(frame, i, 'currentLapTime'), online);
     const field = reference === 'previous' ? 'deltaPrevious' : 'deltaBest';
-    const difference = completed ? extra ? refTime ? completed.lap_time_ms - refTime : null : completed.delta_ms : i === null || extra ? null : frame[field][i]!;
-    const deltaState = difference === null ? ReadoutState.Absent : completed ? effectiveState(ReadoutState.Live, online) : effectiveState(frameReadoutState(frame, i!, field), online);
+    // Keep the official time and sectors, but resume the running delta after five seconds.
+    const holdDelta = completed && (extra || i === null || frame.currentLapTime[i]! < 5000);
+    const difference = holdDelta ? extra ? refTime ? completed.lap_time_ms - refTime : null : completed.delta_ms : i === null || extra ? null : frame[field][i]!;
+    const deltaState = difference === null ? ReadoutState.Absent : holdDelta ? effectiveState(ReadoutState.Live, online) : effectiveState(frameReadoutState(frame, i!, field), online);
     write(clock.current, clockState, time(completed?.lap_time_ms ?? (i === null ? 0 : frame.currentLapTime[i]!), true));
     write(delta.current, deltaState, deltaText(difference ?? 0));
     setData(delta.current, 'sign', deltaState < 2 ? difference! < 0 ? 'ahead' : difference! > 0 ? 'behind' : 'equal' : '');

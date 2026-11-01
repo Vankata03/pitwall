@@ -29,6 +29,8 @@ export class CurrentLap {
   private brake = new Float64Array(2048);
   private filled = new Uint8Array(2048);
   private lastBucket = -1;
+  private lastDistance = NaN;
+  private lastValues: [number, number, number] = [NaN, NaN, NaN];
   private firstBucket = -1;
 
   /** One sample; throttle and brake in percent, any of the three NaN when withheld. */
@@ -39,7 +41,18 @@ export class CurrentLap {
     if (this.lastBucket >= 0 && (this.lastBucket - bucket) * BUCKET_METRES > NEW_LAP_DROP_METRES) this.clear();
     this.grow(bucket);
     if (this.firstBucket < 0) this.firstBucket = bucket;
-    this.put(bucket, speedKmh, throttlePercent / 100, brakePercent / 100);
+    const values: [number, number, number] = [speedKmh, throttlePercent / 100, brakePercent / 100];
+    const gap = distance - this.lastDistance;
+    if (gap > 0 && gap <= 100) {
+      for (let b = this.lastBucket + 1; b < bucket; b++) {
+        const f = (b * BUCKET_METRES - this.lastDistance) / gap;
+        const v = values.map((value, i) => this.lastValues[i]! + f * (value - this.lastValues[i]!));
+        this.put(b, v[0]!, v[1]!, v[2]!);
+      }
+    }
+    this.put(bucket, ...values);
+    this.lastDistance = distance;
+    this.lastValues = values;
     this.lastBucket = bucket;
     this.version++;
   }
@@ -90,6 +103,7 @@ export class CurrentLap {
 
   private clear(): void {
     this.filled.fill(0);
+    this.lastDistance = NaN;
     this.lastBucket = -1;
     this.firstBucket = -1;
   }
