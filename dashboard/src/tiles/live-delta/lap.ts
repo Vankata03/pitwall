@@ -108,9 +108,9 @@ export function segments(points: readonly Point[]): Point[][] {
 }
 
 /** Symmetric 1/2/5 steps, with a useful floor of ±0.1 s. */
-export function deltaExtent(points: readonly Point[]): number {
+export function deltaExtent(...lists: readonly (readonly Point[])[]): number {
   let max = 0.1;
-  for (const p of points) if (Number.isFinite(p.delta)) max = Math.max(max, Math.abs(p.delta));
+  for (const points of lists) for (const p of points) if (Number.isFinite(p.delta)) max = Math.max(max, Math.abs(p.delta));
   const power = 10 ** Math.floor(Math.log10(max));
   return [1, 2, 5, 10].find((n) => n * power >= max)! * power;
 }

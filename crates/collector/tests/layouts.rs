@@ -521,3 +521,36 @@ async fn overflowing_layouts_are_rejected_without_replacing_a_saved_layout() {
         assert_eq!(after, before);
     }
 }
+
+#[tokio::test]
+async fn live_delta_sits_after_lap_timing_on_tablet_and_phone_and_is_large_on_driver() {
+    let library = LayoutLibrary::open(temp_file()).unwrap();
+    let app = app(&library);
+    let get = |name: &'static str| {
+        let app = app.clone();
+        async move { call(&app, Method::GET, &format!("/api/layouts/{name}"), None).await.1 }
+    };
+    let classic = get("Pitwall%20Classic").await;
+    // Tablet: full width, directly below the row that holds Lap timing, nothing overlapping it.
+    let timing = rect(tile(&classic, "tablet", "lap-timing"));
+    let delta = rect(tile(&classic, "tablet", "live-delta"));
+    assert_eq!(delta, [0, 26, 12, 6]);
+    assert_eq!(delta[1], timing[1] + timing[3]);
+    // The tiles that used to follow moved down by the delta tile's height.
+    assert_eq!(rect(tile(&classic, "tablet", "ers")), [0, 32, 12, 4]);
+    assert_eq!(rect(tile(&classic, "tablet", "notice")), [0, 59, 12, 1]);
+    // Phone: second, right after Lap timing.
+    let timing = rect(tile(&classic, "phone", "lap-timing"));
+    assert_eq!(rect(tile(&classic, "phone", "live-delta")), [0, timing[3], 4, 6]);
+
+    let driver = get("Driver").await;
+    assert_eq!(rect(tile(&driver, "wide", "live-delta")), [0, 13, 24, 6]);
+    assert_eq!(rect(tile(&driver, "wide", "notice")), [0, 19, 24, 1]);
+    assert_eq!(rect(tile(&driver, "tablet", "live-delta")), [0, 21, 12, 6]);
+    let timing = rect(tile(&driver, "phone", "lap-timing"));
+    assert_eq!(rect(tile(&driver, "phone", "live-delta")), [0, timing[3], 4, 6]);
+
+    // Race is for an engineer: no live delta.
+    let race = get("Race").await;
+    assert!(tiles(&race, "wide").iter().all(|t| t["type"] != "live-delta"));
+}

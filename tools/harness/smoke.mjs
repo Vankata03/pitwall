@@ -79,9 +79,7 @@ try {
               window.__smoke.frames++;
               const frame = new DataView(event.data);
               window.__smoke.epoch = frame.getUint32(0, true);
-              // Live delta reads the followed player's best delta, in signed milliseconds.
-              window.__smoke.deltaBest = frame.getInt32(16 + 24, true);
-              window.__smoke.deltaState = (frame.getUint16(16 + 38, true) >> 8) & 3;
+              window.__smoke.lastFrame = frame; // the tile follows the player car; read it after pausing
             }
           });
         }
@@ -106,10 +104,17 @@ try {
       await post('pause', { paused: true });
       await page.waitForTimeout(100);
       const actual = await page.locator('[data-testid="live-delta-value"]').textContent();
-      const sample = await page.evaluate(() => window.__smoke);
+      // Live delta follows the player car: its best delta is a signed i32 in ms at offset 24,
+      // with the delta-best readout state in bits 8 and 9 of the readout word at offset 38.
+      const sample = await page.evaluate(() => {
+        const { lastFrame, state } = window.__smoke;
+        const car = 16 + (state.playerCar ?? 0) * 40;
+        return { deltaBest: lastFrame.getInt32(car + 24, true), deltaState: (lastFrame.getUint16(car + 38, true) >> 8) & 3 };
+      });
       if (sample.deltaState < 2) {
         assert.equal(actual, `${sample.deltaBest < 0 ? '−' : '+'}${(Math.abs(sample.deltaBest) / 1000).toFixed(3)}`);
       }
+      assert.ok(await page.locator('.pw-live-delta canvas').count() > 0, 'live delta graph renders on the wide arrangement');
       await page.locator('.pw-live-delta').screenshot({ path: path.join(output, `${preset.name.replaceAll(' ', '-')}-live-delta.png`) });
     }
     await page.close();

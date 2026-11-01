@@ -156,19 +156,19 @@ test('crossing the line starts a new graph and the finished lap stays faint unti
   let t = 0;
   for (let d = 100; d <= 900; d += 50) rt.frame({ 3: { lapDistance: d, deltaBest: -100, readout: 0 } }, ++t);
   rt.paint(16);
-  expect(canvas.alphas()).not.toContain(0.18); // nothing finished yet
+  expect(canvas.alphas()).not.toContain(0.28); // nothing finished yet
   rt.frame({ 3: { lapDistance: 3, deltaBest: 4000, readout: 0 } }, ++t); // official figure at the line
   rt.frame({ 3: { lapDistance: 60, deltaBest: 40, readout: 0 } }, ++t);
   canvas.clear();
   rt.paint(33);
-  expect(canvas.alphas()).toContain(0.18); // the finished lap, faint, ahead of the car
+  expect(canvas.alphas()).toContain(0.28); // the finished lap, faint, ahead of the car
   expect(headline().textContent).toBe('+0.040');
   rt.frame({ 3: { lapDistance: 950, deltaBest: 40, readout: 0 } }, ++t);
   rt.frame({ 3: { lapDistance: 960, deltaBest: 40, readout: 0 } }, ++t);
   canvas.clear();
   rt.paint(50);
   // Passed: the faint copy past 960 m is gone, so no faint stroke remains.
-  expect(canvas.alphas()).not.toContain(0.18);
+  expect(canvas.alphas()).not.toContain(0.28);
 });
 
 test('every accepted Frame is recorded in the rings, not once per animation frame', () => {

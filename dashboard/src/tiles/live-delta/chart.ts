@@ -35,7 +35,7 @@ const TOP = 8;
 const BOTTOM = 20; // room for the distance labels
 const LINE = 3;
 const FILL_ALPHA = 0.22;
-const FAINT = 0.18;
+const FAINT = 0.28;
 
 /**
  * Delta against lap distance for the whole lap. Ahead (negative) is drawn above the zero line
@@ -73,7 +73,7 @@ export function drawDelta(
   }
   // The finished lap stays only ahead of the car; the new lap overwrites it as it passes.
   const ahead = lap.previous.filter((p) => !(p.distance < passed));
-  const extent = deltaExtent([...lap.current, ...ahead]);
+  const extent = deltaExtent(lap.current, ahead);
   const x = (distance: number) => left + (distance / length) * (right - left);
   const y = (delta: number) => top + ((extent + delta) / (extent * 2)) * (bottom - top);
   const zero = y(0);
@@ -155,7 +155,7 @@ export function drawDelta(
   if (head) {
     ctx.beginPath();
     ctx.arc(x(head.distance), y(head.delta), 4, 0, Math.PI * 2);
-    ctx.fillStyle = muted ? colours.muted : head.delta < 0 ? colours.ahead : colours.behind;
+    ctx.fillStyle = muted || head.delta === 0 ? colours.muted : head.delta < 0 ? colours.ahead : colours.behind;
     ctx.globalAlpha = 1;
     ctx.fill();
   }
