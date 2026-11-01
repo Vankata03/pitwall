@@ -1,46 +1,90 @@
 import type { CarRings } from '../../runtime/stores';
 
 export type Point = { distance: number; delta: number };
-/** Retains a whole lap beyond the short transport rings, consuming every received sample. */
+export type Reference = 'deltaBest' | 'deltaPrevious';
+
+/** Longest gap in lap distance (m) the graph joins with a straight line (spec section 6). */
+export const MAX_JOIN_M = 100;
+/** A fall in lap distance larger than this is the start line, not a car rolling back. */
+const LINE_M = 100;
+const MAX_POINTS = 20_000;
+const BREAK: Point = { distance: NaN, delta: NaN };
+
+/**
+ * One car's delta against lap distance over the whole lap, in seconds. The transport rings
+ * keep ten seconds; this keeps the lap. It reads every sample the rings gained since its last
+ * call, so a Frame that arrives between two paints is never skipped. The rings are written
+ * per accepted Frame, never per animation frame.
+ */
 export class DeltaLap {
   current: Point[] = [];
+  /** The finished lap, kept until the new lap passes it. */
   previous: Point[] = [];
   private seen = 0;
   private epoch = -1;
   private lastTime = -Infinity;
   private lastDistance = NaN;
+  /** Distance of the first sample after the line, repeated by Frames until the next Lap Data. */
+  private atLine = NaN;
 
-  ingest(rings: CarRings, epoch: number, reference: 'deltaBest' | 'deltaPrevious'): void {
+  ingest(rings: CarRings, epoch: number, reference: Reference): void {
     const ring = rings[reference];
-    if (epoch !== this.epoch || ring.version < this.seen || ring.version - this.seen > ring.length) {
-      this.current = []; this.previous = []; this.seen = ring.version - ring.length;
-      this.lastTime = -Infinity; this.lastDistance = NaN; this.epoch = epoch;
+    if (epoch !== this.epoch) {
+      this.restart();
+      this.epoch = epoch;
+      this.seen = ring.version - ring.length;
     }
-    const start = Math.max(0, ring.length - (ring.version - this.seen));
-    for (let i = start; i < ring.length; i++) {
-      const time = rings.sessionTime.at(i);
-      const distance = rings.lapDistance.at(i);
-      const delta = ring.at(i) / 1000;
-      if (time < this.lastTime) { this.current = []; this.previous = []; this.lastDistance = NaN; }
-      this.lastTime = time;
-      if (Number.isFinite(distance) && distance >= 0) {
-        if (distance < this.lastDistance - 100) {
-          this.previous = this.current; this.current = [];
-        } else if (distance < this.lastDistance) {
-          // Small reversals are not a new lap. Break the trace while reversing.
-          this.current.push({ distance, delta: NaN });
-          this.lastDistance = distance;
-          continue;
-        }
-        this.lastDistance = distance;
-      }
-      // One point per distance suffices; telemetry Frames often repeat Lap Data.
-      const last = this.current.at(-1);
-      if (last && !Number.isFinite(last.distance) && !Number.isFinite(distance)) continue;
-      if (last && last.distance === distance && (Number.isFinite(last.delta) || !Number.isFinite(delta))) last.delta = delta;
-      else this.current.push({ distance, delta });
-    }
+    const gained = ring.version - this.seen;
+    // Frames lost to an overflow (a hidden tab, say) leave a hole: break the line, keep the lap.
+    if (gained > ring.length || gained < 0) this.add(BREAK);
+    const start = Math.max(0, ring.length - Math.max(0, gained));
+    for (let i = start; i < ring.length; i++) this.sample(rings.sessionTime.at(i), rings.lapDistance.at(i), ring.at(i) / 1000);
     this.seen = ring.version;
+  }
+
+  private restart(): void {
+    this.current = [];
+    this.previous = [];
+    this.lastTime = -Infinity;
+    this.lastDistance = NaN;
+    this.atLine = NaN;
+  }
+
+  private sample(time: number, distance: number, delta: number): void {
+    if (time < this.lastTime) this.restart();
+    this.lastTime = time;
+    if (!Number.isFinite(distance) || distance < 0) {
+      this.add(BREAK);
+      return;
+    }
+    if (distance < this.lastDistance - LINE_M) {
+      // The line. The first Lap Data of the new lap carries the official lap delta, which is
+      // the headline's business: it belongs to neither lap's graph.
+      if (this.current.filter((p) => Number.isFinite(p.delta)).length > 1) this.previous = this.current;
+      this.current = [];
+      this.lastDistance = distance;
+      this.atLine = distance;
+      return;
+    }
+    if (distance === this.atLine) return;
+    this.atLine = NaN;
+    if (distance < this.lastDistance) {
+      // A small reversal is not a new lap: break the line while the car goes back over ground.
+      this.add({ distance, delta: NaN });
+      this.lastDistance = distance;
+      return;
+    }
+    this.lastDistance = distance;
+    const last = this.current.at(-1);
+    if (last && last.distance === distance) last.delta = delta; // one point per distance
+    else this.add({ distance, delta });
+  }
+
+  private add(point: Point): void {
+    const last = this.current.at(-1);
+    if (!Number.isFinite(point.distance) && last && !Number.isFinite(last.distance)) return;
+    this.current.push(point === BREAK ? { ...BREAK } : point);
+    if (this.current.length > MAX_POINTS) this.current.splice(0, MAX_POINTS / 4);
   }
 }
 
@@ -49,10 +93,14 @@ export function segments(points: readonly Point[]): Point[][] {
   const out: Point[][] = [];
   let segment: Point[] | null = null;
   for (const point of points) {
-    if (!Number.isFinite(point.distance) || point.distance < 0 || !Number.isFinite(point.delta)) { segment = null; continue; }
+    if (!Number.isFinite(point.distance) || point.distance < 0 || !Number.isFinite(point.delta)) {
+      segment = null;
+      continue;
+    }
     const last = segment?.at(-1);
-    if (!segment || (last && (point.distance - last.distance > 100 || point.distance < last.distance))) {
-      segment = []; out.push(segment);
+    if (!segment || (last && (point.distance - last.distance > MAX_JOIN_M || point.distance < last.distance))) {
+      segment = [];
+      out.push(segment);
     }
     segment.push(point);
   }
@@ -64,5 +112,5 @@ export function deltaExtent(points: readonly Point[]): number {
   let max = 0.1;
   for (const p of points) if (Number.isFinite(p.delta)) max = Math.max(max, Math.abs(p.delta));
   const power = 10 ** Math.floor(Math.log10(max));
-  return [1, 2, 5, 10].find(n => n * power >= max)! * power;
+  return [1, 2, 5, 10].find((n) => n * power >= max)! * power;
 }

@@ -60,6 +60,7 @@ export class FrameStore {
     if (!decodeFrameInto(buf, this.data)) return;
     const d = this.data;
     for (let i = 0; i < CAR_COUNT; i++) {
+      if ((d.readout[i]! & 0x3fff) === 0x3fff) continue; // empty slot: absent throughout
       const r = this.rings[i]!;
       r.sessionTime.push(d.sessionTime);
       // Keep channels aligned; missing data must break a trace rather than draw zero.
