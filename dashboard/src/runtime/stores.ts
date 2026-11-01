@@ -29,6 +29,8 @@ export interface CarRings {
   throttle: RingBuffer;
   brake: RingBuffer;
   lapDistance: RingBuffer;
+  deltaBest: RingBuffer;
+  deltaPrevious: RingBuffer;
 }
 
 /**
@@ -48,6 +50,8 @@ export class FrameStore {
       throttle: new RingBuffer(ringCapacity),
       brake: new RingBuffer(ringCapacity),
       lapDistance: new RingBuffer(ringCapacity),
+      deltaBest: new RingBuffer(ringCapacity),
+      deltaPrevious: new RingBuffer(ringCapacity),
     }));
   }
 
@@ -60,7 +64,7 @@ export class FrameStore {
       const r = this.rings[i]!;
       r.sessionTime.push(d.sessionTime);
       // Keep channels aligned; missing data must break a trace rather than draw zero.
-      for (const field of ['speed', 'throttle', 'brake', 'lapDistance'] as const) {
+      for (const field of ['speed', 'throttle', 'brake', 'lapDistance', 'deltaBest', 'deltaPrevious'] as const) {
         r[field].push(frameReadoutState(d, i, field) < 2 ? d[field][i]! : NaN);
       }
     }
@@ -82,6 +86,8 @@ export class FrameStore {
       r.throttle.clear();
       r.brake.clear();
       r.lapDistance.clear();
+      r.deltaBest.clear();
+      r.deltaPrevious.clear();
     }
     this.version++;
   }

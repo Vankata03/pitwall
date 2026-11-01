@@ -114,7 +114,8 @@ async fn pitwall_classic_wide_arrangement_matches_the_spec_table() {
         ("throttle-brake-traces", [0, 14, 10, 7]),
         ("stint", [10, 14, 8, 7]),
         ("timing-tower", [18, 14, 6, 7]),
-        ("notice", [0, 21, 24, 1]),
+        ("live-delta", [0, 21, 24, 6]),
+        ("notice", [0, 27, 24, 1]),
     ];
     assert_eq!(tiles(&layout, "wide").len(), expected.len());
     for (id, at) in expected {
@@ -170,6 +171,7 @@ async fn every_preset_has_valid_wide_tablet_and_phone_arrangements_with_a_notice
         "car-status" => (8, 6),
         "timing-tower" => (4, 6),
         "stint" => (6, 4),
+        "live-delta" => (6, 3),
         other => panic!("unexpected tile type {other}"),
     };
 
@@ -198,7 +200,7 @@ async fn every_preset_has_valid_wide_tablet_and_phone_arrangements_with_a_notice
 }
 
 #[tokio::test]
-async fn phone_arrangements_are_one_column_with_lap_timing_and_gaps_first() {
+async fn phone_arrangements_start_with_lap_timing_live_delta_then_gaps() {
     let library = LayoutLibrary::open(temp_file()).unwrap();
     let app = app(&library);
     for name in ["Pitwall%20Classic", "Driver"] {
@@ -206,7 +208,8 @@ async fn phone_arrangements_are_one_column_with_lap_timing_and_gaps_first() {
         let mut phone: Vec<&Value> = tiles(&layout, "phone").iter().collect();
         phone.sort_by_key(|tile| tile["y"].as_u64().unwrap());
         assert_eq!(phone[0]["type"], "lap-timing");
-        assert_eq!(phone[1]["type"], "gaps");
+        assert_eq!(phone[1]["type"], "live-delta");
+        assert_eq!(phone[2]["type"], "gaps");
     }
 }
 
@@ -517,4 +520,37 @@ async fn overflowing_layouts_are_rejected_without_replacing_a_saved_layout() {
         let (_, after) = call(&app, Method::GET, "/api/layouts/Mine", None).await;
         assert_eq!(after, before);
     }
+}
+
+#[tokio::test]
+async fn live_delta_sits_after_lap_timing_on_tablet_and_phone_and_is_large_on_driver() {
+    let library = LayoutLibrary::open(temp_file()).unwrap();
+    let app = app(&library);
+    let get = |name: &'static str| {
+        let app = app.clone();
+        async move { call(&app, Method::GET, &format!("/api/layouts/{name}"), None).await.1 }
+    };
+    let classic = get("Pitwall%20Classic").await;
+    // Tablet: full width, directly below the row that holds Lap timing, nothing overlapping it.
+    let timing = rect(tile(&classic, "tablet", "lap-timing"));
+    let delta = rect(tile(&classic, "tablet", "live-delta"));
+    assert_eq!(delta, [0, 26, 12, 6]);
+    assert_eq!(delta[1], timing[1] + timing[3]);
+    // The tiles that used to follow moved down by the delta tile's height.
+    assert_eq!(rect(tile(&classic, "tablet", "ers")), [0, 32, 12, 4]);
+    assert_eq!(rect(tile(&classic, "tablet", "notice")), [0, 59, 12, 1]);
+    // Phone: second, right after Lap timing.
+    let timing = rect(tile(&classic, "phone", "lap-timing"));
+    assert_eq!(rect(tile(&classic, "phone", "live-delta")), [0, timing[3], 4, 6]);
+
+    let driver = get("Driver").await;
+    assert_eq!(rect(tile(&driver, "wide", "live-delta")), [0, 13, 24, 6]);
+    assert_eq!(rect(tile(&driver, "wide", "notice")), [0, 19, 24, 1]);
+    assert_eq!(rect(tile(&driver, "tablet", "live-delta")), [0, 21, 12, 6]);
+    let timing = rect(tile(&driver, "phone", "lap-timing"));
+    assert_eq!(rect(tile(&driver, "phone", "live-delta")), [0, timing[3], 4, 6]);
+
+    // Race is for an engineer: no live delta.
+    let race = get("Race").await;
+    assert!(tiles(&race, "wide").iter().all(|t| t["type"] != "live-delta"));
 }

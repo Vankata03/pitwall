@@ -1,0 +1,49 @@
+/* Live delta. Colours are the shared palette tokens; the headline size arrives as
+   --pw-ld-size, set from the tile box in px (see geometry.ts), so it stays huge at every density. */
+.pw-live-delta .pw-frame-body {
+  gap: 8px;
+}
+.pw-live-delta-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.pw-live-delta[data-arrangement='side'] .pw-frame-body {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 24px;
+}
+.pw-live-delta[data-arrangement='side'] .pw-live-delta-head {
+  flex: none;
+  justify-content: center;
+}
+.pw-live-delta[data-arrangement='headline'] .pw-live-delta-head {
+  height: 100%;
+  justify-content: center;
+}
+.pw-live-delta-value {
+  display: block;
+  font-size: var(--pw-ld-size, 56px);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* The words are shorter than the figures, but still must fit the same box. */
+.pw-live-delta-value[data-state='restricted'] {
+  font-size: calc(var(--pw-ld-size, 56px) * 0.42);
+}
+.pw-live-delta-value[data-state='live'][data-sign='ahead'],
+.pw-live-delta-value[data-state='stale'][data-sign='ahead'] {
+  color: var(--pw-sector-personal-best);
+}
+.pw-live-delta-value[data-state='live'][data-sign='behind'],
+.pw-live-delta-value[data-state='stale'][data-sign='behind'] {
+  color: var(--pw-sector-slower);
+}
+.pw-live-delta canvas {
+  display: block;
+  flex: none;
+  min-height: 0;
+  max-width: 100%;
+}
