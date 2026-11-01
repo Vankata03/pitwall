@@ -202,6 +202,9 @@ pub fn run(cli: Cli, paths: AppPaths) -> io::Result<()> {
                 }
                 if message != last_error {
                     log(&worker_paths, &message);
+                    if worker_cli.console {
+                        eprintln!("{message}");
+                    }
                     #[cfg(any(windows, target_os = "macos"))]
                     if !worker_cli.console {
                         let _ = notify_rust::Notification::new()
