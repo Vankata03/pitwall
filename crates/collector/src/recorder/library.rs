@@ -25,7 +25,7 @@ const SESSION_PACKET: u8 = 1;
 const LAP_PACKET: u8 = 2;
 pub(super) const FINAL_CLASSIFICATION_PACKET: u8 = 8;
 
-/// Serialises sidecar read-modify-write between recompression and pinning.
+/// Serialises sidecar read-modify-write and retention's protection check/deletion.
 static SIDECARS: Mutex<()> = Mutex::new(());
 
 /// What the `.json` beside each recording holds.
@@ -318,15 +318,15 @@ pub(super) fn sweep(
         if total <= cap_bytes {
             break;
         }
-        let in_replay = loaded
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&entry.file_name)
-            .is_some_and(|&n| n > 0);
-        if entry.sidecar.pinned || in_replay {
+        let _sidecars = SIDECARS.lock().unwrap_or_else(|e| e.into_inner());
+        // Recheck pinning after the listing snapshot, and hold both protection
+        // locks until deletion finishes so a successful pin cannot be lost.
+        let loaded = loaded.lock().unwrap_or_else(|e| e.into_inner());
+        let in_replay = loaded.get(&entry.file_name).is_some_and(|&n| n > 0);
+        let path = dir.join(&entry.file_name);
+        if in_replay || read_sidecar(&path).map_or(true, |sidecar| sidecar.pinned) {
             continue;
         }
-        let path = dir.join(&entry.file_name);
         // Sidecar first: a recording without one is rebuilt, a sidecar without one is cleaned.
         let _ = fs::remove_file(sidecar_path(&path));
         if fs::remove_file(&path).is_ok() {

@@ -119,19 +119,7 @@ impl Controller {
         }
     }
     async fn start(&self, name: String) -> Result<(), StatusCode> {
-        if name.is_empty()
-            || name.contains(['/', '\\', ':'])
-            || !name.ends_with(".pitrec")
-            || name.starts_with('.')
-        {
-            return Err(StatusCode::BAD_REQUEST);
-        }
-        // Reject symlinks as well as path traversal before acquiring a loaded guard.
-        let path = self.dir.join(&name);
-        let metadata = std::fs::symlink_metadata(&path).map_err(status)?;
-        if !metadata.is_file() || metadata.file_type().is_symlink() {
-            return Err(StatusCode::BAD_REQUEST);
-        }
+        let path = crate::recorder::recording_path(&self.dir, &name).map_err(status)?;
         let guard = self.recorder.lock().unwrap().mark_loaded(&name);
         let file = File::open(path).map_err(status)?;
         let generation = {
