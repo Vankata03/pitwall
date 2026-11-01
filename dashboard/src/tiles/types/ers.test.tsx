@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, screen } from '@testing-library/react';
 import { afterEach, expect, test } from 'vitest';
-import { Absent, carState, liveReadout, liveRuntime, mount, props, readoutWord, Restricted, Stale } from '../frame-test-kit';
+import { Absent, carState, liveReadout, liveRuntime, mount, props, readoutWord, Restricted, Stale, type CarState } from '../frame-test-kit';
 import tile from './ers';
 
 afterEach(cleanup);
@@ -171,4 +171,33 @@ test('the whole-tile message appears only when no readout has data', () => {
   percent(rt, 0, { status: Absent }, 33);
   expect(screen.getByTestId('tile-message').textContent).toBe('No data');
   expect(screen.getByTestId('ers-percent')).toBeTruthy();
+});
+
+test('boost waits for aero data and preserves its stale or restricted state', () => {
+  const rt = liveRuntime();
+  const show = (a: CarState['aero']) => {
+    rt.state({ cars: { 3: carState({ regulations: 'Regulations2026', ers: ers({ deploy_mode: 3 }), aero: a }) } });
+  };
+  show({ state: 'absent' });
+  mount(rt, <Tile {...props(full)} />);
+  expect([state('ers-boost'), text('ers-boost')]).toEqual(['absent', '—']);
+  show({ state: 'restricted' });
+  expect([state('ers-boost'), text('ers-boost')]).toEqual(['restricted', 'Restricted']);
+  show({ state: 'stale', value: aero({ overtake_active: 1 }).value });
+  expect([state('ers-boost'), text('ers-boost')]).toEqual(['stale', 'Off']);
+});
+
+test('a restricted harvest limit says Restricted rather than absent', () => {
+  const rt = liveRuntime();
+  rt.state({ cars: { 3: carState({ regulations: 'Regulations2026', ers: { state: 'restricted' } }) } });
+  mount(rt, <Tile {...props(full)} />);
+  expect([state('ers-harvest-limit'), text('ers-harvest-limit')]).toEqual(['restricted', 'Restricted']);
+});
+
+test('compact reports no data when its visible percentage is absent despite hidden slow rows', () => {
+  const rt = liveRuntime();
+  rt.state({ cars: { 3: carState({ ers: ers() }) } });
+  mount(rt, <Tile {...props({ density: 'compact' })} />);
+  percent(rt, 0, { status: Absent });
+  expect(screen.getByTestId('tile-message').textContent).toBe('No data');
 });

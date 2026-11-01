@@ -172,3 +172,19 @@
   gap: 8px 16px;
   margin-top: auto;
 }
+
+/* ---- Lap timing: delta first, sectors below, reference at full density. ---- */
+.pw-lt-head { display: flex; justify-content: space-between; gap: 12px; }
+.pw-lt-delta { font-size: 32px; font-weight: 600; line-height: 1.2; }
+.pw-lt-time { font-size: 22px; font-weight: 600; }
+.pw-lt-delta[data-state='live'][data-sign='ahead'] { color: var(--pw-sector-personal-best); }
+.pw-lt-delta[data-state='live'][data-sign='behind'] { color: var(--pw-sector-slower); }
+.pw-lt-sectors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pw-lt-sectors > div { border-top: 2px solid var(--pw-line); padding-top: 4px; font-size: var(--pw-text-value); }
+.pw-lt-sectors [data-current='true'] { border-color: var(--pw-accent); }
+.pw-lt-sectors [data-rank='session-best'] .pw-readout[data-state='live'] { color: var(--pw-sector-session-best); }
+.pw-lt-sectors [data-rank='personal-best'] .pw-readout[data-state='live'] { color: var(--pw-sector-personal-best); }
+.pw-lt-sectors [data-rank='slower'] .pw-readout[data-state='live'] { color: var(--pw-sector-slower); }
+.pw-lt-reference { display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid var(--pw-line); padding-top: 8px; margin-top: auto; font-size: var(--pw-text-value); }
+.pw-lt-result { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--pw-line); padding-top: 6px; font-size: var(--pw-text-value); }
+.pw-lt-ref-sectors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

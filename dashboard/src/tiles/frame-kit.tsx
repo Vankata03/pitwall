@@ -26,7 +26,7 @@ export function useConnected(): boolean {
 
 /** Session type from State; the game's id 18 is Time Trial. */
 export function useSessionType(): number | null {
-  return useSlow((s) => (s.state?.session.state === 'live' || s.state?.session.state === 'stale' ? s.state.session.value.sessionType : null));
+  return useSlow((s) => (s.state?.session?.state === 'live' || s.state?.session?.state === 'stale' ? s.state.session.value.sessionType : null));
 }
 export const TIME_TRIAL = 18;
 

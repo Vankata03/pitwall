@@ -70,7 +70,7 @@ function Ers({ car, density }: TileProps) {
   const show2026 = density === 'full' && is2026;
 
   // What the slow rows currently show, for the whole-tile rule.
-  const slowStates = [slowState(ersReadout, connected)];
+  const slowStates = showRows ? [slowState(ersReadout, connected)] : [];
   if (show2026) slowStates.push(slowState(aeroReadout, connected));
 
   useFrameTile(
@@ -135,12 +135,12 @@ function Ers({ car, density }: TileProps) {
                   <SlowReadout readout={aeroReadout} connected={connected} format={() => overtake} testId="ers-overtake" />
                 </Row>
                 <Row label="Boost">
-                  <SlowReadout readout={ersReadout} connected={connected} format={() => boost} testId="ers-boost" />
+                  <StateReadout state={Math.max(slowState(ersReadout, connected), slowState(aeroReadout, connected)) as ReadoutState} text={boost} testId="ers-boost" />
                 </Row>
                 <Row label="Harvest limit">
                   {/* Assumed to be in joules like the other ERS fields, until a capture confirms it. */}
                   {limit === null || limit === undefined ? (
-                    <StateReadout state={ReadoutState.Absent} text="" testId="ers-harvest-limit" />
+                    <StateReadout state={ersReadout?.state === 'restricted' ? ReadoutState.Restricted : ReadoutState.Absent} text="" testId="ers-harvest-limit" />
                   ) : (
                     <SlowReadout readout={ersReadout} connected={connected} format={() => kj(limit)} testId="ers-harvest-limit" />
                   )}
