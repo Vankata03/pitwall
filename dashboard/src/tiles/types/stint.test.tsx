@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { RuntimeProvider } from '../../runtime/react';
 import { createRuntime } from '../../runtime/runtime';
@@ -115,17 +115,31 @@ test('stint shows completed and current sets, used starting age, stops and playe
   expect(screen.getByText('Laps 11–14 · current')).toBeTruthy();
   expect(screen.getByText('Used set · starting age 2')).toBeTruthy();
   expect(screen.getByText('Stop · lap 10')).toBeTruthy();
-  expect(screen.getByText('2.300s stopped · 22.000s lane')).toBeTruthy();
+  expect(screen.getByText('2.300 s')).toBeTruthy();
+  expect(screen.getByText('22.000 s')).toBeTruthy();
   expect(screen.getByText('Laps 18–22 · rejoin P8')).toBeTruthy();
 });
 
-test('restricted rival keeps stint blocks but no wear values or player pit window', () => {
+test('restricted rival keeps stint history but no wear values or player pit window', () => {
   show(1, true);
   expect(screen.getAllByText('Restricted')).toHaveLength(2);
   expect(screen.getByText('Laps 1–10 · 10 laps')).toBeTruthy();
   expect(screen.queryByText('Laps 18–22 · rejoin P8')).toBeNull();
   expect(screen.queryByText('20% / 30% / 40% / 50%')).toBeNull();
-  expect(screen.getByText('—').getAttribute('data-state')).toBe('absent');
+  expect(screen.queryByText('Game pit window')).toBeNull();
+});
+
+test('current set comes first with labelled wheel wear and distinct pit timing values', () => {
+  show();
+  const active = screen.getByRole('region', { name: 'Current tyre set' });
+  expect(within(active).getByText('Medium')).toBeTruthy();
+  expect(within(active).getByTestId('stint-laps').textContent).toBe('03');
+  for (const [wheel, wear] of [['FL', '40%'], ['FR', '50%'], ['RL', '20%'], ['RR', '30%']]) {
+    expect(within(active).getByText(wheel!).parentElement!.textContent).toContain(wear);
+  }
+  expect(within(screen.getByRole('list', { name: 'Tyre stints' })).getByText('Soft')).toBeTruthy();
+  expect(screen.getByText('Stopped').parentElement!.textContent).toContain('2.300 s');
+  expect(screen.getByText('Pit lane').parentElement!.textContent).toContain('22.000 s');
 });
 test('new epoch removes old stints and stops instead of retaining another session', () => {
   const runtime = show();

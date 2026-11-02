@@ -1,8 +1,31 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ReplayState } from '../generated/wire/ReplayState';
 
+/** Keep the thumb under local control; rebuilding replay happens only when input is committed. */
+function ReplayPosition({ replay, onSeek }: { replay: ReplayState; onSeek: (position: number) => Promise<boolean> }) {
+  const [draft, setDraft] = useState<number | null>(null);
+  const dirty = useRef(false);
+  const commit = (value: string) => {
+    if (!dirty.current) return;
+    dirty.current = false;
+    void onSeek(Number(value)).then(ok => { if (!ok) setDraft(null); });
+  };
+  const position = draft ?? replay.position;
+  return <>
+    <label>Replay position<input type="range" min={0} max={replay.duration} step={0.1} value={position}
+      onChange={e => { dirty.current = true; setDraft(Number(e.target.value)); }}
+      onPointerDown={e => e.currentTarget.setPointerCapture?.(e.pointerId)}
+      onPointerUp={e => commit(e.currentTarget.value)}
+      onKeyUp={e => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) commit(e.currentTarget.value); }}
+      onBlur={e => commit(e.currentTarget.value)}
+      onPointerCancel={() => { dirty.current = false; setDraft(null); }}
+    /></label>
+    <span>{position.toFixed(1)} / {replay.duration.toFixed(1)} s</span>
+  </>;
+}
+
 /** Transport is shared by every screen; source start and exit remain host-only. */
-export function ReplayControls({ replay, car }: { replay: ReplayState | null | undefined; car: number }) {
+export function ReplayControls({ replay, car, epoch }: { replay: ReplayState | null | undefined; car: number; epoch: number | null }) {
   const [lap, setLap] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +38,7 @@ export function ReplayControls({ replay, car }: { replay: ReplayState | null | u
   }
   async function run(action: () => Promise<void>) {
     setBusy(true); setError(null);
-    try { await action(); } catch (e) { setError(String(e)); } finally { setBusy(false); }
+    try { await action(); return true; } catch (e) { setError(String(e)); return false; } finally { setBusy(false); }
   }
   return <section aria-label="Replay transport" className="pw-replay-controls">
     <p role="status">{replay.banner}</p>
@@ -27,8 +50,7 @@ export function ReplayControls({ replay, car }: { replay: ReplayState | null | u
       <label>Replay speed<select value={replay.speed} onChange={(e) => void run(() => post('speed', { speed: Number(e.target.value) }))}>
         {[0.5, 1, 2, 4].map((speed) => <option key={speed} value={speed}>{speed}x</option>)}
       </select></label>
-      <label>Replay position<input type="range" min={0} max={replay.duration} step={0.1} value={replay.position} onChange={(e) => void run(() => post('seek', { position: Number(e.target.value) }))} /></label>
-      <span>{replay.position.toFixed(1)} / {replay.duration.toFixed(1)} s</span>
+      <ReplayPosition key={epoch} replay={replay} onSeek={position => run(() => post('seek', { position }))} />
       <form onSubmit={(e) => { e.preventDefault(); void run(() => post('lap', { car, lap })); }}>
         <label>Replay lap<input type="number" min={1} max={255} required value={lap} onChange={(e) => setLap(Number(e.target.value))} /></label>
         <button type="submit">Jump to lap</button>

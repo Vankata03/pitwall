@@ -4,6 +4,59 @@ pitwall is a telemetry dashboard for the F1® 25 game, including the 2026 Season
 The collector receives UDP telemetry, records sessions and serves a dashboard to screens
 on your LAN. It is free, private and has no repository licence. No installer is required.
 
+## Dashboard
+
+The Pitwall Classic preset puts speed, RPM, gear, engine temperature, G-force,
+energy recovery and fuel beside the focus car. Tyre condition, temperatures,
+pressures and wing damage surround the car, with DRS or straight-line mode above
+the rear wing. Race control shows track status and recent session events.
+The remaining tiles show weather, circuit position, lap timing, driver inputs,
+the current stint and the timing tower.
+Driver inputs use a fixed rolling window of the last 30 seconds of received telemetry.
+
+![Pitwall Classic replaying Spa telemetry, with the focus car and race-control strip](docs/screenshots/pitwall-classic-spa.png)
+
+Choose a preset from Layout. Use Edit to create a custom layout and add, move,
+resize or remove tiles. Choose the focus car and display units per screen.
+The screenshots use real format-2026 telemetry from Spa and the shipped fallback
+car, tinted for the selected team. Local livery art is not included.
+
+![Spa replay after a pit stop, showing tyre wear, stint history and driver names](docs/screenshots/pitwall-classic-spa-lap-two.png)
+
+## Recordings and replay
+
+Recording is enabled by default. The collector writes `.pitrec` files under its
+`recordings/` folder. To replay a session:
+
+1. Open `http://127.0.0.1:8777/status` on the collector PC.
+2. Under Recordings and replay, choose Start replay for a recording. If you copied
+   a `.pitrec` file into the folder, choose Rescan recordings first.
+3. Return to the dashboard. Use the replay controls to pause, resume, seek,
+   jump to a lap or select 0.5x, 1x, 2x or 4x speed.
+4. Choose Stop replay on the host's Status page to return to live telemetry.
+
+Replay position and playback controls are shared across connected screens.
+Incoming live telemetry continues recording in the background. Starting and
+stopping replay require a loopback URL on the host.
+
+Raw `.pwcap` captures must first be converted with the repository's `pitrec` tool:
+
+```powershell
+cargo run --locked --bin pitrec -- convert "capture.pwcap" "session.pitrec"
+```
+
+For a capture containing multiple sessions, select one non-zero session UID and
+its telemetry format with `--uid UID --format 2026` (or `2025`). The converter
+requires a new output filename and leaves the source capture unchanged.
+
+## Local liveries
+
+Copy your own car images into the collector's `liveries/` folder. Each image must
+be a transparent 960×720 PNG with the same car framing, named `<teamId>.png`;
+use `my-team.png` for My Team. Missing images use the shipped fallback car.
+See the [livery pack contract](docs/spec/v1.md#13-liveries) for details.
+Real livery art stays local and must not be shipped with the application.
+
 ## Run
 
 Use the portable unsigned `pitwall.exe` for Windows x64 or `pitwall` for macOS arm64.

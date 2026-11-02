@@ -33,12 +33,35 @@ impl SessionModel {
         ) {
             return;
         }
-        let rewind = explicit.is_some()
-            || self
+        // Packet groups can arrive late within or across frames. Only a newer
+        // overall frame can establish an implicit rewind; FLBK is authoritative.
+        if explicit.is_none()
+            && self
                 .last_session_time
-                .is_some_and(|previous| time < previous);
+                .is_some_and(|previous| time < previous)
+            && self
+                .last_session_frame
+                .is_some_and(|previous| datagram.header.overall_frame_identifier <= previous)
+        {
+            return;
+        }
+        self.last_session_frame = Some(datagram.header.overall_frame_identifier);
+        let packet_id = usize::from(datagram.header.packet_id);
+        let previous_packet_time = self.packet_times.get(packet_id).copied().flatten();
+        // Rates differ between groups, especially during accelerated game time.
+        // A lagging group must not rewind a clock advanced by another group.
+        // Ordinary events are not a periodic clock; FLBK remains authoritative.
+        let rewind = explicit.is_some()
+            || (!matches!(datagram.packet, Packet::Event(_))
+                && previous_packet_time.is_some_and(|previous| time < previous));
         let from_time = self.last_session_time.unwrap_or(time);
-        self.last_session_time = Some(time);
+        if rewind {
+            self.packet_times.fill(None);
+        }
+        if let Some(previous) = self.packet_times.get_mut(packet_id) {
+            *previous = Some(time);
+        }
+        self.last_session_time = Some(if rewind { time } else { from_time.max(time) });
         if !rewind {
             return;
         }

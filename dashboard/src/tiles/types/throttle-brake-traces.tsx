@@ -6,15 +6,15 @@ import { defineTileModule, type TileProps, type TileSettingsProps } from '../con
 import '../frame-tiles.css';
 import { TileTitle } from '../frame-kit';
 import { useFrameTile } from '../use-frame-tile';
-import { CurrentLap } from '../traces/current-lap';
+import { buildWindowPlot, InputHistory } from '../traces/window-plot';
 import { lapTracesFor } from '../traces/lap-traces';
-import { buildPlot, CHANNEL_ORDER, type Channel } from '../traces/plot';
+import { CHANNEL_ORDER, type Channel } from '../traces/plot';
 import { createTraceChart, type TraceChart } from '../traces/chart';
 
 /** Space the tile's padding, title and meters take from the chart, in CSS pixels. */
-const CHART_INSET = { width: 138, height: 54 };
+const CHART_INSET = { width: 138, height: 45 };
 
-/** One pedal: its value right now, beside the trace of the lap so far. */
+/** One pedal: its value right now, beside the recent input trace. */
 function Meter({ name, label, fill, value }: { name: string; label: string; fill: React.Ref<HTMLElement>; value: React.Ref<HTMLElement> }) {
   return (
     <div className="pw-tr-meter" data-channel={name}>
@@ -40,7 +40,6 @@ function Traces({ car, settings, width, height, units }: TileProps) {
   const version = useSyncExternalStore(traces.subscribe, () => traces.version);
   const index = car && (car.status === 'ok' || car.status === 'retired') ? car.index : null;
   const info = index === null ? null : slow.state?.cars?.[index];
-  const lap = info?.lap && 'value' in info.lap ? info.lap.value.current_lap_num : null;
   const { reference, channels } = options(settings);
   const referenceLap = info?.[reference]?.lap_number;
   const host = useRef<HTMLDivElement>(null);
@@ -50,7 +49,8 @@ function Traces({ car, settings, width, height, units }: TileProps) {
   const brakeFill = useRef<HTMLElement>(null);
   const brakeValue = useRef<HTMLElement>(null);
   const chart = useRef<TraceChart | null>(null);
-  const live = useRef({ identity: '', lap: new CurrentLap(), consumed: 0, seeded: null as object | null });
+  const inputs = useRef<InputHistory | null>(null);
+  if (!inputs.current) inputs.current = new InputHistory();
 
   useEffect(() => {
     chart.current = createTraceChart(host.current!);
@@ -60,11 +60,6 @@ function Traces({ car, settings, width, height, units }: TileProps) {
   useEffect(() => {
     if (index !== null && referenceLap !== undefined) traces.request(index, referenceLap);
   }, [traces, index, referenceLap, slow.epoch, slow.connection]);
-
-  useEffect(() => {
-    if (index === null || lap === null) return;
-    if (live.current.lap.joinedMidLap) traces.request(index, lap);
-  }, [runtime, traces, index, lap, slow.epoch]);
 
   const history = useRef(slow.history);
   useEffect(() => {
@@ -96,29 +91,9 @@ function Traces({ car, settings, width, height, units }: TileProps) {
     };
     meter(throttleFill.current, throttleValue.current, showing ? frame.throttle[carIndex]! : 0);
     meter(brakeFill.current, brakeValue.current, showing ? frame.brake[carIndex]! : 0);
-    const current = live.current;
-    const identity = `${frame.epoch || slow.epoch}:${carIndex}`;
-    if (current.identity !== identity) {
-      current.identity = identity;
-      current.lap.reset();
-      current.consumed = rings ? rings.lapDistance.version - rings.lapDistance.length : 0;
-      current.seeded = null;
-    }
-    if (rings) {
-      const ring = rings.lapDistance;
-      const added = Math.min(ring.length, Math.max(0, ring.version - current.consumed));
-      for (let i = ring.length - added; i < ring.length; i++) {
-        current.lap.record(ring.at(i), rings.throttle.at(i), rings.brake.at(i), rings.speed.at(i));
-      }
-      current.consumed = ring.version;
-      if (carIndex !== null && lap !== null && current.lap.joinedMidLap) {
-        traces.request(carIndex, lap);
-        const seed = traces.get(carIndex, lap);
-        if (seed && current.seeded !== seed) { current.lap.seed(seed); current.seeded = seed; }
-      }
-    }
     const overlay = carIndex === null || referenceLap === undefined ? null : traces.get(carIndex, referenceLap) ?? null;
-    const plot = buildPlot({ current: current.lap.samples(), reference: overlay, channels, units });
+    inputs.current!.update(rings, `${frame.epoch || slow.epoch}:${carIndex}`);
+    const plot = buildWindowPlot(inputs.current!.rings, overlay, channels, units);
     if (status.current) {
       status.current.hidden = plot.hasData && state === 0;
       status.current.textContent = state === 2 ? 'Restricted' : plot.hasData && state === 1 ? 'Stale ◷' : 'No data';
@@ -129,14 +104,14 @@ function Traces({ car, settings, width, height, units }: TileProps) {
 
   const legend = channels.map((c) => `${c[0]!.toUpperCase()}${c.slice(1)}`).join(' · ');
   return <div className="pw-tr">
-    <TileTitle note={`${legend} · Dashed ${reference === 'best' ? 'best lap' : 'previous lap'}`}>Driver inputs / distance</TileTitle>
+    <TileTitle note={`${legend} · Dim ${reference === 'best' ? 'best lap' : 'previous lap'}`}>Driver inputs / last 30 s</TileTitle>
     <span className="pw-tr-status pw-label" role="status" ref={status}>No data</span>
     <div className="pw-tr-body">
       <div className="pw-tr-meters" aria-hidden="true">
         <Meter name="throttle" label="THR" fill={throttleFill} value={throttleValue} />
         <Meter name="brake" label="BRK" fill={brakeFill} value={brakeValue} />
       </div>
-      <div ref={host} role="img" aria-label="Lap traces against distance: solid current lap, dashed reference" />
+      <div ref={host} role="img" aria-label="Inputs over the last 30 seconds: bright thick current inputs, dim thin reference lap; teal throttle, pink brake" />
     </div>
   </div>;
 }

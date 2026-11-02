@@ -398,7 +398,9 @@ fn assumed_backwards_session_time_also_rewinds_but_late_history_does_not() {
     apply(&mut model, &lap(90.1, 2, 90_000, 0));
     apply(&mut model, &lap(179.1, 3, 89_000, 0));
     let epoch = model.epoch();
-    model.apply(Duration::from_secs(200), &lap(100.0, 2, 90_000, 0));
+    let mut rewound = lap(100.0, 2, 90_000, 0);
+    rewound.header.overall_frame_identifier = 100_000; // Overall frames advance across flashbacks.
+    model.apply(Duration::from_secs(200), &rewound);
     assert_eq!(model.epoch(), epoch + 1);
     assert_eq!(
         model.car(23).unwrap().session_history().best_lap_number,
@@ -728,4 +730,49 @@ fn assumed_session_history_corrects_validity_and_bests_without_adding_partial_la
         model.car(23).unwrap().session_history().best_lap_number,
         None
     );
+}
+
+#[test]
+fn late_session_packet_in_same_frame_does_not_reset_dashboard_epoch() {
+    let mut model = SessionModel::default();
+    let mut telemetry = packet(2026, 6, 286.09);
+    telemetry.header.overall_frame_identifier = 17755;
+    apply(&mut model, &telemetry);
+    let epoch = model.epoch();
+    let mut session = packet(2026, 1, 286.06668);
+    session.header.overall_frame_identifier = 17755;
+    apply(&mut model, &session);
+    assert_eq!(
+        model.epoch(),
+        epoch,
+        "late packet must not clear dashboard history"
+    );
+    assert_eq!(model.session_time(), 286.09);
+}
+
+#[test]
+fn accelerated_time_with_lagging_packet_groups_does_not_rewind() {
+    let mut model = SessionModel::default();
+    for (id, time, frame) in [(1, 100.0, 100), (6, 100.0, 100)] {
+        let mut p = packet(2026, id, time);
+        p.header.overall_frame_identifier = frame;
+        apply(&mut model, &p);
+    }
+    let epoch = model.epoch();
+    for (id, time, frame) in [
+        (6, 160.0, 101),
+        (1, 140.0, 102),
+        (6, 180.0, 103),
+        (1, 170.0, 104),
+    ] {
+        let mut p = packet(2026, id, time);
+        p.header.overall_frame_identifier = frame;
+        model.apply(Duration::from_secs(200 + frame as u64), &p);
+        assert_eq!(
+            model.epoch(),
+            epoch,
+            "forward progress within a packet group is not a flashback"
+        );
+    }
+    assert_eq!(model.session_time(), 180.0);
 }

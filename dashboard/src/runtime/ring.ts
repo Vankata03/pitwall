@@ -24,6 +24,13 @@ export class RingBuffer {
     this.version++;
   }
 
+  /** Update the newest sample without consuming history capacity. */
+  replaceLast(value: number): void {
+    if (!this.count) { this.push(value); return; }
+    this.data[(this.head - 1 + this.capacity) % this.capacity] = value;
+    this.version++;
+  }
+
   /** Sample `i`, 0 = oldest. NaN when out of range. */
   at(i: number): number {
     if (!(i >= 0 && i < this.count)) return NaN;

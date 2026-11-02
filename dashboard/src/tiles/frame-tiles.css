@@ -345,6 +345,8 @@
 
 /* ---- Throttle/brake traces: the pedals now, beside the lap so far. ---- */
 .pw-tr {
+  --pw-energy: var(--pw-trace-throttle);
+  --pw-brake: var(--pw-trace-brake);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -431,7 +433,6 @@
 .pw-lt-sectors [data-rank='personal-best'] .pw-readout[data-state='live'] { color: var(--pw-sector-personal-best); }
 .pw-lt-sectors [data-rank='slower'] .pw-readout[data-state='live'] { color: var(--pw-sector-slower); }
 .pw-lt-reference { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid var(--pw-line); padding-top: 4px; margin-top: auto; font-size: var(--pw-text-value); font-weight: 600; }
-.pw-lt-result { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-top: 1px solid var(--pw-line); padding-top: 3px; font-size: var(--pw-text-value); font-weight: 600; }
 .pw-tm .pw-title-note > span + span::before { content: ' · '; }
 /* A short tile keeps every sector readout by putting the label beside the time. */
 @container (max-height: 190px) {

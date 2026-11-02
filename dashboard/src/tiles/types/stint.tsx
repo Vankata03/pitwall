@@ -37,7 +37,22 @@ function Value<T>({
     </span>
   );
 }
-function Stint({ car, density }: TileProps) {
+function TyreWear({ readout, stale }: { readout: Readout<[number, number, number, number]>; stale: boolean }) {
+  if (!('value' in readout)) return <Value readout={readout} stale={stale} format={() => ''} />;
+  return <div className="pw-stint-wheels" aria-label="Tyre wear">
+    {(['FL', 'FR', 'RL', 'RR'] as const).map((wheel, i) => {
+      const remaining = readout.value[[2, 3, 0, 1][i]!]!;
+      const wear = Math.max(0, Math.min(100, Math.round(100 - remaining)));
+      return <div key={wheel}>
+        <span className="pw-label">{wheel}</span>
+        <b><Value readout={{ state: readout.state, value: wear }} stale={stale} format={v => `${v}%`} /></b>
+        <span className="pw-stint-wear-track" aria-hidden="true"><i style={{ width: `${wear}%` }} /></span>
+      </div>;
+    })}
+  </div>;
+}
+
+function Stint({ car }: TileProps) {
   const slow = useSlow((s) => s);
   const state = slow.state;
   const index = car && 'index' in car ? car.index : null;
@@ -67,120 +82,70 @@ function Stint({ car, density }: TileProps) {
     return Math.max(0, end - stint.start_lap + 1);
   };
   const stintLaps = running && lap ? lapsOf(running) : null;
-  return (
-    <div className="pw-stint" data-density={density}>
-      <TileTitle note={runningCompound === null ? undefined : compound(runningCompound)}>
-        Current stint {car?.status === 'retired' ? '· retired' : ''}
-      </TileTitle>
-      <div className="pw-stint-head">
-        <span className="pw-stint-count">
-          <span className="pw-num pw-stint-laps" data-testid="stint-laps">
-            {stintLaps === null ? '–' : String(stintLaps).padStart(2, '0')}
-          </span>
-          <span className="pw-label">Laps</span>
-        </span>
-        <span className="pw-stint-window">
-          <span className="pw-label">Game pit window</span>
-          <Value
-            readout={pitWindow}
-            stale={stale}
-            format={(v) => `Laps ${v.ideal_lap}–${v.latest_lap} · rejoin P${v.rejoin_position}`}
-          />
-        </span>
+  const symbol = (n: number) => ({ soft: 'S', medium: 'M', hard: 'H', inter: 'I', wet: 'W' })[compoundKey(n)] ?? '?';
+  const completed = stints.filter(s => s.body.end_lap !== null).reverse();
+  const setLabel = (age: number | null) => age === null ? '' : age > 0 ? `Used set · starting age ${age}` : 'New set';
+  return <div className="pw-stint">
+    <TileTitle note={`${stops.length} ${stops.length === 1 ? 'stop' : 'stops'}`}>
+      Current stint {car?.status === 'retired' ? '· retired' : ''}
+    </TileTitle>
+    {running && runningCompound !== null ? <section className="pw-stint-active" data-compound={compoundKey(runningCompound)} aria-label="Current tyre set">
+      <div className="pw-stint-summary">
+        <span className="pw-stint-tyre" aria-hidden="true">{symbol(runningCompound)}</span>
+        <div className="pw-stint-set-name">
+          <strong>{compound(runningCompound)}</strong>
+          <span className="pw-label">{setLabel(running.starting_age)}</span>
+        </div>
+        <div className="pw-stint-metric">
+          <b className="pw-num" data-testid="stint-laps">{stintLaps === null ? '–' : String(stintLaps).padStart(2, '0')}</b>
+          <span className="pw-label">Laps done</span>
+        </div>
+        <div className="pw-stint-metric">
+          <b className="pw-num"><Value readout={current.status} stale={stale} format={v => String(v.tyres_age_laps)} /></b>
+          <span className="pw-label">Tyre age</span>
+        </div>
       </div>
-      <div className="pw-stint-blocks" data-testid="stint-blocks" aria-hidden="true">
-        {stints.map(({ id, body: s }) => (
-          <span
-            key={id}
-            className="pw-stint-group"
-            data-compound={compoundKey(s.end_lap === null ? (runningCompound ?? s.visual_compound) : s.visual_compound)}
-            style={{ flexGrow: Math.max(1, lapsOf(s)) }}
-          >
-            {Array.from({ length: lapsOf(s) }, (_, i) => (
-              <i key={i} />
-            ))}
-          </span>
-        ))}
+      <div className="pw-stint-active-caption">
+        <span className="pw-label">Laps {running.start_lap}–{lap?.current_lap_num ?? '—'} · current</span>
+        <span className="pw-label">Tyre wear</span>
       </div>
-      <div className="pw-stint-caption">
-        <span className="pw-label">Completed laps by stint</span>
-        <span className="pw-label">Tyre age {status ? status.tyres_age_laps : '–'}</span>
-      </div>
-      <div className="pw-stint-detail">
-        {stints.length ? (
-          <ol aria-label="Tyre stints">
-            {stints.map(({ id, body: s }) => {
-              const active = s.end_lap === null;
-              const end = s.end_lap ?? lap?.current_lap_num;
-              const wear = condition(active ? current.tyreCondition : s.tyre_condition);
-              return (
-                <li key={id} data-current={active}>
-                  <strong>
-                    {compound(active && status ? status.visual_tyre_compound : s.visual_compound)}
-                  </strong>
-                  <p
-                    className="pw-readout"
-                    data-state={stale || current.lap.state === 'stale' ? 'stale' : 'live'}
-                  >
-                    Laps {s.start_lap}–{end ?? '—'} ·{' '}
-                    {active ? 'current' : `${Math.max(0, (end ?? s.start_lap - 1) - s.start_lap + 1)} laps`}
-                  </p>
-                  <p>
-                    Tyre age{' '}
-                    <span
-                      className="pw-readout"
-                      data-state={
-                        stale || (active && current.status.state === 'stale')
-                          ? 'stale'
-                          : s.tyre_age_laps === null
-                            ? 'absent'
-                            : 'live'
-                      }
-                    >
-                      {active && status ? status.tyres_age_laps : (s.tyre_age_laps ?? '—')}
-                    </span>
-                  </p>
-                  <p className="pw-wear">
-                    Wear{' '}
-                    <Value
-                      readout={wear}
-                      stale={stale}
-                      format={(v) => v.map((n) => `${Math.round(100 - n)}%`).join(' / ')}
-                    />
-                    {density !== 'compact' && <span className="pw-label"> RL / RR / FL / FR</span>}
-                  </p>
-                  {s.starting_age !== null && (
-                    <p className="pw-label">
-                      {s.starting_age > 0 ? `Used set · starting age ${s.starting_age}` : 'New set'}
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <p>No stint history</p>
-        )}
-        {stops.length ? (
-          <ol aria-label="Pit stops">
-            {stops.map(({ id, body: stop }) => (
-              <li key={id} data-stop="true">
-                <p>Stop · lap {stop.lap_number}</p>
-                <p className="pw-readout" data-state={stale ? 'stale' : 'live'}>
-                  {stop.stopped_time_ms === null ? '—' : (stop.stopped_time_ms / 1000).toFixed(3)}s stopped ·{' '}
-                  {stop.lane_time_ms === null ? '—' : (stop.lane_time_ms / 1000).toFixed(3)}s lane
-                </p>
-                {stop.exit_time === null && <span className="pw-label">In pit lane</span>}
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="pw-label">No stops</p>
-        )}
-      </div>
+      <TyreWear readout={condition(current.tyreCondition)} stale={stale} />
+    </section> : null}
+    {pitWindow.state !== 'absent' ? <div className="pw-stint-window">
+      <span className="pw-label">Game pit window</span>
+      <Value readout={pitWindow} stale={stale} format={v => `Laps ${v.ideal_lap}–${v.latest_lap} · rejoin P${v.rejoin_position}`} />
+    </div> : null}
+    <div className="pw-stint-detail">
+      <ol aria-label="Tyre stints">
+        {completed.map(({ id, body: s }) => {
+          const wear = condition(s.tyre_condition);
+          return <li className="pw-stint-past" key={id} data-compound={compoundKey(s.visual_compound)}>
+            <details>
+              <summary>
+                <span className="pw-stint-tyre" aria-hidden="true">{symbol(s.visual_compound)}</span>
+                <span className="pw-stint-past-name"><strong>{compound(s.visual_compound)}</strong><span>Laps {s.start_lap}–{s.end_lap} · {lapsOf(s)} {lapsOf(s) === 1 ? 'lap' : 'laps'}</span></span>
+                <span className="pw-stint-final-wear"><Value readout={wear} stale={stale} format={v => `${Math.round(100 - Math.min(...v))}% max wear`} /></span>
+              </summary>
+              <div className="pw-stint-past-expanded">
+                <div className="pw-stint-active-caption"><span className="pw-label">{setLabel(s.starting_age)}</span><span className="pw-label">Final tyre age {s.tyre_age_laps ?? '—'}</span></div>
+                {'value' in wear ? <TyreWear readout={wear} stale={stale} /> : null}
+              </div>
+            </details>
+          </li>;
+        })}
+      </ol>
+      {!stints.length ? <p className="pw-label">No stint history</p> : !completed.length ? <p className="pw-label">No previous sets recorded</p> : null}
+      {stops.length ? <ol className="pw-stint-stops" aria-label="Pit stops">
+        {stops.map(({ id, body: stop }) => <li key={id}>
+          <span className="pw-stint-stop-label">Stop · lap {stop.lap_number}{stop.exit_time === null ? <small className="pw-label">In pit lane</small> : null}</span>
+          <div><span className="pw-label">Stopped</span><b className="pw-readout pw-num" data-state={stale ? 'stale' : 'live'}>{stop.stopped_time_ms === null ? '—' : `${(stop.stopped_time_ms / 1000).toFixed(3)} s`}</b></div>
+          <div><span className="pw-label">Pit lane</span><b className="pw-readout pw-num" data-state={stale ? 'stale' : 'live'}>{stop.lane_time_ms === null ? '—' : `${(stop.lane_time_ms / 1000).toFixed(3)} s`}</b></div>
+        </li>)}
+      </ol> : null}
     </div>
-  );
+  </div>;
 }
+
 export default defineTileModule({
   declaration: {
     type: 'stint',

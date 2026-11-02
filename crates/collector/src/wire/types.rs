@@ -232,6 +232,9 @@ pub enum TextMessage {
     History {
         epoch: u32,
         entries: Vec<HistoryEntry>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        removed: Option<Vec<String>>,
     },
 }
 #[derive(Debug, Clone, Serialize, TS)]

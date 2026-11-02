@@ -1,4 +1,4 @@
-import { createContext, useContext, type CSSProperties } from 'react';
+import { createContext, useContext } from 'react';
 import type { CarState } from '../../generated/wire/CarState';
 import type { Readout as JsonReadout } from '../../generated/wire/Readout';
 import { useSlow } from '../../runtime/react';
@@ -19,6 +19,7 @@ const lapTime = (ms: number | undefined) =>
 const delta = (ms: number) => `${ms < 0 ? '−' : '+'}${(Math.abs(ms) / 1000).toFixed(3)}`;
 const compound = (n: number) =>
   ({ 16: 'S', 17: 'M', 18: 'H', 7: 'I', 8: 'W', 19: 'SS', 20: 'S', 21: 'M', 22: 'H' })[n] ?? String(n);
+const tyreName = (code: string) => ({ S: 'Soft', M: 'Medium', H: 'Hard', I: 'Intermediate', W: 'Wet', SS: 'Super soft' })[code] ?? `Compound ${code}`;
 function Cell<T>({
   readout,
   format,
@@ -107,7 +108,7 @@ function Tower({ settings, density, height }: TileProps) {
   const regular = density !== 'compact';
   const capacity = Math.max(
     0,
-    Math.floor((height - (full ? 120 : regular ? 76 : 80)) / (full ? 72 : regular ? 30 : 28)),
+    Math.floor((height - (full ? 120 : regular ? 76 : 80)) / (full ? 72 : regular ? 32 : 28)),
   );
   const around = s.rows === 'around' || (s.rows === null && !regular) || all.length > capacity;
   const at = all.findIndex((p) => p.index === focus);
@@ -158,7 +159,7 @@ function Tower({ settings, density, height }: TileProps) {
                 'Driver',
                 gapLabel,
                 'Tyre',
-                ...(regular ? ['Team', 'Age', 'Stops', 'Status'] : []),
+                ...(regular ? ['Age', 'Stops', 'Status'] : []),
                 ...(full ? ['Last lap', 'Best lap', 'Penalties / warnings', 'Wear (max)', 'Gained'] : []),
               ].map((h) => (
                 <th scope="col" key={h} title={h}>
@@ -214,7 +215,12 @@ function Tower({ settings, density, height }: TileProps) {
                   data-retired={retired}
                 >
                   <Cell readout={c.lap} stale={stale} format={(v) => String(v.car_position)} />
-                  <Cell readout={c.participant} stale={stale} format={() => carLabel(p)} />
+                  <td className="pw-readout" data-state={stale || c.participant.state === 'stale' ? 'stale' : c.participant.state} title={carLabel(p)}>
+                    <span className="pw-tower-driver">
+                      <span className="pw-team-marker" aria-hidden="true" style={{ background: colour ? `rgb(${colour.red},${colour.green},${colour.blue})` : 'var(--pw-text-muted)' }} />
+                      <span>{carLabel(p)}</span>
+                    </span>
+                  </td>
                   <td
                     className="pw-readout"
                     data-state={stale && gapState === 'live' ? 'stale' : gapState}
@@ -222,24 +228,12 @@ function Tower({ settings, density, height }: TileProps) {
                   >
                     {gapText}
                   </td>
-                  <Cell readout={c.status} stale={stale} format={(v) => compound(v.visual_tyre_compound)} />
+                  <td className="pw-readout" data-state={stale && c.status.state === 'live' ? 'stale' : c.status.state}>
+                    {'value' in c.status ? <span className="pw-tower-tyre" data-compound={compound(c.status.value.visual_tyre_compound)} aria-label={`${tyreName(compound(c.status.value.visual_tyre_compound))} tyres`}>{compound(c.status.value.visual_tyre_compound)}</span>
+                      : jsonReadoutView(c.status, () => '').text}
+                  </td>
                   {regular && (
                     <>
-                      <td>
-                        <span
-                          aria-label="Team colour"
-                          style={
-                            {
-                              display: 'inline-block',
-                              width: 16,
-                              height: 4,
-                              background: colour
-                                ? `rgb(${colour.red},${colour.green},${colour.blue})`
-                                : 'var(--pw-text-muted)',
-                            } as CSSProperties
-                          }
-                        />
-                      </td>
                       <Cell readout={c.status} stale={stale} format={(v) => String(v.tyres_age_laps)} />
                       <Cell readout={c.lap} stale={stale} format={(v) => String(v.num_pit_stops)} />
                       <Cell
@@ -308,8 +302,8 @@ export default defineTileModule({
     defaultSize: { w: 6, h: 12 },
     densities: [
       { density: 'compact', minWidth: 0, minHeight: 0 },
-      { density: 'regular', minWidth: 320, minHeight: 240 },
-      { density: 'full', minWidth: 460, minHeight: 480 },
+      { density: 'regular', minWidth: 500, minHeight: 240 },
+      { density: 'full', minWidth: 500, minHeight: 480 },
     ],
     reads: [
       { source: 'state', keys: ['cars', 'session', 'playerCar'] },

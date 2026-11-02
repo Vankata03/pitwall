@@ -21,7 +21,7 @@ export interface Participant {
   index: number;
   name: string;
   raceNumber: number;
-  /** `m_showOnlineNames`: when off, `name` may hold a Steam ID and is never shown. */
+  /** Whether the name can be displayed. Hidden online-human names may contain platform IDs. */
   showOnlineNames: boolean;
   identity: CarIdentity;
   retired: boolean;
@@ -66,7 +66,7 @@ export function participantsOf(state: Obj | null): Participant[] {
       index,
       name: decodeName(value.name),
       raceNumber: num(value.race_number) ?? 0,
-      showOnlineNames: value.show_online_names !== 0,
+      showOnlineNames: value.ai_controlled === 1 || value.show_online_names !== 0,
       identity: identityOf(value),
       retired: car.retired === true,
       position: num(lap?.car_position),
@@ -88,7 +88,7 @@ export function layoutsRevisionOf(state: Obj | null): number | undefined {
 
 /** Shown name: `m_name` as received, or `#<race number>` for a human who hides it. */
 export function carLabel(p: Participant): string {
-  return p.showOnlineNames ? p.name : `#${p.raceNumber}`;
+  return p.showOnlineNames && p.name.trim() ? p.name : `#${p.raceNumber}`;
 }
 
 export function identityKey(identity: CarIdentity): string {

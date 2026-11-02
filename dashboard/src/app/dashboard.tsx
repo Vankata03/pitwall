@@ -50,6 +50,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
     return () => { delete document.documentElement.dataset.stream; };
   }, [streaming]);
   const wire = useSlow((s) => s.state);
+  const epoch = useSlow((s) => s.epoch);
   const participants = useMemo(() => participantsOf(wire), [wire]);
   const playerCar = playerCarOf(wire);
   const revision = layoutsRevisionOf(wire);
@@ -105,7 +106,7 @@ export function Dashboard({ controller, device, registry, stream }: DashboardSer
 
   return (
     <div className="pw-app" data-editing={edit ? 'true' : undefined}>
-      <ReplayControls replay={wire?.context?.replay} car={playerCar ?? 0} />
+      <ReplayControls replay={wire?.context?.replay} car={playerCar ?? 0} epoch={epoch} />
       <header className="pw-chrome">
         <h1 className="pw-wordmark">pitwall</h1>
         <FocusPicker

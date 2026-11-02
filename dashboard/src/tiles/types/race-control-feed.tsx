@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import type { Event } from '../../generated/wire/Event';
 import type { RaceControlKind } from '../../generated/wire/RaceControlKind';
 import { useSlow } from '../../runtime/react';
@@ -89,10 +90,61 @@ const clock = (seconds: number) => {
 function statusOf(session: Parameters<typeof raceStatus>[0], history: readonly WireHistoryEntry[]): { word: string; tone: Headline['tone'] } {
   if (!session) return { word: 'No session', tone: 'quiet' };
   const band = raceStatus(session, history);
-  return { word: band || 'Track clear', tone: band === 'Red flag' ? 'bad' : band ? 'warn' : 'good' };
+  if (band) return { word: band, tone: band === 'Red flag' ? 'bad' : 'warn' };
+  const zones = new Map<number, number>();
+  for (const entry of history) {
+    if (entry.kind !== 'raceControl' || entry.body.rewound) continue;
+    const kind = entry.body.kind;
+    if (typeof kind !== 'string' && 'MarshalFlagChanged' in kind) zones.set(kind.MarshalFlagChanged.zone, kind.MarshalFlagChanged.flag);
+  }
+  if ([...zones.values()].includes(4)) return { word: 'Red flag', tone: 'bad' };
+  if ([...zones.values()].includes(3)) return { word: 'Yellow flag', tone: 'warn' };
+  return { word: 'Track clear', tone: 'good' };
 }
 
 type RaceControlHistory = Extract<WireHistoryEntry, { kind: 'raceControl' }>;
+
+// Controller and car-mode telemetry is not a race-control announcement.
+function isAnnouncement(entry: RaceControlHistory): boolean {
+  const kind = entry.body.kind;
+  if (typeof kind !== 'string' && 'FlagChanged' in kind) {
+    const { flag, previous } = kind.FlagChanged;
+    return flag > 1 || previous > 1;
+  }
+  if (typeof kind === 'string' || !('Game' in kind)) return true;
+  const details = kind.Game.details;
+  if (typeof details !== 'string') return !('Buttons' in details) && !('SpeedTrap' in details);
+  return !['Unknown', 'PartialAeroEnabled', 'PartialAeroDisabled', 'OvertakeEnabled', 'OvertakeDisabled'].includes(details);
+}
+function isUrgent(entry: RaceControlHistory): boolean {
+  const kind = entry.body.kind;
+  if (typeof kind === 'string') return false;
+  if ('FlagChanged' in kind) return kind.FlagChanged.flag === 4;
+  if ('MarshalFlagChanged' in kind) return kind.MarshalFlagChanged.flag === 4;
+  if ('SafetyCarChanged' in kind) return true;
+  if (!('Game' in kind)) return false;
+  const details = kind.Game.details;
+  return typeof details === 'string'
+    ? ['RedFlag', 'ChequeredFlag', 'LightsOut'].includes(details)
+    : 'Penalty' in details || 'Collision' in details || 'SafetyCar' in details || 'Retirement' in details;
+}
+
+/** Hold routine headlines for three seconds. Safety events and replay resets bypass the hold. */
+function useAnnouncements(entries: RaceControlHistory[], epoch: number | null, filter: unknown) {
+  const [shown, setShown] = useState(() => ({ entries, epoch, filter, at: Date.now() }));
+  const reset = shown.epoch !== epoch || shown.filter !== filter;
+  useEffect(() => {
+    if (!reset && entries.length === shown.entries.length && entries.every((entry, i) => entry === shown.entries[i])) return;
+    const last = shown.entries.at(-1);
+    const added = entries.slice(last ? entries.findIndex(e => e.id === last.id) + 1 : 0);
+    const delay = reset || !last || added.some(isUrgent) ? 0 : Math.max(0, 3000 - (Date.now() - shown.at));
+    const publish = () => setShown({ entries, epoch, filter, at: Date.now() });
+    if (delay === 0) { publish(); return; }
+    const timer = setTimeout(publish, delay);
+    return () => clearTimeout(timer);
+  }, [entries, epoch, filter, shown, reset]);
+  return reset ? entries : shown.entries;
+}
 
 /**
  * One-line form for a wide, short tile: the panel's name, the track status, then the newest
@@ -154,7 +206,13 @@ export default defineTileModule({
     const snapshot = useSlow(s => s);
     const participants = participantsOf(snapshot.state);
     const allowed = selected(settings);
-    const entries = snapshot.history.filter(e => e.kind === 'raceControl').filter(e => allowed.includes(typeOf(e.body.kind)));
+    const candidates = useMemo(() => {
+      const allowed = selected(settings);
+      return snapshot.history.filter((e): e is RaceControlHistory =>
+        e.kind === 'raceControl' && allowed.includes(typeOf(e.body.kind)) && isAnnouncement(e)
+      );
+    }, [snapshot.history, settings.entryTypes]);
+    const entries = useAnnouncements(candidates, snapshot.epoch, settings.entryTypes);
     if (height < STRIP_BELOW) {
       const session = snapshot.state?.session && 'value' in snapshot.state.session ? snapshot.state.session.value : null;
       return <Strip entries={entries as RaceControlHistory[]} participants={participants} session={session} history={snapshot.history} connected={snapshot.connection === 'open'} />;

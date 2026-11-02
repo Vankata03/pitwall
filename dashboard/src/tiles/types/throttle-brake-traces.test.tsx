@@ -82,7 +82,7 @@ function setup(cars: Record<number, unknown> = { 0: car(5, 3, 4) }, epoch = 1) {
     paint: () => queued!((ts += 16)),
     frame: (seq: number, distance: number, throttle: number, brake: number, speed = 200, e = epoch) =>
       runtime.stores.ingest(
-        buildFrame({ epoch: e, seq, sessionTime: seq, cars: { 0: { lapDistance: distance, throttle, brake, speed, readout: 0 } } }),
+        buildFrame({ epoch: e, seq, sessionTime: seq / 10, cars: { 0: { lapDistance: distance, throttle, brake, speed, readout: 0 } } }),
       ),
   };
 }
@@ -119,7 +119,7 @@ test('is the Throttle/brake traces tile of the catalogue', () => {
   expect(d).toMatchObject({ binding: 'follows-car', rate: 'frame', minSize: { w: 6, h: 4 }, defaultSize: { w: 10, h: 7 } });
 });
 
-test('draws the current lap from Frame against distance, throttle and brake in percent', async () => {
+test('draws recent Frames against time, with throttle and brake in percent', async () => {
   const { runtime, paint, frame } = setup();
   show(runtime);
   await settle();
@@ -127,21 +127,23 @@ test('draws the current lap from Frame against distance, throttle and brake in p
   frame(2, 10, 50, 0);
   frame(3, 20, 0, 80);
   paint();
-  expect(lastPlot().x).toEqual([0, 5, 10, 15, 20]);
-  expect(channelValues('throttle', 'current')).toEqual([100, 75, 50, 25, 0]);
-  expect(channelValues('brake', 'current')).toEqual([0, 0, 0, 40, 80]);
+  expect(lastPlot().x.map(x => +x.toFixed(3))).toEqual([-0.2, -0.1, 0]);
+  expect(lastPlot().windowSeconds).toBe(30);
+  expect(channelValues('throttle', 'current')).toEqual([100, 50, 0]);
+  expect(channelValues('brake', 'current')).toEqual([0, 0, 80]);
   expect(lastPlot().series.every((s) => s.channel !== 'speed')).toBe(true);
 });
 
-test('draws a continuous current lap from 10 Hz Frames at 300 km/h, 8 m apart and off the bucket grid', async () => {
+test('draws continuous 10 Hz input samples without distance bucketing', async () => {
   const { runtime, paint, frame } = setup();
   show(runtime);
   await settle();
   for (let n = 0; n <= 12; n++) frame(n + 1, n * (300 / 3.6 / 10), 100 - n * 5, n * 5);
   paint();
   const x = lastPlot().x;
-  expect(x.length).toBeGreaterThan(15);
-  expect(x).toEqual(x.map((_, i) => i * 5));
+  expect(x).toHaveLength(13);
+  expect(x[0]).toBeCloseTo(-1.2);
+  expect(x.at(-1)).toBe(0);
   expect(channelValues('throttle', 'current')!.every((v) => v !== null)).toBe(true);
   expect(channelValues('brake', 'current')!.every((v) => v !== null)).toBe(true);
 });
@@ -154,8 +156,8 @@ test('fetches the best lap as the default reference and overlays it', async () =
   await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith(url(0, 3)));
   await settle();
   paint();
-  expect(channelValues('throttle', 'reference')).toEqual([100, 50, 0]);
-  expect(channelValues('brake', 'reference')).toEqual([0, 0, 100]);
+  expect(channelValues('throttle', 'reference')).toEqual([100]);
+  expect(channelValues('brake', 'reference')).toEqual([0]);
 });
 
 test('the reference setting switches to the previous lap', async () => {
@@ -167,7 +169,7 @@ test('the reference setting switches to the previous lap', async () => {
   expect(fetchMock).not.toHaveBeenCalledWith(url(0, 3));
   await settle();
   paint();
-  expect(channelValues('throttle', 'reference')).toEqual([20, 20, 20]);
+  expect(channelValues('throttle', 'reference')).toEqual([20]);
 });
 
 test('a lap completing fetches the new previous and best lap', async () => {
@@ -181,7 +183,7 @@ test('a lap completing fetches the new previous and best lap', async () => {
   frame(1, 0, 100, 0);
   await settle();
   paint();
-  expect(channelValues('throttle', 'reference')).toEqual([90, 90, 90]);
+  expect(channelValues('throttle', 'reference')).toEqual([90]);
 });
 
 test('a lap that was not ready at lap-complete is asked for again on the next History entry', async () => {
@@ -194,17 +196,17 @@ test('a lap that was not ready at lap-complete is asked for again on the next Hi
   await vi.waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === url(0, 4))).toHaveLength(2));
 });
 
-test('a late joiner fetches the current lap so far and fills in what Frame has not seen', async () => {
+test('a late joiner starts with observed inputs rather than inventing earlier time history', async () => {
   replies.set(url(0, 5), trace(5, { distance: [0, 5, 10], throttle: [1, 1, 1], brake: [0, 0, 0] }));
   const { runtime, paint, frame } = setup({ 0: car(5, null, null) });
   show(runtime);
   frame(1, 10, 40, 0); // joined mid-lap: the first sample is not at the line
   paint();
-  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith(url(0, 5)));
   await settle();
   paint();
-  expect(lastPlot().x).toEqual([0, 5, 10]);
-  expect(channelValues('throttle', 'current')).toEqual([100, 100, 40]); // live bucket wins
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(lastPlot().x).toEqual([0]);
+  expect(channelValues('throttle', 'current')).toEqual([40]);
 });
 
 test('a car seen from the line needs no fetch for its current lap', async () => {
@@ -241,13 +243,13 @@ test('a new epoch clears the current lap', async () => {
   frame(1, 0, 100, 0);
   frame(2, 100, 100, 0);
   paint();
-  expect(lastPlot().x.length).toBe(21);
+  expect(lastPlot().x.length).toBe(2);
   runtime.stores.ingest(hello(2));
   runtime.stores.ingest(snapshot(2, { lifecycle: 'live', playerCar: 0, cars: Object.assign(new Array(24).fill(null), { 0: car(5, null, null) }) }));
   frame(1, 5, 70, 0, 200, 2);
   paint();
-  expect(lastPlot().x).toEqual([0, 5]);
-  expect(channelValues('throttle', 'current')).toEqual([null, 70]);
+  expect(lastPlot().x).toEqual([0]);
+  expect(channelValues('throttle', 'current')).toEqual([70]);
 });
 
 test('following another car starts a fresh lap for that car', async () => {
@@ -260,7 +262,7 @@ test('following another car starts a fresh lap for that car', async () => {
   );
   view.again({ car: { status: 'ok', index: 1 } });
   paint();
-  expect(lastPlot().x).toEqual([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]);
+  expect(lastPlot().x).toEqual([0]);
   expect(channelValues('throttle', 'current')!.at(-1)).toBe(30);
   await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith(url(1, 2)));
 });
@@ -318,7 +320,7 @@ test('a completion fetches that lap even when State still names the old previous
   await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith(url(0, 5)));
 });
 
-test('crossing the line clears the old current lap without waiting for State', async () => {
+test('crossing the line preserves recent input history', async () => {
   const { runtime, paint, frame } = setup();
   show(runtime);
   await settle();
@@ -327,7 +329,7 @@ test('crossing the line clears the old current lap without waiting for State', a
   paint();
   frame(3, 0, 30, 0);
   paint();
-  expect(channelValues('throttle', 'current')).toEqual([30]);
+  expect(channelValues('throttle', 'current')).toEqual([100, 80, 30]);
 });
 
 test('disconnect dims the last trace and marks it stale without new telemetry', async () => {

@@ -170,7 +170,13 @@ export class SlowStore {
   }
 
   /** @internal */
-  appendHistory(entries: readonly WireHistoryEntry[]): void {
+  appendHistory(entries: readonly WireHistoryEntry[], removed: readonly string[] = []): void {
+    if (removed.length) {
+      const ids = new Set(removed);
+      this.working.entries = this.working.entries.filter(entry => !ids.has(entry.id));
+      this.index.clear();
+      this.working.entries.forEach((entry, index) => this.index.set(entry.id, index));
+    }
     this.append(entries);
     this.markDirty();
   }
@@ -257,16 +263,16 @@ export function createStores(options: StoresOptions = {}): Stores {
         break;
       case 'snapshot':
         if (epoch !== null && m.epoch < epoch) return;
+        if (awaitingSnapshot || epoch !== m.epoch) frame.reset();
         epoch = m.epoch;
         awaitingSnapshot = false;
-        frame.reset();
         slow.install(m.epoch, m.source, m.state, m.history);
         break;
       case 'state':
         if (current(m.epoch)) slow.setState(m.state);
         break;
       case 'history':
-        if (current(m.epoch)) slow.appendHistory(m.entries);
+        if (current(m.epoch)) slow.appendHistory(m.entries, m.removed);
         break;
     }
   }

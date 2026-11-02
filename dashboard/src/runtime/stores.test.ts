@@ -200,3 +200,27 @@ test('rings preserve aligned gaps instead of treating absent or restricted value
   expect(rings.lapDistance.last()).toBe(0);
   expect(rings.sessionTime.last()).toBe(1);
 });
+
+test('same-epoch history correction preserves live frame and input rings', () => {
+  live(1);
+  s.ingest(buildFrame({ epoch: 1, seq: 1, sessionTime: 10, cars: { 0: { throttle: 70, readout: 0 } } }));
+  const version = s.frame.version;
+  s.ingest(snapshot(1, { lifecycle: 'live' }, []));
+  expect(s.frame.version).toBe(version);
+  expect(s.frame.data.throttle[0]).toBe(70);
+  expect(s.frame.rings[0]!.sessionTime.length).toBe(1);
+});
+
+test('history removal delta deletes old entries without clearing input samples', () => {
+  live(1);
+  s.ingest(historyMsg(1, [{ kind: 'lap', id: 'old' }, { kind: 'lap', id: 'keep' }]));
+  s.ingest(buildFrame({ epoch: 1, seq: 1, sessionTime: 10, cars: { 0: { throttle: 70, readout: 0 } } }));
+  s.ingest(JSON.stringify({ type: 'history', epoch: 1, entries: [], removed: ['old'] }));
+  vi.advanceTimersByTime(200);
+  expect(s.slow.getSnapshot().history.map(entry => entry.id)).toEqual(['keep']);
+  expect(s.frame.rings[0]!.sessionTime.length).toBe(1);
+  s.ingest(historyMsg(1, [{ kind: 'lap', id: 'keep', car: 2 }]));
+  vi.advanceTimersByTime(200);
+  expect(s.slow.getSnapshot().history).toHaveLength(1);
+  expect(s.slow.getSnapshot().history[0]!.car).toBe(2);
+});

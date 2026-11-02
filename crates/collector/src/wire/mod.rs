@@ -135,10 +135,11 @@ impl Stream {
     }
     pub fn tick(&self, now: Duration, source: Source, model: &SessionModel, context: Context) {
         let mut i = self.0.lock().unwrap();
-        let mut reset = i.model_epoch != model.epoch() || i.source != source;
+        let reset = i.model_epoch != model.epoch() || i.source != source;
         // History generations change on summary corrections, not on every live sample.
         // The hot Frame path checks 24 shared identities instead of serializing a session.
         let mut changes = Vec::new();
+        let mut removed = Vec::new();
         if reset || !i.model.shares_history(model) {
             let entries = history(model);
             let order: Vec<_> = entries.iter().map(|e| e.id.clone()).collect();
@@ -146,7 +147,12 @@ impl Stream {
                 .into_iter()
                 .map(|e| (e.id.clone(), serde_json::to_value(e).unwrap()))
                 .collect();
-            reset |= i.history.keys().any(|id| !history.contains_key(id));
+            removed = i
+                .history
+                .keys()
+                .filter(|id| !history.contains_key(*id))
+                .cloned()
+                .collect();
             changes = order
                 .iter()
                 .filter(|id| i.history.get(*id) != history.get(*id))
@@ -169,10 +175,10 @@ impl Stream {
             i.last_frame = None;
             let msg = i.snapshot();
             i.send(msg);
-        } else if !changes.is_empty() {
+        } else if !changes.is_empty() || !removed.is_empty() {
             let epoch = i.epoch;
             i.send(Message::Text(
-                json!({"type":"history","epoch":epoch,"entries":changes}),
+                json!({"type":"history","epoch":epoch,"entries":changes,"removed":removed}),
             ));
         }
         if i.frame_at

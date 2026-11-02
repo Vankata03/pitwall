@@ -307,6 +307,8 @@ pub enum Lifecycle {
 pub struct SessionModel {
     epoch: u64,
     last_session_time: Option<f32>,
+    last_session_frame: Option<u32>,
+    packet_times: [Option<f32>; 17],
     race_control: Arc<Vec<RaceControlEntry>>,
     next_race_control_id: u64,
     identity: Option<SessionId>,
@@ -342,6 +344,8 @@ impl Default for SessionModel {
         Self {
             epoch: 0,
             last_session_time: None,
+            last_session_frame: None,
+            packet_times: [None; 17],
             race_control: Arc::default(),
             next_race_control_id: 0,
             identity: None,

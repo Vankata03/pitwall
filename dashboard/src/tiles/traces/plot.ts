@@ -13,10 +13,12 @@ export interface PlotSeries {
 }
 
 export interface Plot {
-  /** Distance in the device's unit, one entry per 5 m bucket from the line. */
+  /** Distance buckets, or seconds relative to the latest sample for a rolling plot. */
   x: number[];
   series: PlotSeries[];
   distanceUnit: string;
+  /** A fixed rolling time axis, from -windowSeconds to 0, when present. */
+  windowSeconds?: number;
   speedUnit: string;
   hasData: boolean;
 }

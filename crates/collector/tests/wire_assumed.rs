@@ -391,7 +391,7 @@ fn assumed_session_total_laps_reaches_state() {
 }
 
 #[test]
-fn assumed_history_removal_resets_connected_screens() {
+fn assumed_history_removal_replaces_summaries_without_resetting_live_frames() {
     use pitwall_collector::telemetry::Packet;
     let s = Stream::new("test");
     let mut m = SessionModel::default();
@@ -424,18 +424,12 @@ fn assumed_history_removal_resets_connected_screens() {
         &m,
         Default::default(),
     );
-    assert_eq!(s.epoch(), epoch + 1);
+    assert_eq!(s.epoch(), epoch);
     let messages = drain(&screen);
-    let snapshot = messages.iter().find(|m| m["type"] == "snapshot").unwrap();
-    assert_eq!(
-        snapshot["history"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|e| e["kind"] == "stint")
-            .count(),
-        2
-    );
+    assert!(!messages.iter().any(|m| m["type"] == "snapshot"));
+    let correction = messages.iter().find(|m| m["type"] == "history").unwrap();
+    assert_eq!(correction["removed"].as_array().unwrap().len(), 1);
+    assert!(correction.to_string().len() < 4096);
 }
 
 #[test]

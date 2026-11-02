@@ -127,9 +127,64 @@ test('race-control history updates and epoch resets replace visible entries', ()
     runtime.stores.ingest(JSON.stringify({ type: 'history', epoch: 1, entries: [raceEntry(2, 'PitExit')] }));
     vi.advanceTimersByTime(100);
   });
+  expect(screen.getByRole('list').textContent).not.toContain('Pit exit');
+  act(() => vi.advanceTimersByTime(2900));
   expect(screen.getByRole('list').textContent).toContain('Pit exit');
   act(() => { runtime.stores.ingest(snapshot(2, { lifecycle: 'Live' }, [])); vi.advanceTimersByTime(100); });
   expect(screen.getByRole('list').textContent).toBe('');
+});
+
+test.each([74, 320])('race-control ignores controller and mode telemetry in a %ipx tile', (height) => {
+  const game = (details: unknown) => ({ Game: { code: [66, 85, 84, 78], details } });
+  const { runtime } = setup('race-control-feed', {}, { car: null, height }, [
+    raceEntry(1, { Game: { code: [76, 71, 79, 84], details: 'LightsOut' } }),
+    raceEntry(2, game({ Buttons: { button_status: 1 } })),
+    raceEntry(3, game('PartialAeroEnabled')),
+    raceEntry(4, game('OvertakeEnabled')),
+    raceEntry(5, game('Unknown')),
+    raceEntry(6, game({ SpeedTrap: { speed: 250, vehicle_idx: 0 } })),
+  ]);
+  expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  const before = screen.getByRole('list').textContent;
+  act(() => {
+    runtime.stores.ingest(JSON.stringify({ type: 'history', epoch: 1, entries: [raceEntry(7, game({ Buttons: { button_status: 2 } }))] }));
+    vi.advanceTimersByTime(4000);
+  });
+  expect(screen.getByRole('list').textContent).toBe(before);
+});
+
+test('race-control safety announcements bypass the routine hold and a seek clears pending headlines', () => {
+  const { runtime } = setup('race-control-feed', {}, { car: null, height: 320 }, [raceEntry(1, 'PitEntry')]);
+  const append = (entries: unknown[]) => act(() => {
+    runtime.stores.ingest(JSON.stringify({ type: 'history', epoch: 1, entries }));
+    vi.advanceTimersByTime(100);
+  });
+  append([raceEntry(2, 'PitExit')]);
+  expect(screen.getByRole('list').textContent).not.toContain('Pit exit');
+  append([raceEntry(3, { Game: { code: [82, 69, 68, 70], details: 'RedFlag' } })]);
+  expect(screen.getAllByRole('listitem')[0]!.textContent).toContain('Red Flag');
+  append([raceEntry(4, { WeatherChanged: { previous: 0, weather: 4 } })]);
+  expect(screen.getByRole('list').textContent).not.toContain('Heavy rain');
+  act(() => { runtime.stores.ingest(snapshot(2, { lifecycle: 'Live' }, [])); vi.advanceTimersByTime(100); });
+  act(() => vi.advanceTimersByTime(4000));
+  expect(screen.getByRole('list').textContent).toBe('');
+});
+
+test('per-car flag bursts are batched while the track status updates immediately', () => {
+  const { runtime } = setup('race-control-feed', { session: live({ safetyCarStatus: 0 }) }, { car: null, height: 74 }, [raceEntry(1, 'PitEntry')]);
+  const append = (entries: unknown[]) => act(() => {
+    runtime.stores.ingest(JSON.stringify({ type: 'history', epoch: 1, entries }));
+    vi.advanceTimersByTime(100);
+  });
+  append([raceEntry(2, { MarshalFlagChanged: { zone: 1, previous: 1, flag: 3 } })]);
+  expect(screen.getByTestId('race-control-status').textContent).toBe('Yellow flag');
+  expect(screen.getByRole('list').textContent).not.toContain('Yellow flag');
+  for (let i = 3; i < 15; i++) append([raceEntry(i, { FlagChanged: { previous: 1, flag: 3 } }, [i])]);
+  expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  act(() => vi.advanceTimersByTime(1700));
+  expect(screen.getByRole('list').textContent).toContain('Yellow flag');
+  append([raceEntry(15, { MarshalFlagChanged: { zone: 1, previous: 3, flag: 1 } })]);
+  expect(screen.getByTestId('race-control-status').textContent).toBe('Track clear');
 });
 
 test('gaps at the field boundary stays absent and stale neighbor positions taint the behind gap', () => {

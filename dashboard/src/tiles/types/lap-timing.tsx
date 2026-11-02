@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { CompletedLap } from '../../generated/wire/CompletedLap';
 import type { HistoryEntry } from '../../generated/wire/HistoryEntry';
 import { useSlow } from '../../runtime/react';
@@ -27,8 +27,8 @@ const time = (ms: number, lap = false): string => {
   const seconds = Math.floor(ms / 1000) % 60;
   return `${lap || ms >= 60000 ? `${Math.floor(ms / 60000)}:${String(seconds).padStart(2, '0')}` : seconds}.${String(ms % 1000).padStart(3, '0')}`;
 };
-/** How far into the next lap the headline delta stops showing the finished lap's (spec section 6). */
-const HOLD_DELTA_MS = 5000;
+/** Show the official result briefly, then return to the next lap's running clock and delta. */
+const HOLD_RESULT_MS = 5000;
 const deltaText = (ms: number) => signed(ms / 1000, 3);
 
 /** Rank against earlier valid sectors, excluding the displayed lap itself. */
@@ -57,13 +57,17 @@ function LapTiming({ car, settings, density }: TileProps) {
   const lifecycle = useLifecycle();
   const sessionType = useSessionType();
   const history = useSlow(s => s.history);
+  const epoch = useSlow(s => s.epoch);
+  const [expiredResult, setExpiredResult] = useState('');
+  const expiration = useRef('');
   const reference = referenceOf(settings);
   const extra = reference === 'personal-best' || reference === 'rival';
   const lap = valueOf(c?.lap);
   const lapState = slowState(c?.lap, connected);
   const index = car && (car.status === 'ok' || car.status === 'retired') ? car.index : null;
   const result = reference === 'previous' ? c?.completedPrevious : c?.completedBest;
-  const completed = result && lap && result.lap_number === lap.current_lap_num - 1 && lap.sector === 0 && lap.sector1_time_ms_part === 0 && lap.sector1_time_minutes_part === 0 ? result : null;
+  const resultKey = `${epoch}:${index}:${result?.lap_number}:${reference}`;
+  const completed = expiredResult !== resultKey && result && lap && result.lap_number === lap.current_lap_num - 1 && lap.sector === 0 && lap.sector1_time_ms_part === 0 && lap.sector1_time_minutes_part === 0 ? result : null;
   const completedLap = completed ? [c?.previous, c?.best, ...history.filter(e => e.kind === 'lap' && e.car === index).map(e => e.body as CompletedLap)].find(l => l?.lap_number === completed.lap_number) : null;
   const tt = extra && sessionType === TIME_TRIAL ? reference === 'rival' ? c?.rival : c?.personalBest : null;
   const refNumber = completed?.reference_lap_number;
@@ -80,20 +84,22 @@ function LapTiming({ car, settings, density }: TileProps) {
   const sectorStates = sectors.map(ms => ms === null ? (lapState >= 2 ? lapState : ReadoutState.Absent) : completed ? summaryState : lapState);
 
   useFrameTile(declaration, car, ({ frame, car: i, connected: online }) => {
-    const clockState = completed ? effectiveState(ReadoutState.Live, online) : i === null ? ReadoutState.Absent : effectiveState(frameReadoutState(frame, i, 'currentLapTime'), online);
+    const finished = completed && (i === null || frame.currentLapTime[i]! < HOLD_RESULT_MS);
+    // One React transition per result expires its slow sector/reference layout; Frame values stay imperative.
+    if (completed && !finished && expiration.current !== resultKey && i !== null && frameReadoutState(frame, i, 'currentLapTime') < 2) {
+      expiration.current = resultKey;
+      setExpiredResult(resultKey);
+    }
+    const clockState = finished ? effectiveState(ReadoutState.Live, online) : i === null ? ReadoutState.Absent : effectiveState(frameReadoutState(frame, i, 'currentLapTime'), online);
     const field = reference === 'previous' ? 'deltaPrevious' : 'deltaBest';
-    // The result keeps its time and sectors until sector 1 completes, but its delta gives way to the
-    // live one once the next lap has run a few seconds. The extra references (personal best,
-    // rival) have no live delta, so theirs is held for as long as the result is.
-    const holdDelta = completed && (extra || i === null || frame.currentLapTime[i]! < HOLD_DELTA_MS);
-    const difference = holdDelta ? extra ? refTime ? completed.lap_time_ms - refTime : null : completed.delta_ms : i === null || extra ? null : frame[field][i]!;
-    const deltaState = difference === null ? ReadoutState.Absent : holdDelta ? effectiveState(ReadoutState.Live, online) : effectiveState(frameReadoutState(frame, i!, field), online);
-    write(clock.current, clockState, time(completed?.lap_time_ms ?? (i === null ? 0 : frame.currentLapTime[i]!), true));
+    const difference = finished ? extra ? refTime ? completed!.lap_time_ms - refTime : null : completed!.delta_ms : i === null || extra ? null : frame[field][i]!;
+    const deltaState = difference === null ? ReadoutState.Absent : finished ? effectiveState(ReadoutState.Live, online) : effectiveState(frameReadoutState(frame, i!, field), online);
+    write(clock.current, clockState, time(finished ? completed!.lap_time_ms : i === null ? 0 : frame.currentLapTime[i]!, true));
     write(delta.current, deltaState, deltaText(difference ?? 0));
     setData(delta.current, 'sign', deltaState < 2 ? difference! < 0 ? 'ahead' : difference! > 0 ? 'behind' : 'equal' : '');
     const states = [clockState, deltaState, ...(density !== 'compact' ? sectorStates : []), ...(density === 'full' && refTime ? [summaryState] : [])];
     showMessage(root.current, wholeTileMessage(states, { lifecycle, connected: online }));
-  }, [c, reference, density, history, connected, lifecycle, sessionType]);
+  }, [c, reference, density, history, connected, lifecycle, sessionType, expiredResult]);
 
   return <div className="pw-frame-tile pw-lt" ref={root} data-density={density}>
     <div className="pw-frame-body">
@@ -113,7 +119,6 @@ function LapTiming({ car, settings, density }: TileProps) {
           <StateReadout state={d == null ? ReadoutState.Absent : sectorState} text={deltaText(d ?? 0)} testId={`lt-s${s + 1}-delta`} />
         </div>;
       })}</div> : null}
-      {completed && density !== 'compact' ? <div className="pw-lt-result"><span className="pw-label">Total lap result</span><span className="pw-num">{time(completed.lap_time_ms, true)}</span></div> : null}
       {density === 'full' ? <>
         {extra ? <div className="pw-lt-ref-sectors">{[0, 1, 2].map((s) => <div className="pw-stat" key={s}><span className="pw-label">REF S{s + 1}</span><StateReadout state={refSectors[s] ? summaryState : ReadoutState.Absent} text={time(refSectors[s] ?? 0)} testId={`lt-ref-s${s + 1}`} /></div>)}</div> : null}
         <div className="pw-lt-reference"><span className="pw-label" data-testid="lt-ref-label">REF LAP {refLap?.lap_number ?? '—'} · {references[reference]}</span><StateReadout state={refTime ? summaryState : ReadoutState.Absent} text={time(refTime ?? 0, true)} testId="lt-ref-time" /></div>

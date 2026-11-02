@@ -39,6 +39,8 @@
   --pw-sector-slower: #F2D14B;
   --pw-energy: #56D9CA;
   --pw-brake: #F55C72;
+  --pw-trace-throttle: #56D9CA;
+  --pw-trace-brake: #F55C72;
 
   /* Informational blue: track name and MGU-H, shared with the cold band's hue. */
   --pw-info: #5CA7E7;

@@ -26,21 +26,9 @@ function palette(host: HTMLElement) {
   };
 }
 
-/** A soft vertical wash under a live pedal line, from the line's own colour; none for other colours. */
-function areaFill(colour: string): uPlot.Series['fill'] {
-  if (!/^#[0-9a-f]{6}$/i.test(colour)) return undefined;
-  return (u: uPlot) => {
-    const { top, height } = u.bbox;
-    const gradient = u.ctx.createLinearGradient(0, top, 0, top + height);
-    gradient.addColorStop(0, `${colour}52`);
-    gradient.addColorStop(1, `${colour}08`);
-    return gradient;
-  };
-}
-
 const SCALE: Record<Channel, 'pct' | 'spd'> = { throttle: 'pct', brake: 'pct', speed: 'spd' };
 const shapeOf = (plot: Plot) =>
-  [plot.distanceUnit, plot.speedUnit, ...plot.series.map((s) => `${s.lap}:${s.channel}`)].join('|');
+  [plot.distanceUnit, plot.windowSeconds, plot.speedUnit, ...plot.series.map((s) => `${s.lap}:${s.channel}`)].join('|');
 
 function loadedChart(host: HTMLElement, PlotConstructor: typeof uPlot): TraceChart {
   let chart: uPlot | null = null;
@@ -58,12 +46,12 @@ function loadedChart(host: HTMLElement, PlotConstructor: typeof uPlot): TraceCha
       cursor: { show: false },
       select: { show: false, left: 0, top: 0, width: 0, height: 0 },
       scales: {
-        x: { time: false },
+        x: { time: false, ...(plot.windowSeconds === undefined ? {} : { range: () => [-plot.windowSeconds!, 0] as [number, number] }) },
         pct: { range: [0, 100] },
         spd: { range: (_u, _min, max) => [0, Math.max(50, Math.ceil(max / 50) * 50)] },
       },
       axes: [
-        { ...axis, scale: 'x', label: plot.distanceUnit, labelFont: font, labelSize: 14 },
+        { ...axis, scale: 'x', size: 24 },
         ...(hasPct ? [{ ...axis, scale: 'pct', size: 44, values: (_u: uPlot, v: number[]) => v.map((n) => `${n}%`) }] : []),
         ...(hasSpeed
           ? [{ ...axis, scale: 'spd', side: 1, size: 52, grid: { show: !hasPct }, values: (_u: uPlot, v: number[]) => v.map((n) => `${n}`) }]
@@ -74,12 +62,11 @@ function loadedChart(host: HTMLElement, PlotConstructor: typeof uPlot): TraceCha
         ...plot.series.map((s) => ({
           scale: SCALE[s.channel],
           stroke: colour[s.channel],
-          // A dashed thin line is the reference, a solid thick one the live lap: not colour alone.
-          width: s.lap === 'current' ? 2 : 1.5,
-          dash: s.lap === 'reference' ? [6, 4] : undefined,
+          // Bright, heavier current traces sit over subdued solid reference traces.
+          width: s.lap === 'current' ? 2.5 : 1.5,
+          alpha: s.lap === 'current' ? 1 : 0.4,
           spanGaps: false,
           points: { show: false },
-          fill: s.lap === 'current' && SCALE[s.channel] === 'pct' ? areaFill(colour[s.channel]) : undefined,
         })),
       ],
     };

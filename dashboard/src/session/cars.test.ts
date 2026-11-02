@@ -134,6 +134,17 @@ describe('labels', () => {
     expect(carLabel(p({}))).toBe('Max');
   });
 
+  test('AI names remain visible when the online-name flag is off', () => {
+    const drivers = participantsOf({ cars: [car({ ai_controlled: 1, network_id: 65535, show_online_names: 0, name: bytes('PÉREZ') })] });
+    expect(carLabel(drivers[0]!)).toBe('PÉREZ');
+  });
+
+  test('hidden online human names remain private and empty names fall back to race number', () => {
+    const drivers = participantsOf({ cars: [car({ ai_controlled: 0, network_id: 17, show_online_names: 0, name: bytes('private-platform-id') })] });
+    expect(carLabel(drivers[0]!)).toBe('#44');
+    expect(carLabel(p({ name: '  ' }))).toBe('#33');
+  });
+
   test('a human who hides their online name is shown by race number', () => {
     expect(carLabel(p({ showOnlineNames: false }))).toBe('#33');
   });

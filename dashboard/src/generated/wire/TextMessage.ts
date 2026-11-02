@@ -9,4 +9,4 @@ import type { SessionState } from "./SessionState";
 import type { Source } from "./Source";
 import type { State } from "./State";
 
-export type TextMessage = { "type": "hello", buildId: string, epoch: number, source: Source, } | { "type": "snapshot", epoch: number, source: Source, state: State, history: Array<HistoryEntry>, } | { "type": "state", epoch: number, lifecycle: Lifecycle, session: Readout<SessionState>, playerCar: number | null, pitWindow: Readout<PitWindow>, cars: Array<CarState | null>, context: Context, } | { "type": "history", epoch: number, entries: Array<HistoryEntry>, };
+export type TextMessage = { "type": "hello", buildId: string, epoch: number, source: Source, } | { "type": "snapshot", epoch: number, source: Source, state: State, history: Array<HistoryEntry>, } | { "type": "state", epoch: number, lifecycle: Lifecycle, session: Readout<SessionState>, playerCar: number | null, pitWindow: Readout<PitWindow>, cars: Array<CarState | null>, context: Context, } | { "type": "history", epoch: number, entries: Array<HistoryEntry>, removed?: Array<string>, };

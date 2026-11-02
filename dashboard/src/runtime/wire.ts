@@ -171,7 +171,8 @@ export function parseTextMessage(text: string): TextMessage | null {
     }
     case 'history':
       if (!isEntries(m.entries)) return null;
-      return { type: 'history', epoch, entries: m.entries };
+      if (m.removed !== undefined && (!Array.isArray(m.removed) || !m.removed.every(id => typeof id === 'string'))) return null;
+      return { type: 'history', epoch, entries: m.entries, ...(m.removed === undefined ? {} : { removed: m.removed as string[] }) };
     default:
       return null;
   }

@@ -111,7 +111,16 @@ test('Full race tower keeps fixed columns, hidden names, lapped gaps, focus and 
   expect(row.getAttribute('aria-current')).toBe('true');
   expect(within(row).getByText('Restricted')).toBeTruthy();
   const size = cellsToPixels('wide', 1249, { w: 9, h: 16 });
-  expect(pickDensity(tower.declaration, size.width, size.height)).toBe('full');
+  expect(pickDensity(tower.declaration, size.width, size.height)).toBe('compact');
+  expect(pickDensity(tower.declaration, 500, size.height)).toBe('full');
+});
+
+test('AI driver names appear in the tower even when online names are disabled', () => {
+  const cs = cars();
+  Object.assign(cs[2]!.participant.value, { ai_controlled: 1, show_online_names: 0 });
+  show({}, { cars: cs });
+  expect(screen.getByText('Driver 3')).toBeTruthy();
+  expect(screen.queryByText('#3')).toBeNull();
 });
 
 test('compact pins the leader around focus and regular falls back without scrolling', () => {
@@ -171,7 +180,7 @@ test('settings preserve unrelated keys and disconnect marks displayed values sta
     runtime.stores.setConnection('reconnecting');
     vi.advanceTimersByTime(200);
   });
-  expect(screen.getByText('Driver 6').getAttribute('data-state')).toBe('stale');
+  expect(screen.getByText('Driver 6').closest('.pw-readout')!.getAttribute('data-state')).toBe('stale');
   expect(screen.getAllByText('Restricted')[0]!.getAttribute('data-state')).toBe('restricted');
 });
 test('red flag band keeps gaps visible and ignores rewound events', () => {
@@ -201,4 +210,21 @@ test('Around focus means ±N, without adding distant cars at field edges', () =>
   show({ density: 'compact', height: 500, settings: { rows: 'around', radius: 3 } }, {}, 0);
   expect(screen.getAllByRole('row')).toHaveLength(5);
   expect(screen.queryByText('Driver 5')).toBeNull();
+});
+
+test.each(['compact', 'regular', 'full'] as const)('team colour sits beside the driver without a spare column in %s density', (density) => {
+  show({ density });
+  expect(screen.queryByRole('columnheader', { name: 'Team' })).toBeNull();
+  const cell = screen.getByText('Driver 6').closest('td')!;
+  expect(cell.querySelector('.pw-team-marker')?.getAttribute('style')).toContain('rgb(100, 120, 140)');
+  expect(cell.querySelector('.pw-team-marker')?.getAttribute('aria-hidden')).toBe('true');
+  const columns = screen.getAllByRole('columnheader').length;
+  for (const row of screen.getAllByRole('row').slice(1)) expect(within(row).getAllByRole('cell')).toHaveLength(columns);
+});
+
+ test('tyres have a coloured letter badge and an accessible compound name', () => {
+  show({ density: 'regular' });
+  const badge = within(screen.getByText('Driver 6').closest('tr')!).getByLabelText('Soft tyres');
+  expect(badge.textContent).toBe('S');
+  expect(badge.getAttribute('data-compound')).toBe('S');
 });

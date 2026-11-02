@@ -48,9 +48,49 @@
 .pw-tile[data-tile-type='fuel'] .pw-slow-row:first-child .pw-readout { font-size: clamp(30px, min(7cqw, 34cqh), 72px); }
 .pw-tile[data-tile-type='fuel'] .pw-slow-row:last-child { text-align: right; }
 
-/* Weather: forecast is detail, so it stays at the value size. */
-.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(n + 5) .pw-readout { font-size: var(--pw-text-value); font-weight: 600; line-height: var(--pw-text-metric); }
-@container (max-width: 520px) {
+/* Weather reserves room for complete temperatures and sky names. Forecasts use a second row. */
+.pw-tile[data-tile-type='weather'] .pw-slow-tile { padding: 6px 12px; }
+.pw-tile[data-tile-type='weather'] .pw-slow-readouts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .8fr) minmax(0, 1.6fr);
+  align-items: center;
+  gap: 10px 6px;
+}
+.pw-tile[data-tile-type='weather'] .pw-readout {
+  font-size: clamp(18px, min(5.4cqw, 40cqh), 30px);
+  line-height: 1.1;
+  text-overflow: clip;
+}
+.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(3) .pw-readout[data-state='live'] { color: var(--pw-info); }
+.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(4) {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+}
+.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(4) > .pw-label { grid-column: 1 / -1; }
+.pw-tile[data-tile-type='weather'] .pw-slow-icon { display: flex; color: var(--pw-accent); }
+.pw-tile[data-tile-type='weather'] .pw-slow-icon svg { width: 22px; height: 22px; }
+.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(4) .pw-readout {
+  font-size: clamp(14px, 4cqw, 24px);
+  text-transform: none;
+  white-space: normal;
+}
+.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(n + 5) { grid-column: span 2; }
+.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(n + 5) .pw-readout {
+  font-size: var(--pw-text-value);
+  font-weight: 600;
+  white-space: normal;
+}
+@container (max-height: 90px) {
+  .pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(n + 5) { display: none; }
+}
+@container (max-width: 400px) {
+  .pw-tile[data-tile-type='weather'] .pw-readout { font-size: 14px; }
+  .pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(3) .pw-readout { font-size: 20px; }
+  .pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(4) { grid-template-columns: minmax(0, 1fr); }
+  .pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(4) .pw-readout { font-size: 14px; }
+  .pw-tile[data-tile-type='weather'] .pw-slow-icon,
   .pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(n + 5) { display: none; }
 }
 
@@ -112,27 +152,11 @@
 .pw-et-scale { fill: var(--pw-text-muted); font-family: var(--pw-font); font-size: 15px; }
 
 /* Weather and lap state carry four or five numbers in a row: tighter gaps keep them whole on narrow tiles. */
-.pw-tile[data-tile-type='weather'] .pw-slow-readouts,
 .pw-tile[data-tile-type='lap-state'] .pw-slow-readouts { gap: 8px 10px; }
 
 /* One-row instrument strips: the numbers take the tile's height, as on a pit-wall screen. */
-.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(-n + 4) .pw-readout,
 .pw-tile[data-tile-type='lap-state'] .pw-readout { font-size: clamp(18px, min(7cqw, 62cqh), 56px); line-height: 1; }
 .pw-tile[data-tile-type='lap-state'] .pw-slow-row:nth-child(3) .pw-readout[data-state='live'] { color: var(--pw-accent); }
-.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(3) .pw-readout[data-state='live'] { color: var(--pw-info); }
-
-/* Sky: the glyph sits beside the word, in the same accent. */
-.pw-tile[data-tile-type='weather'] .pw-slow-row:has(.pw-slow-icon) {
-  display: grid;
-  grid-template-columns: auto auto;
-  grid-template-areas: 'label label' 'icon value';
-  align-items: center;
-  justify-content: end;
-  gap: 4px 8px;
-}
-.pw-tile[data-tile-type='weather'] .pw-slow-row:has(.pw-slow-icon) > .pw-label { grid-area: label; text-align: right; }
-.pw-tile[data-tile-type='weather'] .pw-slow-icon { grid-area: icon; display: flex; color: var(--pw-accent); }
-.pw-tile[data-tile-type='weather'] .pw-slow-row:has(.pw-slow-icon) .pw-readout { grid-area: value; }
 
 /* Race-control strip: a broadcast-style event ticker across the top of the board. */
 .pw-rc-strip {
