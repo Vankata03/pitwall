@@ -13,7 +13,7 @@ export function RaceStrip({ focusIndex }: { focusIndex: number | null }) {
   const total = session && session.totalLaps > 0 ? ` / ${session.totalLaps}` : '';
   return (
     <div className="pw-race-strip" data-testid="race-strip">
-      <b className="pw-race-strip-name">Race control</b>
+      <b className="pw-race-strip-name">Session</b>
       <span data-testid="race-status">{session ? raceStatus(session, history) || 'Racing' : 'No session'}</span>
       {place ? <span className="pw-race-strip-quiet">{place}</span> : null}
       {lap !== null ? <span className="pw-num">Lap {lap}{total}</span> : null}

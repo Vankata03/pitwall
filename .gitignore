@@ -8,3 +8,6 @@ dist/
 artifacts/
 .bench-base/
 __pycache__/
+
+# Real livery art stays local (README: never ship it). Copy it into the per-user liveries folder.
+liveries/

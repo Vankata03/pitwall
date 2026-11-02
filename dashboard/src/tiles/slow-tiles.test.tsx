@@ -159,3 +159,16 @@ test('race-control uses words for flags and safety car states, and latest entrie
   expect(items[1]!.textContent).toContain('VSC');
   expect(items[2]!.textContent).toContain('Flag Y');
 });
+
+test('a short, wide race-control tile is a one-line strip: track status, then the newest events first with names', () => {
+  const names = (n: string) => live({ name: Array.from(new TextEncoder().encode(n)), race_number: 1, show_online_names: 1 });
+  setup('race-control-feed', { cars: [{ participant: names('Alpha') }, { participant: names('Bravo') }], session: live({ safetyCarStatus: 0, sessionType: 10, weather: 0, forecast: [] }) }, { car: null, width: 940, height: 74 }, [
+    raceEntry(1, { Game: { code: [76, 71, 79, 84], details: 'LightsOut' } }),
+    raceEntry(2, { Game: { code: [79, 86, 84, 75], details: { Overtake: { overtaking_vehicle_idx: 0, being_overtaken_vehicle_idx: 1 } } } }),
+  ]);
+  expect(screen.getByTestId('race-control-status').textContent).toBe('Track clear');
+  const items = screen.getAllByRole('listitem');
+  expect(items[0]!.textContent).toContain('OVTK');
+  expect(items[0]!.textContent).toContain('Alpha passes Bravo');
+  expect(items[1]!.textContent).toContain('Lights Out');
+});

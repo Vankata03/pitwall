@@ -64,8 +64,13 @@ function SpeedRpmGear({ car, units, density, width, height }: TileProps) {
   const maxRpm = status && status.max_rpm > 0 ? status.max_rpm : null;
   const lifecycle = useLifecycle();
   const showStrip = density !== 'compact';
-  const showDial = density === 'full';
-  const dialSize = Math.max(120, Math.min(width - 32, height - 200));
+  const full = density === 'full';
+  // Regular gives the dial the tile's full height, with title, strip, gear and RPM beside it;
+  // full stacks them around it.
+  const dialSize = Math.round(
+    full ? Math.max(120, Math.min(width - 32, height - 200)) : Math.min(height - 24, (width - 2 * 14) * 0.55),
+  );
+  const showDial = showStrip && dialSize >= 110;
 
   useFrameTile(
     declaration,
@@ -101,8 +106,21 @@ function SpeedRpmGear({ car, units, density, width, height }: TileProps) {
     [units.speed, density, maxRpm, lifecycle, dialSize],
   );
 
+  const speed = (
+    <div className="pw-srg-speed">
+      <span className="pw-num pw-readout pw-big" ref={speedEl} data-testid="speed" />
+      <span className="pw-label" ref={unitEl} data-testid="speed-unit" />
+    </div>
+  );
+
   return (
-    <div className="pw-frame-tile pw-srg" ref={root} data-density={density} style={{ '--pw-dial': `${dialSize}px` } as CSSProperties}>
+    <div
+      className="pw-frame-tile pw-srg"
+      ref={root}
+      data-density={density}
+      data-dial={showDial ? 'true' : 'false'}
+      style={{ '--pw-dial': `${dialSize}px` } as CSSProperties}
+    >
       <div className="pw-frame-body">
         {showStrip ? <TileTitle>Speed / RPM</TileTitle> : null}
         {showStrip ? (
@@ -112,32 +130,35 @@ function SpeedRpmGear({ car, units, density, width, height }: TileProps) {
             ))}
           </div>
         ) : null}
-        <div className="pw-srg-speed">
-          <span className="pw-num pw-readout pw-big" ref={speedEl} data-testid="speed" />
-          <span className="pw-label" ref={unitEl} data-testid="speed-unit" />
-        </div>
-        {showDial ? (
-          <canvas
-            className="pw-dial"
-            ref={dial}
-            data-testid="rpm-dial"
-            role="img"
-            aria-label="Speed, RPM and gear: engine speed dial. The readouts beside it give the numbers."
-          />
-        ) : null}
-        <div className="pw-srg-row">
-          <div className="pw-stat">
-            <span className="pw-label">Gear</span>
-            <span className="pw-num pw-readout pw-metric pw-gear" ref={gearEl} data-testid="gear" />
-          </div>
-          {showStrip ? (
-            <div className="pw-stat pw-stat-end">
-              <span className="pw-label">Engine speed</span>
-              <span className="pw-srg-rpm">
-                <span className="pw-num pw-readout pw-metric" ref={rpmEl} data-testid="rpm" /> <span className="pw-label">RPM</span>
-              </span>
+        <div className="pw-srg-main">
+          {showDial ? (
+            <div className="pw-srg-dialbox">
+              <canvas
+                className="pw-dial"
+                ref={dial}
+                data-testid="rpm-dial"
+                role="img"
+                aria-label="Speed, RPM and gear: engine speed dial. The readouts beside it give the numbers."
+              />
+              {speed}
             </div>
-          ) : null}
+          ) : (
+            speed
+          )}
+          <div className="pw-srg-row">
+            <div className="pw-stat">
+              <span className="pw-label">Gear</span>
+              <span className="pw-num pw-readout pw-metric pw-gear" ref={gearEl} data-testid="gear" />
+            </div>
+            {showStrip ? (
+              <div className="pw-stat pw-stat-end">
+                <span className="pw-label">Engine speed</span>
+                <span className="pw-srg-rpm">
+                  <span className="pw-num pw-readout pw-metric" ref={rpmEl} data-testid="rpm" /> <span className="pw-label">RPM</span>
+                </span>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
       <TileMessage />
@@ -145,26 +166,75 @@ function SpeedRpmGear({ car, units, density, width, height }: TileProps) {
   );
 }
 
-/** The RPM dial: a 270° arc, filled to the share of the maximum. A steady fill, never animated. */
+/** Share of the sweep where the shift strip's zones change colour, so dial and strip agree. */
+const ZONE_STOPS = [8 / SEGMENTS, 14 / SEGMENTS] as const;
+
+/**
+ * The RPM dial: tick marks and thousands labels outside a 270° track, then the track and a
+ * fill to the share of the maximum, coloured by the shift strip's zones. A steady fill,
+ * never animated. The track and the fill are the last two arcs drawn.
+ */
 function drawDial(canvas: HTMLCanvasElement, size: number, rpm: number | null, maxRpm: number | null, stale: boolean): void {
   const ctx = fitCanvas(canvas, size, size);
   if (!ctx) return;
-  const line = tokenColor(canvas, '--pw-line', '#343d42');
-  const ink = tokenColor(canvas, '--pw-text', '#F3F5F6');
+  const empty = tokenColor(canvas, '--pw-meter-empty', '#2C363B');
+  const muted = tokenColor(canvas, '--pw-text-muted', '#9AA7AD');
+  const low = tokenColor(canvas, '--pw-sector-personal-best', '#7ED99C');
+  const mid = tokenColor(canvas, '--pw-sector-slower', '#F2D14B');
+  const high = tokenColor(canvas, '--pw-temp-hot', '#FF9C35');
   const start = Math.PI * 0.75;
   const sweep = Math.PI * 1.5;
   const c = size / 2;
-  const radius = c - 10;
+  const band = Math.max(6, Math.round(size * 0.055));
+  const radius = c - 24 - band / 2;
   ctx.clearRect(0, 0, size, size);
-  ctx.lineWidth = 8;
+
+  // Ticks: 40 minor, a major one every 10, just outside the track.
+  const outer = radius + band / 2 + 4;
   ctx.lineCap = 'butt';
-  ctx.strokeStyle = line;
+  for (let i = 0; i <= 40; i++) {
+    const angle = start + (sweep * i) / 40;
+    const major = i % 10 === 0;
+    const length = major ? 7 : 3;
+    ctx.strokeStyle = major ? muted : empty;
+    ctx.lineWidth = major ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(c + Math.cos(angle) * outer, c + Math.sin(angle) * outer);
+    ctx.lineTo(c + Math.cos(angle) * (outer + length), c + Math.sin(angle) * (outer + length));
+    ctx.stroke();
+  }
+  if (maxRpm !== null) {
+    ctx.fillStyle = muted;
+    ctx.font = '11px Oxanium, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i <= 4; i++) {
+      const angle = start + (sweep * i) / 4;
+      const at = outer + 14;
+      ctx.fillText(String(Math.round((maxRpm * i) / 4 / 1000)), c + Math.cos(angle) * at, c + Math.sin(angle) * at);
+    }
+  }
+
+  ctx.lineWidth = band;
+  ctx.strokeStyle = empty;
   ctx.beginPath();
   ctx.arc(c, c, radius, start, start + sweep);
   ctx.stroke();
   if (rpm === null || maxRpm === null) return;
   ctx.globalAlpha = stale ? 0.6 : 1;
-  ctx.strokeStyle = ink;
+  const gradient = ctx.createConicGradient?.(start, c, c);
+  if (gradient && !stale) {
+    // The conic gradient runs a full turn from `start`; the stops are shares of 360°.
+    const turn = sweep / (Math.PI * 2);
+    gradient.addColorStop(0, low);
+    gradient.addColorStop(turn * ZONE_STOPS[0], low);
+    gradient.addColorStop(turn * ZONE_STOPS[1], mid);
+    gradient.addColorStop(turn, high);
+    gradient.addColorStop(1, high);
+    ctx.strokeStyle = gradient;
+  } else {
+    ctx.strokeStyle = muted;
+  }
   ctx.beginPath();
   ctx.arc(c, c, radius, start, start + sweep * Math.min(1, Math.max(0, rpm / maxRpm)));
   ctx.stroke();

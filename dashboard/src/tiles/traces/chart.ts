@@ -26,6 +26,18 @@ function palette(host: HTMLElement) {
   };
 }
 
+/** A soft vertical wash under a live pedal line, from the line's own colour; none for other colours. */
+function areaFill(colour: string): uPlot.Series['fill'] {
+  if (!/^#[0-9a-f]{6}$/i.test(colour)) return undefined;
+  return (u: uPlot) => {
+    const { top, height } = u.bbox;
+    const gradient = u.ctx.createLinearGradient(0, top, 0, top + height);
+    gradient.addColorStop(0, `${colour}52`);
+    gradient.addColorStop(1, `${colour}08`);
+    return gradient;
+  };
+}
+
 const SCALE: Record<Channel, 'pct' | 'spd'> = { throttle: 'pct', brake: 'pct', speed: 'spd' };
 const shapeOf = (plot: Plot) =>
   [plot.distanceUnit, plot.speedUnit, ...plot.series.map((s) => `${s.lap}:${s.channel}`)].join('|');
@@ -67,6 +79,7 @@ function loadedChart(host: HTMLElement, PlotConstructor: typeof uPlot): TraceCha
           dash: s.lap === 'reference' ? [6, 4] : undefined,
           spanGaps: false,
           points: { show: false },
+          fill: s.lap === 'current' && SCALE[s.channel] === 'pct' ? areaFill(colour[s.channel]) : undefined,
         })),
       ],
     };

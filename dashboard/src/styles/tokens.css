@@ -11,10 +11,12 @@
 
 :root {
   /* Surfaces */
-  --pw-page-bg: #181b1d;
+  --pw-page-bg: #121517;
   --pw-tile-bg: #1B1F21;
   --pw-tile-bg-raised: #242B2E;
-  --pw-line: #343d42;
+  --pw-line: #2E373C;
+  /* A tile's own edge: quieter than an inner rule, so the board reads as one face. */
+  --pw-tile-edge: #262E32;
   /* The empty part of a meter, strip or battery: quieter than a fill, never a value. */
   --pw-meter-empty: #2C363B;
   /* The track on the map: heavy but quiet, and still 3:1 on the tile background. */
@@ -62,7 +64,7 @@
   --pw-gap: 8px;
 
   /* Surfaces */
-  --pw-radius: 6px;
+  --pw-radius: 8px;
   --pw-radius-inner: 3px;
   --pw-tile-pad: 14px;
 
