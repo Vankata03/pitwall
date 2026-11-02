@@ -100,22 +100,22 @@ async fn pitwall_classic_wide_arrangement_matches_the_spec_table() {
 
     let expected = [
         ("speed-rpm-gear", [0, 0, 6, 6]),
-        ("engine-temp", [0, 6, 3, 2]),
-        ("g-force", [3, 6, 3, 2]),
-        ("ers", [0, 8, 6, 4]),
-        ("fuel", [0, 12, 6, 2]),
-        ("gaps", [6, 0, 8, 2]),
-        ("sm", [14, 0, 4, 2]),
-        ("car-status", [6, 2, 12, 12]),
+        ("engine-temp", [0, 6, 3, 4]),
+        ("g-force", [3, 6, 3, 4]),
+        ("ers", [0, 10, 6, 4]),
+        ("fuel", [0, 14, 6, 2]),
+        ("race-control-feed", [6, 0, 12, 2]),
+        ("sm", [10, 2, 4, 2]),
+        ("car-status", [6, 4, 12, 12]),
         ("weather", [18, 0, 6, 2]),
-        ("track-map", [18, 2, 6, 6]),
-        ("lap-state", [18, 8, 6, 2]),
-        ("lap-timing", [18, 10, 6, 4]),
-        ("throttle-brake-traces", [0, 14, 10, 7]),
-        ("stint", [10, 14, 8, 7]),
-        ("timing-tower", [18, 14, 6, 7]),
-        ("live-delta", [0, 21, 24, 6]),
-        ("notice", [0, 27, 24, 1]),
+        ("track-map", [18, 2, 6, 7]),
+        ("lap-state", [18, 9, 6, 2]),
+        ("lap-timing", [18, 11, 6, 5]),
+        ("throttle-brake-traces", [0, 16, 7, 6]),
+        ("live-delta", [7, 16, 6, 6]),
+        ("stint", [13, 16, 6, 6]),
+        ("timing-tower", [19, 16, 5, 6]),
+        ("notice", [0, 22, 24, 1]),
     ];
     assert_eq!(tiles(&layout, "wide").len(), expected.len());
     for (id, at) in expected {
@@ -167,7 +167,7 @@ async fn every_preset_has_valid_wide_tablet_and_phone_arrangements_with_a_notice
         "fuel" => (3, 2),
         "throttle-brake-traces" => (6, 4),
         "track-map" => (4, 4),
-        "race-control-feed" => (4, 3),
+        "race-control-feed" => (4, 2),
         "car-status" => (8, 6),
         "timing-tower" => (4, 6),
         "stint" => (6, 4),
@@ -200,16 +200,20 @@ async fn every_preset_has_valid_wide_tablet_and_phone_arrangements_with_a_notice
 }
 
 #[tokio::test]
-async fn phone_arrangements_start_with_lap_timing_live_delta_then_gaps() {
+async fn phone_arrangements_start_with_lap_timing_live_delta_then_gaps_or_race_control() {
     let library = LayoutLibrary::open(temp_file()).unwrap();
     let app = app(&library);
-    for name in ["Pitwall%20Classic", "Driver"] {
+    // Pitwall Classic carries the race-control strip where the others carry gaps.
+    for (name, third) in [
+        ("Pitwall%20Classic", "race-control-feed"),
+        ("Driver", "gaps"),
+    ] {
         let (_, layout) = call(&app, Method::GET, &format!("/api/layouts/{name}"), None).await;
         let mut phone: Vec<&Value> = tiles(&layout, "phone").iter().collect();
         phone.sort_by_key(|tile| tile["y"].as_u64().unwrap());
         assert_eq!(phone[0]["type"], "lap-timing");
         assert_eq!(phone[1]["type"], "live-delta");
-        assert_eq!(phone[2]["type"], "gaps");
+        assert_eq!(phone[2]["type"], third);
     }
 }
 

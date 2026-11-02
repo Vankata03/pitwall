@@ -8,6 +8,7 @@ import '../frame-tiles.css';
 import { TileTitle, tokenColor } from '../frame-kit';
 import { TowerFocus } from './timing-tower';
 import { useFrameTile } from '../use-frame-tile';
+import { carLabel, participantsOf } from '../../session/cars';
 
 type Point = [number, number];
 interface TrackMap {
@@ -61,6 +62,11 @@ function TrackMapTile({ width, height }: TileProps) {
       }),
     [cars],
   );
+  // The focus car's name rides beside its dot, as on a broadcast map.
+  const focusName = useMemo(() => {
+    const p = participantsOf(slow.state).find((c) => c.index === focusCar);
+    return p ? carLabel(p).toUpperCase() : null;
+  }, [slow.state, focusCar]);
   const summary = useRef<HTMLSpanElement>(null);
   const fitting = useRef<{ identity: string; bounds: Bounds | null }>({
     identity,
@@ -168,22 +174,40 @@ function TrackMapTile({ width, height }: TileProps) {
       const ink = tokenColor(el, '--pw-text', '#F3F5F6');
       const accent = tokenColor(el, '--pw-accent', '#FF9C35');
       const field = tokenColor(el, '--pw-energy', '#56D9CA');
+      const casing = tokenColor(el, '--pw-page-bg', '#121517');
+      const edge = tokenColor(el, '--pw-line', '#2E373C');
+      const road = Math.max(4, Math.min(10, Math.min(w, h) / 22));
+      const tracePath = () => {
+        ctx.beginPath();
+        outline.forEach((p, i) => {
+          const point = project([p[1], p[2]]);
+          if (i && (p[0] - outline[i - 1]![0]) * 8 <= 40) ctx.lineTo(...point);
+          else ctx.moveTo(...point);
+        });
+        const first = outline[0],
+          last = outline.at(-1);
+        if (map?.complete && first && last && trackLength! - (last[0] - first[0]) * 8 <= 40)
+          ctx.lineTo(...project([first[1], first[2]]));
+      };
+      // A road: a dark casing, a lighter kerb edge, the tarmac, and a faint centre line.
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(3, Math.min(7, Math.min(w, h) / 28));
-      ctx.strokeStyle = track;
       ctx.setLineDash([]);
-      ctx.beginPath();
-      outline.forEach((p, i) => {
-        const point = project([p[1], p[2]]);
-        if (i && (p[0] - outline[i - 1]![0]) * 8 <= 40) ctx.lineTo(...point);
-        else ctx.moveTo(...point);
-      });
-      const first = outline[0],
-        last = outline.at(-1);
-      if (map?.complete && first && last && trackLength! - (last[0] - first[0]) * 8 <= 40)
-        ctx.lineTo(...project([first[1], first[2]]));
+      tracePath();
+      ctx.strokeStyle = casing;
+      ctx.lineWidth = road + 6;
       ctx.stroke();
+      ctx.strokeStyle = edge;
+      ctx.lineWidth = road + 2;
+      ctx.stroke();
+      ctx.strokeStyle = track;
+      ctx.lineWidth = road;
+      ctx.stroke();
+      ctx.globalAlpha = 0.18;
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
       ctx.lineWidth = 2;
       ctx.lineCap = 'butt';
       ctx.strokeStyle = muted;
@@ -251,8 +275,21 @@ function TrackMapTile({ width, height }: TileProps) {
         ctx.fillStyle = dot.index === focusCar ? accent : ink;
         ctx.fillText(String(position).padStart(2, '0'), x + 7, y - 7);
       }
+      const focusDot = dots.find((d) => d.index === focusCar);
+      if (focusDot && focusName) {
+        const [x, y] = project(focusDot.point);
+        ctx.font = '600 12px Oxanium, sans-serif';
+        ctx.textAlign = x > w * 0.6 ? 'right' : 'left';
+        const tx = x > w * 0.6 ? x - 10 : x + 10;
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = casing;
+        ctx.strokeText(focusName, tx, y + 16);
+        ctx.fillStyle = accent;
+        ctx.fillText(focusName, tx, y + 16);
+      }
     },
-    [width, height, map, outline, pit, identity, info, positions, focusCar],
+    [width, height, map, outline, pit, identity, info, positions, focusCar, focusName],
   );
   return (
     <div className="pw-tm">

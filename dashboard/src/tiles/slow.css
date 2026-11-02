@@ -25,7 +25,8 @@
 .pw-slow-tile .pw-readout {
   overflow: hidden;
   /* Numerals grow with the tile; the size is chosen, never scaled. */
-  font-size: clamp(var(--pw-text-metric), min(4.6cqw, 30cqh), 56px);
+  /* 5.6cqw gives 26px on a 470px tile and stays above the 14px value floor on narrow ones. */
+  font-size: clamp(18px, min(5.6cqw, 36cqh), 56px);
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.01em;
@@ -74,3 +75,180 @@
 .pw-race-feed [data-rewound='true'] { color: var(--pw-text-muted); }
 .pw-race-filter { display: flex; flex-wrap: wrap; gap: 8px; }
 .pw-race-filter label { display: flex; align-items: center; min-height: var(--pw-hit); }
+
+/* Engine temp: at gauge size the number sits in the centre of a 270° arc, the label above. */
+.pw-et { height: 100%; }
+.pw-et[data-gauge='true'] .pw-slow-tile { justify-content: flex-end; padding: 30px 8px 4px; }
+.pw-et[data-gauge='true'] .pw-slow-readouts {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  justify-content: center;
+  align-items: center;
+  padding-top: 30px;
+  pointer-events: none;
+}
+.pw-et[data-gauge='true'] .pw-slow-row > .pw-label:first-child {
+  position: absolute;
+  right: var(--pw-tile-pad);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  top: 10px;
+  left: var(--pw-tile-pad);
+  font-family: var(--pw-font);
+  font-size: var(--pw-text-title);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--pw-text-title-colour);
+}
+.pw-et[data-gauge='true'] .pw-readout { font-size: clamp(var(--pw-text-metric), min(13cqw, 15cqh), 48px); }
+.pw-et-gauge { display: block; width: 100%; height: 100%; min-height: 0; }
+.pw-et-track { fill: none; stroke: var(--pw-meter-empty); stroke-width: 9; }
+.pw-et-fill { fill: none; stroke: url(#pw-et-fill); stroke-width: 9; }
+.pw-et-fill[data-stale='true'] { stroke: var(--pw-text-muted); }
+.pw-et-tick { stroke: var(--pw-meter-empty); stroke-width: 1.5; }
+.pw-et-tick[data-major='true'] { stroke: var(--pw-text-muted); stroke-width: 2; }
+.pw-et-scale { fill: var(--pw-text-muted); font-family: var(--pw-font); font-size: 15px; }
+
+/* Weather and lap state carry four or five numbers in a row: tighter gaps keep them whole on narrow tiles. */
+.pw-tile[data-tile-type='weather'] .pw-slow-readouts,
+.pw-tile[data-tile-type='lap-state'] .pw-slow-readouts { gap: 8px 10px; }
+
+/* One-row instrument strips: the numbers take the tile's height, as on a pit-wall screen. */
+.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(-n + 4) .pw-readout,
+.pw-tile[data-tile-type='lap-state'] .pw-readout { font-size: clamp(18px, min(7cqw, 62cqh), 56px); line-height: 1; }
+.pw-tile[data-tile-type='lap-state'] .pw-slow-row:nth-child(3) .pw-readout[data-state='live'] { color: var(--pw-accent); }
+.pw-tile[data-tile-type='weather'] .pw-slow-row:nth-child(3) .pw-readout[data-state='live'] { color: var(--pw-info); }
+
+/* Sky: the glyph sits beside the word, in the same accent. */
+.pw-tile[data-tile-type='weather'] .pw-slow-row:has(.pw-slow-icon) {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: 'label label' 'icon value';
+  align-items: center;
+  justify-content: end;
+  gap: 4px 8px;
+}
+.pw-tile[data-tile-type='weather'] .pw-slow-row:has(.pw-slow-icon) > .pw-label { grid-area: label; text-align: right; }
+.pw-tile[data-tile-type='weather'] .pw-slow-icon { grid-area: icon; display: flex; color: var(--pw-accent); }
+.pw-tile[data-tile-type='weather'] .pw-slow-row:has(.pw-slow-icon) .pw-readout { grid-area: value; }
+
+/* Race-control strip: a broadcast-style event ticker across the top of the board. */
+.pw-rc-strip {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 100%;
+  padding: 0 16px;
+  overflow: hidden;
+  border-left: 3px solid var(--pw-accent);
+  border-radius: var(--pw-radius);
+  background: var(--pw-tile-bg-raised);
+  white-space: nowrap;
+}
+.pw-rc-head {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 16px;
+  border-right: 1px solid var(--pw-line);
+}
+.pw-rc-head b {
+  font-size: var(--pw-text-title);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pw-accent);
+}
+.pw-rc-head span,
+.pw-rc-time,
+.pw-rc-empty {
+  font-family: var(--pw-font-label);
+  font-size: var(--pw-text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pw-text-muted);
+}
+.pw-rc-status {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid currentColor;
+  border-radius: var(--pw-radius-inner);
+  font-size: var(--pw-text-value);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pw-rc-ticker {
+  /* Entries that do not fit wrap onto a hidden second line, so only whole entries show. */
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
+  height: 28px;
+  gap: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+.pw-rc-ticker li {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 28px;
+  gap: 8px;
+  padding: 0 16px;
+  font-size: var(--pw-text-value);
+}
+.pw-rc-ticker li + li { border-left: 1px solid var(--pw-line); }
+.pw-rc-ticker li:first-child { padding-left: 0; }
+/* Older entries recede, so the newest reads first. */
+.pw-rc-ticker li:nth-child(n + 3) { opacity: 0.72; }
+.pw-rc-ticker li[data-rewound='true'] { opacity: 0.5; }
+.pw-rc-ticker b {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.pw-rc-detail { color: var(--pw-text-title-colour); }
+.pw-rc-tag {
+  padding: 2px 6px;
+  border-radius: var(--pw-radius-inner);
+  font-size: var(--pw-text-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--pw-tile-bg);
+  background: var(--pw-info);
+}
+.pw-rc-tag[data-tone='good'] { background: var(--pw-sector-personal-best); }
+.pw-rc-tag[data-tone='warn'] { background: var(--pw-sector-slower); }
+.pw-rc-tag[data-tone='bad'] { background: var(--pw-brake); }
+.pw-rc-tag[data-tone='quiet'] { background: var(--pw-text-muted); }
+.pw-rc-status[data-tone='good'] { color: var(--pw-sector-personal-best); }
+.pw-rc-status[data-tone='warn'] { color: var(--pw-sector-slower); }
+.pw-rc-status[data-tone='bad'] { color: var(--pw-brake); }
+.pw-rc-status[data-tone='quiet'] { color: var(--pw-text-muted); }
+/* The newest entry keeps its detail, shortened with an ellipsis only when it alone is wider
+   than the strip; older entries show their tag and title, so several fit, and any that still
+   do not fit wrap out of sight whole. */
+.pw-rc-strip { container-type: inline-size; }
+.pw-rc-ticker li:first-child { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.pw-rc-ticker li:first-child > * { flex: none; }
+.pw-rc-ticker li:first-child > .pw-rc-detail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pw-rc-ticker li:nth-child(n + 2) .pw-rc-detail { display: none; }
+@container (max-width: 640px) {
+  .pw-rc-head { padding-right: 0; border-right: 0; }
+  .pw-rc-head span, .pw-rc-time { display: none; }
+  .pw-rc-strip { gap: 10px; padding: 0 10px; }
+  .pw-rc-status { padding: 2px 6px; }
+}
+/* Only the newest entry carries its lap and time, so more entries fit on the line. */
+.pw-rc-ticker li { padding: 0 12px; }
+.pw-rc-ticker li:nth-child(n + 2) .pw-rc-time { display: none; }
+.pw-rc-strip { gap: 12px; }
+.pw-rc-head { padding-right: 12px; }

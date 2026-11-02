@@ -23,6 +23,8 @@ export interface Row {
   note?: string | undefined;
   /** Accent for the value; colour only repeats what the value's text or sign already says. */
   tone?: 'good' | 'bad' | 'accent' | undefined;
+  /** A decorative glyph beside the value; the value's text still carries the meaning. */
+  icon?: ReactNode;
 }
 export function SlowTile({ title, snapshot, rows, children }: { title: string; snapshot: SlowSnapshot; rows: Row[]; children?: ReactNode }) {
   const connected = snapshot.connection === 'open';
@@ -30,6 +32,7 @@ export function SlowTile({ title, snapshot, rows, children }: { title: string; s
   return <section className="pw-slow-tile" aria-label={title}>
     <div className="pw-slow-readouts">{rows.map(r => <div className="pw-slow-row" key={r.label} data-tone={r.tone}>
       <span className="pw-label">{r.label}</span>
+      {r.icon ? <span className="pw-slow-icon" aria-hidden="true">{r.icon}</span> : null}
       <Value state={effectiveReadoutState(r.value, connected)} value={'value' in r.value ? r.value.value : ''} />
       {r.note ? <span className="pw-label pw-slow-note">{r.note}</span> : null}
     </div>)}</div>

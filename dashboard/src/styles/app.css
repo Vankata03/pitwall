@@ -41,7 +41,7 @@
   align-items: center;
   gap: 8px;
   min-height: 28px;
-  font-size: 21px;
+  font-size: 28px;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.01em;
@@ -407,18 +407,31 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border: 1px solid var(--pw-line);
+  border: 1px solid var(--pw-tile-edge);
   border-radius: var(--pw-radius);
   background: var(--pw-tile-bg);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.02);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.035),
+    0 6px 18px rgb(0 0 0 / 0.28);
   color: var(--pw-text);
 }
-/* The board's centre stays open around the car: the car and whatever sits with it are not boxed in. */
+/* The board's centre stays open around the car: the car and whatever sits with it are not boxed in.
+   Outside Stream view they sit on the page itself; Stream view keeps every tile opaque. */
 .pw-tile[data-tile-type='car-status'],
 .pw-grid:has(.pw-tile[data-tile-type='car-status']) .pw-tile[data-tile-type='gaps'],
 .pw-grid:has(.pw-tile[data-tile-type='car-status']) .pw-tile[data-tile-type='sm'] {
   border-color: transparent;
   box-shadow: none;
+}
+html:not([data-stream='true']) .pw-tile[data-tile-type='car-status'],
+html:not([data-stream='true']) .pw-grid:has(.pw-tile[data-tile-type='car-status']) .pw-tile[data-tile-type='gaps'],
+html:not([data-stream='true']) .pw-grid:has(.pw-tile[data-tile-type='car-status']) .pw-tile[data-tile-type='sm'] {
+  background: transparent;
+}
+html:not([data-stream='true']) .pw-tile[data-tile-type='car-status'] .pw-cs,
+html:not([data-stream='true']) .pw-grid:has(.pw-tile[data-tile-type='car-status']) .pw-tile[data-tile-type='gaps'] .pw-slow-tile,
+html:not([data-stream='true']) .pw-grid:has(.pw-tile[data-tile-type='car-status']) .pw-tile[data-tile-type='sm'] .pw-frame-tile {
+  background: transparent;
 }
 .pw-tile-message,
 .pw-unknown,

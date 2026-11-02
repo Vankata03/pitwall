@@ -61,6 +61,13 @@
 }
 
 /* ---- Speed/RPM/gear ---- */
+.pw-srg-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
 .pw-srg-speed {
   display: flex;
   flex: 1;
@@ -83,20 +90,54 @@
 .pw-gear[data-state='stale'] {
   color: var(--pw-text-muted);
 }
-.pw-dial {
+/* The dial carries the speed in its centre, as an instrument face. */
+.pw-srg-dialbox {
+  position: relative;
   flex: none;
   align-self: center;
+  width: var(--pw-dial);
+  height: var(--pw-dial);
 }
-/* With the dial, the speed sits inside it. The offset is the padding, title and strip above. */
-.pw-srg[data-density='full'] .pw-srg-speed {
+.pw-dial {
+  display: block;
+}
+.pw-srg-dialbox .pw-srg-speed {
   position: absolute;
-  top: calc(54px + var(--pw-dial) / 2);
-  right: var(--pw-tile-pad);
-  left: var(--pw-tile-pad);
-  translate: 0 -50%;
+  inset: 0;
+  gap: 0;
+  padding-top: 4%;
 }
-.pw-srg[data-density='full'] .pw-big {
-  font-size: calc(var(--pw-dial) * 0.3);
+.pw-srg-dialbox .pw-big {
+  font-size: calc(var(--pw-dial) * 0.27);
+  letter-spacing: -0.04em;
+}
+/* Regular: the dial fills the tile's height on the left; title, strip, gear and RPM sit beside it. */
+.pw-srg[data-density='regular'][data-dial='true'] .pw-frame-body {
+  display: grid;
+  grid-template-columns: var(--pw-dial) minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas: 'dial title' 'dial strip' 'dial row';
+  gap: 8px 16px;
+}
+.pw-srg[data-density='regular'][data-dial='true'] .pw-title { grid-area: title; }
+.pw-srg[data-density='regular'][data-dial='true'] .pw-shift-strip { grid-area: strip; gap: 3px; }
+.pw-srg[data-density='regular'][data-dial='true'] .pw-srg-main { display: contents; }
+.pw-srg[data-density='regular'][data-dial='true'] .pw-srg-dialbox { grid-area: dial; align-self: center; }
+.pw-srg[data-density='regular'][data-dial='true'] .pw-srg-row {
+  grid-area: row;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  padding: 0;
+  border-top: 0;
+}
+.pw-srg[data-density='regular'][data-dial='true'] .pw-stat-end {
+  align-items: flex-start;
+  text-align: left;
+}
+.pw-srg[data-density='regular'][data-dial='true'] .pw-gear {
+  font-size: clamp(34px, min(14cqw, 26cqh), 72px);
+  line-height: 0.95;
 }
 .pw-srg[data-density='full'] .pw-srg-row {
   margin-top: auto;
@@ -126,15 +167,29 @@
 
 /* ---- G-force ---- */
 .pw-gf-body {
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: 'circle total' 'circle values';
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 4px 12px;
+}
+.pw-gf[data-density='compact'] .pw-gf-body {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'total values';
+}
+.pw-gf-circle {
+  grid-area: circle;
+  align-self: center;
 }
 .pw-gf-total {
-  flex: 1;
+  grid-area: total;
+  align-self: end;
+  white-space: nowrap;
 }
 .pw-gf-values {
+  grid-area: values;
+  align-self: start;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -144,10 +199,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-}
-.pw-gf-circle {
-  flex: none;
+  gap: 8px;
 }
 
 /* ---- SM / DRS ---- */
