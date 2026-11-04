@@ -105,3 +105,21 @@ test('graph joins up to 100 m, breaks longer gaps and NaN, uses symmetric sensib
   expect(deltaExtent([])).toBe(0.1);
   expect(deltaExtent([{ distance: 0, delta: -3.2 }])).toBe(5);
 });
+
+test('delta extent lands exactly on a step at each decade boundary', () => {
+  const extent = (delta: number) => deltaExtent([{ distance: 0, delta }]);
+  expect(extent(0.2)).toBe(0.2);
+  expect(extent(1)).toBe(1);
+  expect(extent(5)).toBe(5);
+  expect(extent(5.01)).toBe(10);
+  expect(extent(10)).toBe(10);
+  expect(extent(-60)).toBe(100);
+  expect(extent(0.05)).toBe(0.1); // floor holds below 0.1 s
+  // Non-finite deltas never widen the axis.
+  expect(deltaExtent([{ distance: 0, delta: Infinity }, { distance: 1, delta: NaN }])).toBe(0.1);
+});
+
+test('segments start over when distance goes backwards and drop negative distance', () => {
+  const points = [10, 20, 15, 25, -1, 30].map((distance) => ({ distance, delta: 0 }));
+  expect(segments(points).map((s) => s.map((p) => p.distance))).toEqual([[10, 20], [15, 25], [30]]);
+});

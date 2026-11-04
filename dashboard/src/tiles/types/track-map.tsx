@@ -62,6 +62,16 @@ function TrackMapTile({ width, height }: TileProps) {
       }),
     [cars],
   );
+  // Each dot wears its team's livery colour, as the tower's team marker does.
+  const colours = useMemo(
+    () =>
+      (cars ?? []).map((car) => {
+        const participant = car?.participant;
+        const colour = participant && 'value' in participant ? participant.value.livery_colour?.[0] : undefined;
+        return colour ? `rgb(${colour.red},${colour.green},${colour.blue})` : null;
+      }),
+    [cars],
+  );
   // The focus car's name rides beside its dot, as on a broadcast map.
   const focusName = useMemo(() => {
     const p = participantsOf(slow.state).find((c) => c.index === focusCar);
@@ -254,11 +264,18 @@ function TrackMapTile({ width, height }: TileProps) {
       for (const dot of ordered) {
         const [x, y] = project(dot.point);
         const focused = dot.index === focusCar;
-        ctx.fillStyle = dot.state === 1 ? muted : focused ? accent : field;
+        ctx.fillStyle = dot.state === 1 ? muted : (colours[dot.index] ?? (focused ? accent : field));
         ctx.beginPath();
         ctx.arc(x, y, focused && dot.state !== 1 ? 6 : 4, 0, Math.PI * 2);
         ctx.fill();
+        // A dark rim keeps dark liveries visible; the focus car gets an accent ring.
+        if (dot.state !== 1) {
+          ctx.lineWidth = focused ? 2 : 1;
+          ctx.strokeStyle = focused ? accent : casing;
+          ctx.stroke();
+        }
         if (dot.state === 1) {
+          ctx.lineWidth = 2;
           ctx.strokeStyle = ink;
           ctx.beginPath();
           ctx.arc(x, y, 6, 0, Math.PI * 2);
@@ -289,7 +306,7 @@ function TrackMapTile({ width, height }: TileProps) {
         ctx.fillText(focusName, tx, y + 16);
       }
     },
-    [width, height, map, outline, pit, identity, info, positions, focusCar, focusName],
+    [width, height, map, outline, pit, identity, info, positions, colours, focusCar, focusName],
   );
   return (
     <div className="pw-tm">

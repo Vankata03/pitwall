@@ -19,6 +19,10 @@ const lapTime = (ms: number | undefined) =>
 const delta = (ms: number) => `${ms < 0 ? '−' : '+'}${(Math.abs(ms) / 1000).toFixed(3)}`;
 const compound = (n: number) =>
   ({ 16: 'S', 17: 'M', 18: 'H', 7: 'I', 8: 'W', 19: 'SS', 20: 'S', 21: 'M', 22: 'H' })[n] ?? String(n);
+// m_resultStatus: 3 finished, 4 did not finish, 5 disqualified, 6 not classified, 7 retired.
+const DSQ = 5;
+const NOT_CLASSIFIED = 6;
+const OUT = [4, 5, 6, 7];
 const tyreName = (code: string) => ({ S: 'Soft', M: 'Medium', H: 'Hard', I: 'Intermediate', W: 'Wet', SS: 'Super soft' })[code] ?? `Compound ${code}`;
 function Cell<T>({
   readout,
@@ -95,7 +99,7 @@ function Tower({ settings, density, height }: TileProps) {
     .sort((a, b) => {
       const dead = (i: number) => {
         const c = state?.cars[i];
-        return !!c?.retired || [6, 7].includes(data(c?.lap)?.result_status ?? 0);
+        return !!c?.retired || OUT.includes(data(c?.lap)?.result_status ?? 0);
       };
       return Number(dead(a.index)) - Number(dead(b.index)) || (a.position ?? 99) - (b.position ?? 99);
     });
@@ -172,7 +176,7 @@ function Tower({ settings, density, height }: TileProps) {
             {rows.map((p) => {
               const c = state.cars[p.index]!;
               const lap = data(c.lap);
-              const retired = c.retired || [6, 7].includes(lap?.result_status ?? 0);
+              const retired = c.retired || OUT.includes(lap?.result_status ?? 0);
               const gap = data(c.gaps);
               let gapText = '—';
               let gapState = c.gaps.state;
@@ -240,9 +244,11 @@ function Tower({ settings, density, height }: TileProps) {
                         readout={c.lap}
                         stale={stale}
                         format={(v) =>
-                          v.result_status === 6
+                          v.result_status === DSQ
                             ? 'DSQ'
-                            : retired
+                            : v.result_status === NOT_CLASSIFIED
+                              ? 'NC'
+                              : retired
                               ? 'Retired'
                               : v.pit_status
                                 ? 'PIT'

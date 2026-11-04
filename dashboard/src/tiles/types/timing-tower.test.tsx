@@ -149,7 +149,7 @@ test('focus-relative compares leader gaps and timed sessions name the fallback r
 test('pit rows retain gaps, DSQ and retired cars sink, Time Trial replaces the tower', () => {
   const cs = cars();
   cs[0]!.retired = true;
-  cs[1]!.lap.value.result_status = 6;
+  cs[1]!.lap.value.result_status = 5; // m_resultStatus 5 = disqualified
   cs[3]!.lap.value.pit_status = 1;
   const { view } = show({}, { cars: cs });
   const rows = screen.getAllByRole('row');
@@ -162,6 +162,19 @@ test('pit rows retain gaps, DSQ and retired cars sink, Time Trial replaces the t
   show({}, { session: live({ sessionType: 18 }) });
   expect(screen.getByText('Time Trial — only the player car runs')).toBeTruthy();
   expect(screen.queryByRole('table')).toBeNull();
+});
+
+test('result statuses follow the game codes: DNF and not classified also sink with their own text', () => {
+  const cs = cars();
+  cs[0]!.lap.value.result_status = 4; // did not finish
+  cs[2]!.lap.value.result_status = 6; // not classified
+  show({}, { cars: cs });
+  const rows = screen.getAllByRole('row');
+  expect(rows.at(-2)!.textContent).toContain('Driver 1');
+  expect(rows.at(-1)!.textContent).toContain('#3'); // fixture hides this online name
+  expect(within(screen.getByText('Driver 1').closest('tr')!).getByText('Retired')).toBeTruthy();
+  expect(within(screen.getByText('#3').closest('tr')!).getByText('NC')).toBeTruthy();
+  expect(screen.queryByText('DSQ')).toBeNull();
 });
 
 test('settings preserve unrelated keys and disconnect marks displayed values stale', () => {

@@ -17,8 +17,9 @@
   border-bottom: 1px solid var(--pw-line);
 }
 .pw-tower[data-density='regular'] tr {
-  grid-template-columns: 22px minmax(92px, 1.7fr) minmax(64px, 1.2fr) 32px 26px 40px minmax(56px, 1fr);
-  column-gap: 4px;
+  /* Fixed columns are sized to fit their 11px uppercase headers (POS, TYRE, AGE, STOPS). */
+  grid-template-columns: 32px minmax(92px, 1.6fr) minmax(64px, 1.1fr) 40px 36px 48px minmax(64px, 1fr);
+  column-gap: 6px;
   min-height: 32px;
 }
 .pw-tower[data-density='full'] tr { min-height: 72px; }
