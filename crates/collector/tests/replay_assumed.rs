@@ -27,7 +27,7 @@ fn recording() -> std::path::PathBuf {
         (45, 4, 2, 21),
         (65, 5, 3, 41),
     ] {
-        let out = Command::new("python3")
+        let out = Command::new(if cfg!(windows) { "python" } else { "python3" })
             .arg(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../tools/telemetry/assumed_datagram.py"

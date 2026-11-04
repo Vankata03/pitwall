@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 fn main() {
-    let bytes = Command::new("python3")
+    let bytes = Command::new(if cfg!(windows) { "python" } else { "python3" })
         .args([
             concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -43,7 +43,7 @@ fn main() {
         model.apply(Duration::from_secs(n as u64 * 90), &packet);
     }
     let mut telemetry = parse_datagram(
-        &Command::new("python3")
+        &Command::new(if cfg!(windows) { "python" } else { "python3" })
             .args([
                 concat!(
                     env!("CARGO_MANIFEST_DIR"),

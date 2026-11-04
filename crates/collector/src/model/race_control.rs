@@ -145,8 +145,8 @@ impl SessionModel {
                     if car.retired || matches!(value.result_status, 0 | 1) {
                         continue;
                     }
-                    let was_in_pit = history::was_in_pit(car);
                     let in_pit = value.pit_status != 0;
+                    let was_in_pit = history::was_in_pit(car).unwrap_or(in_pit);
                     if was_in_pit != in_pit {
                         changes.push((
                             vec![index],

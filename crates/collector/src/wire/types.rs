@@ -146,7 +146,7 @@ impl State {
         }
     }
 }
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(tag = "kind", content = "body", rename_all = "camelCase")]
 pub enum HistoryBody {
     Lap(CompletedLap),
@@ -156,56 +156,66 @@ pub enum HistoryBody {
     Penalty(Penalty),
     RaceControl(RaceControlEntry),
 }
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
 pub struct HistoryEntry {
     pub id: String,
     pub car: Option<u8>,
     #[serde(flatten)]
     pub body: HistoryBody,
 }
+/// Cars plus race control. Groups `0..24` are cars; `HISTORY_GROUPS - 1` is race control.
+pub const HISTORY_GROUPS: usize = 25;
 pub fn history(model: &SessionModel) -> Vec<HistoryEntry> {
+    (0..HISTORY_GROUPS)
+        .flat_map(|group| history_group(model, group))
+        .collect()
+}
+/// One car's history entries, or race control for the last group, in snapshot order.
+pub fn history_group(model: &SessionModel, group: usize) -> Vec<HistoryEntry> {
     let mut entries = Vec::new();
-    for index in 0..24 {
-        if let Some(c) = model.car(index) {
-            let h = c.session_history();
-            let mut add = |kind: &str, id: String, body| {
-                entries.push(HistoryEntry {
-                    id: format!("{index}:{kind}:{id}"),
-                    car: Some(index as u8),
-                    body,
-                })
-            };
-            for v in &h.laps {
-                add(
-                    "lap",
-                    v.lap_number.to_string(),
-                    HistoryBody::Lap((**v).clone()),
-                );
-            }
-            for v in &h.sectors {
-                add(
-                    "sector",
-                    format!("{}:{}", v.lap_number, v.sector),
-                    HistoryBody::Sector(v.clone()),
-                );
-            }
-            for v in &h.stints {
-                add("stint", v.id.to_string(), HistoryBody::Stint(v.clone()));
-            }
-            for v in &h.pit_stops {
-                add("pit", v.id.to_string(), HistoryBody::PitStop(v.clone()));
-            }
-            for v in &h.penalties {
-                add("penalty", v.id.to_string(), HistoryBody::Penalty(v.clone()));
-            }
+    if group == HISTORY_GROUPS - 1 {
+        for v in model.race_control() {
+            entries.push(HistoryEntry {
+                id: format!("race-control:{}", v.id),
+                car: None,
+                body: HistoryBody::RaceControl(v.clone()),
+            });
         }
+        return entries;
     }
-    for v in model.race_control() {
-        entries.push(HistoryEntry {
-            id: format!("race-control:{}", v.id),
-            car: None,
-            body: HistoryBody::RaceControl(v.clone()),
-        });
+    let index = group;
+    if let Some(c) = model.car(index) {
+        let h = c.session_history();
+        let mut add = |kind: &str, id: String, body| {
+            entries.push(HistoryEntry {
+                id: format!("{index}:{kind}:{id}"),
+                car: Some(index as u8),
+                body,
+            })
+        };
+        for v in &h.laps {
+            add(
+                "lap",
+                v.lap_number.to_string(),
+                HistoryBody::Lap((**v).clone()),
+            );
+        }
+        for v in &h.sectors {
+            add(
+                "sector",
+                format!("{}:{}", v.lap_number, v.sector),
+                HistoryBody::Sector(v.clone()),
+            );
+        }
+        for v in &h.stints {
+            add("stint", v.id.to_string(), HistoryBody::Stint(v.clone()));
+        }
+        for v in &h.pit_stops {
+            add("pit", v.id.to_string(), HistoryBody::PitStop(v.clone()));
+        }
+        for v in &h.penalties {
+            add("penalty", v.id.to_string(), HistoryBody::Penalty(v.clone()));
+        }
     }
     entries
 }

@@ -629,6 +629,41 @@ fn assumed_tyres_define_stints_pit_visits_stay_separate_and_history_overrides() 
 }
 
 #[test]
+fn assumed_pit_visit_with_unexplained_age_change_starts_a_stint_before_history() {
+    let mut model = SessionModel::default();
+    let pit = |time: f32, number: u8| {
+        let mut input = lap(time, number, 0, 0);
+        if let Packet::Lap(data) = &mut input.packet {
+            data.lap_data[23].as_mut().unwrap().pit_status = 2;
+        }
+        input
+    };
+    apply(&mut model, &lap(0.1, 1, 0, 0));
+    apply(&mut model, &status(1.0, 16, 3));
+    apply(&mut model, &pit(30.0, 1)); // Wing-only stop.
+    apply(&mut model, &status(31.0, 16, 3));
+    apply(&mut model, &lap(40.0, 1, 0, 0));
+    apply(&mut model, &lap(90.1, 2, 90_000, 0));
+    apply(&mut model, &status(91.0, 16, 4)); // Lap increment after the stop.
+    assert_eq!(model.car(23).unwrap().session_history().stints.len(), 1);
+    apply(&mut model, &pit(100.0, 2));
+    apply(&mut model, &status(101.0, 16, 7)); // Older used set, same compound.
+    apply(&mut model, &lap(110.0, 2, 90_000, 0));
+    let history = model.car(23).unwrap().session_history();
+    assert_eq!(history.stints.len(), 2);
+    assert_eq!(history.stints[0].end_lap, Some(1));
+    assert_eq!(history.stints[0].tyre_age_laps, Some(4));
+    assert_eq!(history.stints[1].start_lap, 2);
+    assert_eq!(history.stints[1].starting_age, Some(7));
+    assert_eq!(history.stints[1].used_set(), Some(true));
+    apply(&mut model, &lap(190.1, 3, 90_000, 0));
+    apply(&mut model, &status(191.0, 16, 8));
+    let history = model.car(23).unwrap().session_history();
+    assert_eq!(history.stints.len(), 2);
+    assert_eq!(history.stints[1].tyre_age_laps, Some(8));
+}
+
+#[test]
 fn assumed_all_cars_keep_completed_laps_sectors_and_shared_checkpoint_history() {
     let mut model = SessionModel::default();
     let mut before_line = lap(89.0, 1, 0, 0);
@@ -775,4 +810,108 @@ fn accelerated_time_with_lagging_packet_groups_does_not_rewind() {
         );
     }
     assert_eq!(model.session_time(), 180.0);
+}
+
+/// Lap 1 in sector three: sector two was cut, so Lap Data marks the whole lap invalid.
+fn lap_in_sector_three(time: f32) -> ParsedDatagram {
+    let mut packet = lap(time, 1, 0, 1);
+    if let Packet::Lap(data) = &mut packet.packet {
+        for value in data.lap_data.iter_mut().flatten() {
+            value.sector = 2;
+            value.sector1_time_minutes_part = 0;
+            value.sector1_time_ms_part = 30_000;
+            value.sector2_time_minutes_part = 0;
+            value.sector2_time_ms_part = 31_000;
+            value.current_lap_time_in_ms = 65_000;
+            value.pit_status = 0;
+        }
+    }
+    packet
+}
+
+#[test]
+fn lap_data_does_not_overwrite_authoritative_sector_validity_every_packet() {
+    let mut model = SessionModel::default();
+    apply(&mut model, &lap_in_sector_three(75.0));
+    let mut history = packet(2026, 11, 75.5);
+    if let Packet::SessionHistory(data) = &mut history.packet {
+        data.car_idx = 23;
+        data.num_laps = 1;
+        data.num_tyre_stints = 0;
+        let value = &mut data.lap_history_data[0];
+        value.lap_time_in_ms = 0;
+        value.sector1_time_minutes_part = 0;
+        value.sector1_time_ms_part = 30_000;
+        value.sector2_time_minutes_part = 0;
+        value.sector2_time_ms_part = 31_000;
+        value.sector3_time_minutes_part = 0;
+        value.sector3_time_ms_part = 0;
+        value.lap_valid_bit_flags = 2; // Only sector one is clean.
+    }
+    apply(&mut model, &history);
+    let sector_one_valid = |model: &SessionModel| {
+        model
+            .car(23)
+            .unwrap()
+            .session_history()
+            .sectors
+            .iter()
+            .find(|s| s.lap_number == 1 && s.sector == 0)
+            .unwrap()
+            .valid
+    };
+    assert!(
+        sector_one_valid(&model),
+        "Session History marks sector one clean"
+    );
+    assert_eq!(
+        model.car(23).unwrap().session_history().best_sectors_ms[0],
+        Some(30_000)
+    );
+    let before = model.clone();
+    apply(&mut model, &lap_in_sector_three(75.6));
+    assert!(
+        sector_one_valid(&model),
+        "an unchanged Lap Data packet must not undo the authoritative sector flag"
+    );
+    assert_eq!(
+        model.car(23).unwrap().session_history().best_sectors_ms[0],
+        Some(30_000)
+    );
+    assert!(
+        model.shares_history(&before),
+        "an unchanged Lap Data packet must not rebuild history"
+    );
+}
+
+#[test]
+fn a_car_first_seen_in_the_pits_is_not_a_pit_entry() {
+    // Joining qualifying with cars in the garage, or connecting mid-stop, observes no entry.
+    let mut model = SessionModel::default();
+    let mut garage = lap(5.0, 1, 0, 0);
+    if let Packet::Lap(data) = &mut garage.packet {
+        for value in data.lap_data.iter_mut().flatten() {
+            value.pit_status = 2;
+        }
+    }
+    apply(&mut model, &garage);
+    let car = model.car(23).unwrap();
+    assert!(car.session_history().pit_stops.is_empty());
+    assert!(
+        !model
+            .race_control()
+            .iter()
+            .any(|entry| entry.kind == RaceControlKind::PitEntry)
+    );
+    // Leaving the garage is still an observed exit, and the next visit is a stop.
+    apply(&mut model, &lap(20.0, 1, 0, 0));
+    assert!(
+        model
+            .race_control()
+            .iter()
+            .any(|entry| entry.kind == RaceControlKind::PitExit)
+    );
+    garage.header.session_time = 60.0;
+    apply(&mut model, &garage);
+    assert_eq!(model.car(23).unwrap().session_history().pit_stops.len(), 1);
 }

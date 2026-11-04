@@ -41,7 +41,8 @@ pub fn run_controlled(
     default_path: PathBuf,
     control: crate::app::Control,
 ) -> io::Result<()> {
-    run_at(cli, default_path, AppPaths::resolve()?, control)
+    let paths = AppPaths::resolve_or(cli.data_dir.as_deref())?;
+    run_at(cli, default_path, paths, control)
 }
 
 pub fn run_at(

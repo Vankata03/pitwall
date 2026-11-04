@@ -120,10 +120,10 @@ impl Replay {
             if self.pending.is_none() {
                 self.pending = self.reader.next().transpose()?;
             }
-            if !self
+            if self
                 .pending
                 .as_ref()
-                .is_some_and(|r| Duration::from_micros(r.arrival_us) <= target)
+                .is_none_or(|r| Duration::from_micros(r.arrival_us) > target)
             {
                 break;
             }

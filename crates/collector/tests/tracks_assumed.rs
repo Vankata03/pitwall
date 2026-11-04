@@ -516,7 +516,7 @@ mod from_model {
     use std::{process::Command, time::Duration};
 
     fn packet(id: u8, fields: &[(&str, &str)]) -> ParsedDatagram {
-        let mut command = Command::new("python3");
+        let mut command = Command::new(if cfg!(windows) { "python" } else { "python3" });
         command.arg(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../tools/telemetry/assumed_datagram.py"

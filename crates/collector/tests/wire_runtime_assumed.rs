@@ -18,15 +18,22 @@ async fn assumed_binary_resends_datagrams_to_websocket_and_composes_routes() {
     let udp_port = udp.local_addr().unwrap().port();
     let http = TcpListener::bind("127.0.0.1:0").unwrap();
     let http_port = http.local_addr().unwrap().port();
-    let config =
-        std::env::temp_dir().join(format!("pitwall-wire-runtime-{}.toml", std::process::id()));
+    let root = std::env::temp_dir().join(format!("pitwall-wire-runtime-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let config = root.join("config.toml");
+    // Isolated data directory: its own single-instance lock, and the first-run
+    // marker pre-set so the binary never opens a browser.
+    std::fs::create_dir_all(root.join("data/pitwall")).unwrap();
+    std::fs::write(root.join("data/pitwall/browser-opened"), "").unwrap();
     std::fs::write(&config,format!("[udp]\nport={udp_port}\n[http]\nbind='127.0.0.1'\nport={http_port}\n[recording]\nenabled=false\n")).unwrap();
     drop(udp);
     drop(http);
-    let _child = Child(
+    let child = Child(
         Command::new(env!("CARGO_BIN_EXE_pitwall"))
             .arg("--config")
             .arg(&config)
+            .arg("--data-dir")
+            .arg(root.join("data"))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -118,7 +125,8 @@ async fn assumed_binary_resends_datagrams_to_websocket_and_composes_routes() {
             assert!(text.contains("\"files\":"), "{text}");
         }
     }
-    std::fs::remove_file(config).unwrap();
+    drop(child);
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[tokio::test]

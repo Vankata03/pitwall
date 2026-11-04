@@ -85,8 +85,10 @@ struct Inner {
     source: Source,
     seq: u32,
     state: State,
-    history: BTreeMap<String, Value>,
-    history_order: Vec<String>,
+    /// Last published entry and its serialized form, keyed by entry ID.
+    history: BTreeMap<String, (HistoryEntry, Value)>,
+    /// Entry IDs per history group (24 cars, then race control), in snapshot order.
+    history_groups: Vec<Vec<String>>,
     model: SessionModel,
     screens: Vec<Weak<ScreenInner>>,
     last_frame: Option<Vec<u8>>,
@@ -107,7 +109,7 @@ impl Stream {
             state: State::capture(&model, Context::default()),
             model,
             history: BTreeMap::new(),
-            history_order: Vec::new(),
+            history_groups: vec![Vec::new(); HISTORY_GROUPS],
             screens: vec![],
             last_frame: None,
             frame_at: None,
@@ -136,30 +138,48 @@ impl Stream {
     pub fn tick(&self, now: Duration, source: Source, model: &SessionModel, context: Context) {
         let mut i = self.0.lock().unwrap();
         let reset = i.model_epoch != model.epoch() || i.source != source;
-        // History generations change on summary corrections, not on every live sample.
-        // The hot Frame path checks 24 shared identities instead of serializing a session.
+        // History generations change on summary corrections and per-car stint updates,
+        // not on every live sample. Only groups whose shared history changed are
+        // re-serialized, so tick cost stays flat as a long session accumulates laps.
         let mut changes = Vec::new();
         let mut removed = Vec::new();
-        if reset || !i.model.shares_history(model) {
-            let entries = history(model);
+        for group in 0..HISTORY_GROUPS {
+            let shared = if group == HISTORY_GROUPS - 1 {
+                i.model.shares_race_control(model)
+            } else {
+                i.model.shares_car_history(model, group)
+            };
+            if !reset && shared {
+                continue;
+            }
+            let entries = history_group(model, group);
             let order: Vec<_> = entries.iter().map(|e| e.id.clone()).collect();
-            let history: BTreeMap<_, _> = entries
-                .into_iter()
-                .map(|e| (e.id.clone(), serde_json::to_value(e).unwrap()))
-                .collect();
-            removed = i
-                .history
-                .keys()
-                .filter(|id| !history.contains_key(*id))
-                .cloned()
-                .collect();
-            changes = order
-                .iter()
-                .filter(|id| i.history.get(*id) != history.get(*id))
-                .map(|id| history[id].clone())
-                .collect();
-            i.history = history;
-            i.history_order = order;
+            let mut current: BTreeMap<_, _> =
+                entries.into_iter().map(|e| (e.id.clone(), e)).collect();
+            let previous = std::mem::take(&mut i.history_groups[group]);
+            for id in previous {
+                if !current.contains_key(&id) {
+                    i.history.remove(&id);
+                    removed.push(id);
+                }
+            }
+            for id in &order {
+                // A repeated ID is published once.
+                let Some(entry) = current.remove(id) else {
+                    continue;
+                };
+                // An equal entry serializes identically, so skip the encode. Unequal
+                // entries may differ only in unserialized bookkeeping; compare JSON.
+                if i.history.get(id).is_some_and(|(last, _)| *last == entry) {
+                    continue;
+                }
+                let value = serde_json::to_value(&entry).unwrap();
+                if i.history.get(id).is_none_or(|(_, last)| *last != value) {
+                    changes.push(value.clone());
+                }
+                i.history.insert(id.clone(), (entry, value));
+            }
+            i.history_groups[group] = order;
         }
         i.model = model.clone();
         let state_due = i
@@ -235,7 +255,7 @@ impl Stream {
 impl Inner {
     fn snapshot(&self) -> Message {
         Message::Text(
-            json!({"type":"snapshot","epoch":self.epoch,"source":self.source,"state":self.state,"history":self.history_order.iter().map(|id| &self.history[id]).collect::<Vec<_>>()}),
+            json!({"type":"snapshot","epoch":self.epoch,"source":self.source,"state":self.state,"history":self.history_groups.iter().flatten().map(|id| &self.history[id].1).collect::<Vec<_>>()}),
         )
     }
     fn send(&mut self, msg: Message) {

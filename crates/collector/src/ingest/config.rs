@@ -100,10 +100,12 @@ pub struct Cli {
     pub udp_port: Option<u16>,
     pub http_port: Option<u16>,
     pub bind: Option<IpAddr>,
+    /// Replaces the OS per-user data directory; pitwall keeps its files in
+    /// `<data_dir>/pitwall`, including the single-instance lock.
+    pub data_dir: Option<PathBuf>,
 }
 
-pub const HELP: &str =
-    "pitwall [--console] [--udp-port PORT] [--http-port PORT] [--bind ADDRESS] [--config PATH]";
+pub const HELP: &str = "pitwall [--console] [--udp-port PORT] [--http-port PORT] [--bind ADDRESS] [--config PATH] [--data-dir DIR]";
 
 impl Cli {
     pub fn parse(args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<Self, String> {
@@ -117,16 +119,20 @@ impl Cli {
             match flag {
                 "--console" if inline.is_none() => cli.console = true,
                 "--help" | "-h" if inline.is_none() => cli.help = true,
-                "--config" | "--udp-port" | "--http-port" | "--bind" => {
+                "--config" | "--data-dir" | "--udp-port" | "--http-port" | "--bind" => {
                     let value = inline
                         .map(OsString::from)
                         .or_else(|| args.next())
                         .ok_or_else(|| format!("missing value for {flag}"))?;
-                    if flag == "--config" {
+                    if flag == "--config" || flag == "--data-dir" {
                         if value.is_empty() {
-                            return Err("--config needs a path".into());
+                            return Err(format!("{flag} needs a path"));
                         }
-                        cli.config_path = Some(value.into());
+                        if flag == "--config" {
+                            cli.config_path = Some(value.into());
+                        } else {
+                            cli.data_dir = Some(value.into());
+                        }
                         continue;
                     }
                     let value = value.to_str().ok_or("option value must be UTF-8")?;

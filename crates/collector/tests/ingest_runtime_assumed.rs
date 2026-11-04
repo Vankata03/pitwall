@@ -1,7 +1,7 @@
 //! Assumed executable smoke: live config edits redirect synthetic UDP input.
 use std::{
     io::{BufRead, BufReader},
-    net::UdpSocket,
+    net::{TcpListener, UdpSocket},
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
 };
@@ -41,6 +41,12 @@ fn assumed_binary_receives_and_reloads_udp_port_and_forwarding() {
     let new_reservation = UdpSocket::bind("127.0.0.1:0").unwrap();
     let old_port = old_reservation.local_addr().unwrap().port();
     let new_port = new_reservation.local_addr().unwrap().port();
+    // Its own HTTP port, so a running pitwall on the default port does not collide.
+    let http_port = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
     let first = UdpSocket::bind("127.0.0.1:0").unwrap();
     let second = UdpSocket::bind("127.0.0.1:0").unwrap();
     first
@@ -52,6 +58,10 @@ fn assumed_binary_receives_and_reloads_udp_port_and_forwarding() {
     let root = std::env::temp_dir().join(format!("pitwall-ingest-runtime-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let path = root.join("config.toml");
+    // Isolated data directory: its own single-instance lock, and the first-run
+    // marker pre-set so the binary never opens a browser.
+    std::fs::create_dir_all(root.join("data/pitwall")).unwrap();
+    std::fs::write(root.join("data/pitwall/browser-opened"), "").unwrap();
     let write_config = |port, target: &UdpSocket| {
         std::fs::write(
             &path,
@@ -69,6 +79,10 @@ fn assumed_binary_receives_and_reloads_udp_port_and_forwarding() {
             .arg("--console")
             .arg("--config")
             .arg(&path)
+            .arg("--data-dir")
+            .arg(root.join("data"))
+            .arg("--http-port")
+            .arg(http_port.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()

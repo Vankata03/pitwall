@@ -451,3 +451,92 @@ fn assumed_twenty_hz_arrivals_stay_live_for_three_game_intervals() {
     m.advance(Duration::from_millis(1100));
     assert!(matches!(m.car(0).unwrap().telemetry(), Readout::Stale(_)));
 }
+
+#[test]
+fn assumed_stint_wear_update_republishes_only_the_changed_entry() {
+    use pitwall_collector::telemetry::Packet;
+    // Car Damage arrives about ten times a second and moves the current stint's wear.
+    // Unchanged laps and other groups stay published without being re-sent.
+    let s = Stream::new("test");
+    let mut m = SessionModel::default();
+    let mut lap = packet(2, 0.);
+    if let Packet::Lap(l) = &mut lap.packet {
+        for v in l.lap_data.iter_mut().flatten() {
+            v.result_status = 2;
+            v.current_lap_num = 2;
+        }
+    }
+    m.apply(Duration::ZERO, &lap);
+    let mut history = packet(11, 1.);
+    if let Packet::SessionHistory(h) = &mut history.packet {
+        h.car_idx = 0;
+        h.num_laps = 1;
+        h.lap_history_data[0].lap_time_in_ms = 90000;
+        h.lap_history_data[0].lap_valid_bit_flags = 15;
+    }
+    m.apply(Duration::ZERO, &history);
+    let mut participants = packet(4, 1.);
+    if let Packet::Participants(p) = &mut participants.packet {
+        p.num_active_cars = p.participants.len() as u8;
+        for v in p.participants.iter_mut().flatten() {
+            v.your_telemetry = 1;
+        }
+    }
+    m.apply(Duration::ZERO, &participants);
+    m.apply(Duration::ZERO, &packet(7, 1.));
+    let mut damage = packet(10, 1.);
+    m.apply(Duration::ZERO, &damage);
+    s.tick(Duration::ZERO, Source::Live, &m, Default::default());
+    let screen = s.subscribe();
+    let snapshot = drain(&screen);
+    let entries = snapshot[1]["history"].as_array().unwrap();
+    assert!(entries.iter().any(|e| e["kind"] == "lap"));
+    assert!(
+        entries
+            .iter()
+            .any(|e| e["kind"] == "stint" && e["car"] == 0)
+    );
+
+    if let Packet::CarDamage(d) = &mut damage.packet {
+        d.car_damage_data[0].as_mut().unwrap().tyres_wear[0] += 7.0;
+    }
+    damage.header.session_time = 2.;
+    m.apply(Duration::from_millis(10), &damage);
+    s.tick(
+        Duration::from_millis(10),
+        Source::Live,
+        &m,
+        Default::default(),
+    );
+    let messages = drain(&screen);
+    let update = messages.iter().find(|m| m["type"] == "history").unwrap();
+    let changed = update["entries"].as_array().unwrap();
+    assert!(!changed.is_empty());
+    assert!(
+        changed
+            .iter()
+            .all(|e| e["kind"] == "stint" && e["car"] == 0),
+        "{changed:?}"
+    );
+    assert!(update["removed"].as_array().unwrap().is_empty());
+
+    // Same wear again: only unserialized bookkeeping moves, so nothing is published.
+    damage.header.session_time = 3.;
+    m.apply(Duration::from_millis(20), &damage);
+    s.tick(
+        Duration::from_millis(20),
+        Source::Live,
+        &m,
+        Default::default(),
+    );
+    assert!(!drain(&screen).iter().any(|m| m["type"] == "history"));
+
+    let late = s.subscribe();
+    let late_entries = drain(&late)[1]["history"].as_array().unwrap().clone();
+    assert_eq!(late_entries.len(), entries.len());
+    assert!(
+        late_entries
+            .iter()
+            .any(|e| e["kind"] == "lap" && e["body"]["lap_time_ms"] == 90000)
+    );
+}

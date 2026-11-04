@@ -22,6 +22,11 @@ impl AppPaths {
         Ok(Self::from_data_dir(&data_dir))
     }
 
+    /// Use `data_dir` when supplied (`--data-dir`), otherwise [`Self::resolve`].
+    pub fn resolve_or(data_dir: Option<&Path>) -> io::Result<Self> {
+        data_dir.map_or_else(Self::resolve, |dir| Ok(Self::from_data_dir(dir)))
+    }
+
     /// Use a supplied OS data directory, for isolated hosts and tests.
     pub fn from_data_dir(data_dir: &Path) -> Self {
         let root = data_dir.join("pitwall");

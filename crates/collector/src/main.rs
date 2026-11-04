@@ -28,5 +28,6 @@ fn main() -> std::io::Result<()> {
     if cli.console {
         eprintln!("Embedded dashboard entry: {} bytes", index.len());
     }
-    pitwall_collector::app::run(cli, AppPaths::resolve()?)
+    let paths = AppPaths::resolve_or(cli.data_dir.as_deref())?;
+    pitwall_collector::app::run(cli, paths)
 }

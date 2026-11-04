@@ -58,7 +58,9 @@ fn port_conflict_names_port_without_losing_instance_and_runtime_can_stop() {
     let dir = std::env::temp_dir().join(format!("pitwall-runtime-{}", std::process::id()));
     let paths = AppPaths::from_data_dir(&dir);
     std::fs::create_dir_all(&paths.root).unwrap();
-    let occupied = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    // The collector binds the wildcard address. Windows lets a wildcard bind share a
+    // port held only on loopback, so occupy the same wildcard address it will use.
+    let occupied = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
     let port = occupied.local_addr().unwrap().port();
     let http = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let mut config = Config::default();
@@ -93,6 +95,6 @@ fn port_conflict_names_port_without_losing_instance_and_runtime_can_stop() {
     control.request_stop();
     worker.join().unwrap().unwrap();
     assert!(ready, "runtime never became ready");
-    assert!(std::net::UdpSocket::bind(("127.0.0.1", port)).is_ok());
+    assert!(std::net::UdpSocket::bind(("0.0.0.0", port)).is_ok());
     std::fs::remove_dir_all(dir).unwrap();
 }

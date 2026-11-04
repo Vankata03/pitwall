@@ -337,6 +337,17 @@ impl SessionModel {
                 .zip(&other.cars)
                 .all(|(a, b)| Arc::ptr_eq(&a.derived, &b.derived))
     }
+    /// Per-car form of `shares_history`, so publishers can re-read only changed cars.
+    /// A car becoming valid or invalid also counts as a change.
+    pub fn shares_car_history(&self, other: &Self, index: usize) -> bool {
+        match (self.cars.get(index), other.cars.get(index)) {
+            (Some(a), Some(b)) => a.valid == b.valid && Arc::ptr_eq(&a.derived, &b.derived),
+            (a, b) => a.is_none() && b.is_none(),
+        }
+    }
+    pub fn shares_race_control(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.race_control, &other.race_control)
+    }
 }
 
 impl Default for SessionModel {

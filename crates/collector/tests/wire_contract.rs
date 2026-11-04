@@ -4,12 +4,14 @@ fn generated_wire_contract_is_current() {
     let checked =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../dashboard/src/generated/wire");
     pitwall_collector::wire::generate_contract(&temp).unwrap();
+    // A Windows checkout with core.autocrlf rewrites the committed LF files as CRLF.
+    let read =
+        |path: std::path::PathBuf| std::fs::read_to_string(path).map(|s| s.replace("\r\n", "\n"));
     for entry in std::fs::read_dir(&temp).unwrap() {
         let entry = entry.unwrap();
         assert_eq!(
-            std::fs::read_to_string(entry.path()).unwrap(),
-            std::fs::read_to_string(checked.join(entry.file_name()))
-                .expect("run cargo run --example generate_wire"),
+            read(entry.path()).unwrap(),
+            read(checked.join(entry.file_name())).expect("run cargo run --example generate_wire"),
             "contract changed: {:?}",
             entry.file_name()
         );

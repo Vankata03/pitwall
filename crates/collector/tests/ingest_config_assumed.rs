@@ -35,11 +35,14 @@ fn assumed_toml_defaults_and_cli_overrides_match_spec() {
         "127.0.0.1",
         "--config",
         "custom.toml",
+        "--data-dir",
+        "isolated",
     ])
     .unwrap();
     cli.apply(&mut config);
     assert!(cli.console);
     assert_eq!(cli.config_path, Some(PathBuf::from("custom.toml")));
+    assert_eq!(cli.data_dir, Some(PathBuf::from("isolated")));
     assert_eq!((config.udp.port, config.http.port), (21000, 8800));
     assert_eq!(config.http.bind.to_string(), "127.0.0.1");
     assert_eq!(config.forward.targets, ["localhost:22000", "[::1]:23000"]);
@@ -68,6 +71,8 @@ fn assumed_bad_config_and_flags_are_rejected_without_silent_defaults() {
         vec!["--bind=not-an-ip"],
         vec!["--console=yes"],
         vec!["--config="],
+        vec!["--data-dir="],
+        vec!["--data-dir"],
     ] {
         assert!(Cli::parse(args.clone()).is_err(), "{args:?}");
     }

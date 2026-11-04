@@ -39,6 +39,9 @@ pub struct Stint {
     pub authoritative: bool,
     #[serde(skip)]
     age_updated_at: f32,
+    /// Current lap number when `tyre_age_laps` was last set.
+    #[serde(skip)]
+    age_lap: u8,
     #[serde(skip)]
     condition_updated_at: f32,
 }
@@ -61,16 +64,17 @@ pub struct PitStop {
     timing_updated_at: f32,
 }
 
-pub(super) fn was_in_pit(car: &Car) -> bool {
-    car.lap.value.as_ref().map_or_else(
-        || {
-            car.derived
-                .pit_stops
-                .last()
-                .is_some_and(|stop| stop.exit_time.is_none())
-        },
-        |lap| lap.pit_status != 0,
-    )
+/// Pit state before this Lap Data, or `None` when nothing has been observed yet.
+/// A car first seen in the pit lane or garage made no observed entry.
+pub(super) fn was_in_pit(car: &Car) -> Option<bool> {
+    match car.lap.value.as_ref() {
+        Some(lap) => Some(lap.pit_status != 0),
+        None => car
+            .derived
+            .pit_stops
+            .last()
+            .map(|stop| stop.exit_time.is_none()),
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -191,6 +195,7 @@ impl CarHistory {
                 authoritative: true,
                 tyre_condition: matched.map_or(Readout::Absent, |stint| stint.tyre_condition),
                 age_updated_at: matched.map_or(time, |stint| stint.age_updated_at),
+                age_lap: matched.map_or(start, |stint| stint.age_lap),
                 condition_updated_at: matched.map_or(time, |stint| stint.condition_updated_at),
             });
             if let Some(end) = end {
@@ -262,6 +267,16 @@ impl SessionModel {
                         || stint
                             .tyre_age_laps
                             .is_some_and(|age| value.tyres_age_laps < age)
+                        // A same-compound set as old or older: the age moved further than
+                        // the laps completed since it was last set, across a pit visit
+                        // since this stint started.
+                        || (stint.tyre_age_laps.is_some_and(|age| {
+                            value.tyres_age_laps.saturating_sub(age)
+                                > number.saturating_sub(stint.age_lap)
+                        }) && car.derived.pit_stops.iter().any(|stop| {
+                            stop.session_time >= stint.session_time
+                                && stop.exit_time.is_none_or(|exit| exit >= stint.age_updated_at)
+                        }))
                 });
                 let age_changed = car
                     .derived
@@ -297,12 +312,14 @@ impl SessionModel {
                         tyre_age_laps: Some(value.tyres_age_laps),
                         authoritative: false,
                         age_updated_at: time,
+                        age_lap: number,
                         tyre_condition: condition,
                         condition_updated_at: time,
                     });
                 } else if let Some(stint) = history.stints.last_mut() {
                     stint.tyre_age_laps = Some(value.tyres_age_laps);
                     stint.age_updated_at = time;
+                    stint.age_lap = number;
                 }
             }
         }
@@ -396,7 +413,7 @@ impl SessionModel {
                     millis(value.sector2_time_ms_part, value.sector2_time_minutes_part),
                 ];
                 let in_pit = value.pit_status != 0;
-                let was_in_pit = was_in_pit(car);
+                let was_in_pit = was_in_pit(car).unwrap_or(in_pit);
                 let timing_changed = in_pit
                     && car.derived.pit_stops.last().is_some_and(|stop| {
                         (value.pit_lane_time_in_lane_in_ms > 0
@@ -414,7 +431,6 @@ impl SessionModel {
                                 old.lap_number == value.current_lap_num
                                     && usize::from(old.sector) == sector
                                     && Some(old.time_ms) == *duration
-                                    && old.valid == (value.current_lap_invalid == 0)
                             })
                     })
                     && in_pit == was_in_pit
@@ -496,8 +512,15 @@ impl SessionModel {
                     });
                 }
                 for (sector, duration) in sector_times.into_iter().enumerate() {
+                    // Lap Data validity is whole-lap. A later cut must not rewrite a sector
+                    // that is already recorded; Session History owns per-sector corrections.
                     if usize::from(value.sector) > sector
                         && let Some(time_ms) = duration
+                        && !history.sectors.iter().any(|old| {
+                            old.lap_number == value.current_lap_num
+                                && usize::from(old.sector) == sector
+                                && old.time_ms == time_ms
+                        })
                     {
                         // The packet's current time gives a deterministic sector endpoint.
                         let elapsed =
