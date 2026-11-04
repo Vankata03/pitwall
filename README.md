@@ -81,7 +81,9 @@ own images in the `liveries/` data folder:
 - named `<teamId>.png`, or `my-team.png` for My Team
 
 Missing images fall back to the shipped car. See the
-[livery pack contract](docs/spec/v1.md#13-liveries). Livery art isn't bundled with pitwall.
+[livery pack contract](docs/spec/v1.md#13-liveries). Livery art isn't bundled with pitwall, but
+you can [download a livery pack](https://drive.google.com/drive/folders/12GbY29onrCgLSuKCoDNeqEA9B2Dj4PB1?usp=sharing)
+and copy its images into `liveries/`.
 
 ## Recordings and replay
 
