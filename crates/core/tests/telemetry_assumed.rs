@@ -1,5 +1,5 @@
 //! Assumed synthetic packet-table tests. No real capture has been validated.
-use pitwall_collector::telemetry::{Packet, parse_datagram};
+use pitwall_core::telemetry::{Packet, parse_datagram};
 use std::process::Command;
 
 fn assumed(format: u16, id: u8, fields: &[(&str, &str)]) -> Vec<u8> {
@@ -497,7 +497,7 @@ fn assumed_event(format: u16, code: &[u8; 4], details: &[u8]) -> Vec<u8> {
 
 #[test]
 fn assumed_event_decodes_flashback_and_format_specific_collision_severity() {
-    use pitwall_collector::telemetry::EventDetails;
+    use pitwall_core::telemetry::EventDetails;
     for format in [2025, 2026] {
         let bytes = assumed_event(format, b"FLBK", &[0x78, 0x56, 0x34, 0x12, 0, 0, 0x48, 0x41]);
         let Packet::Event(event) = parse_datagram(&bytes).unwrap().packet else {
@@ -527,7 +527,7 @@ fn assumed_event_decodes_flashback_and_format_specific_collision_severity() {
 
 #[test]
 fn assumed_all_packet_sizes_match_documented_literals_and_reject_partial_or_extra_bytes() {
-    use pitwall_collector::telemetry::ParseError;
+    use pitwall_core::telemetry::ParseError;
     let sizes_2025 = [
         1349, 753, 1285, 45, 1284, 1133, 1352, 1239, 1042, 954, 1041, 1460, 231, 273, 101, 1131,
     ];
@@ -560,7 +560,7 @@ fn assumed_all_packet_sizes_match_documented_literals_and_reject_partial_or_extr
 
 #[test]
 fn assumed_unsupported_inputs_are_reported_without_guessing_layouts() {
-    use pitwall_collector::telemetry::ParseError;
+    use pitwall_core::telemetry::ParseError;
     assert_eq!(
         parse_datagram(&2024u16.to_le_bytes()),
         Err(ParseError::UnsupportedFormat(2024))
@@ -635,7 +635,7 @@ fn assumed_literal_wire_offsets_decode_independently_of_the_builder_tables() {
 
 #[test]
 fn assumed_events_preserve_unknown_details_and_decode_every_documented_code() {
-    use pitwall_collector::telemetry::EventDetails::*;
+    use pitwall_core::telemetry::EventDetails::*;
     for format in [2025, 2026] {
         for (code, expected) in [
             (*b"SSTA", SessionStarted),
@@ -753,7 +753,7 @@ fn assumed_events_preserve_unknown_details_and_decode_every_documented_code() {
 
 #[test]
 fn assumed_event_union_uses_packed_offsets_for_penalties_speed_and_stop_time() {
-    use pitwall_collector::telemetry::EventDetails;
+    use pitwall_core::telemetry::EventDetails;
     for format in [2025, 2026] {
         for (code, payload, expected) in [
             (

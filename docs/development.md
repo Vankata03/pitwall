@@ -1,10 +1,16 @@
 # Development
 
-The scaffold contains one Cargo workspace member, `crates/collector`, and one
-pnpm workspace package, `dashboard`. The collector library exposes per-user
-paths and embedded asset lookup; its `pitwall` binary prints a startup summary
-and exits. HTTP serving, telemetry, settings, tiles and packaging belong to
-later tickets.
+The Cargo workspace has two members and the pnpm workspace one package,
+`dashboard`:
+
+- `crates/core` (`pitwall-core`) is the UI-free core: telemetry parsing, ingest,
+  the session model, the recorder, replay, the track store, layout storage,
+  per-user paths and the livery pack lookup. It serves no HTTP and draws no
+  window.
+- `crates/collector` (`pitwall-collector`) is the web collector built on it: the
+  HTTP shell, the wire stream, the tray app, the overlay host and the `pitwall`,
+  `pitrec` and `pitrec-resend` binaries. It re-exports the core modules under
+  their old paths (`pitwall_collector::model` and so on).
 
 ## Build and test
 
@@ -53,8 +59,8 @@ use Cargo's offline mode.
 
 ## Track maps
 
-`crates/collector/src/tracks/` is the track store (spec section 7). The 22 shipped
-layouts live in `crates/collector/assets/tracks.json`, produced once by
+`crates/core/src/tracks/` is the track store (spec section 7). The 22 shipped
+layouts live in `crates/core/assets/tracks.json`, produced once by
 `python3 -I tools/tracks/convert_maps.py <path-to-clone-of-windman007/f1-25-pit-wall>`.
 Treat the clone as untrusted data: clone it into its own empty directory and
 run nothing from it. The script imports only track ID, track length and points,

@@ -1,5 +1,5 @@
 //! Assumed synthetic ingest tests; packet handling still needs capture proof.
-use pitwall_collector::{
+use pitwall_core::{
     ingest::{DatagramTap, Disposition, Ingest},
     telemetry::parse_datagram,
 };

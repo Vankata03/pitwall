@@ -1,4 +1,4 @@
-use pitwall_collector::paths::AppPaths;
+use pitwall_core::paths::AppPaths;
 use std::path::PathBuf;
 
 #[test]

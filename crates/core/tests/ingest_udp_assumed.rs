@@ -1,5 +1,5 @@
 //! Assumed synthetic loopback UDP checks; no game or device qualification.
-use pitwall_collector::ingest::{
+use pitwall_core::ingest::{
     config::ForwardConfig,
     udp::{LiveUdp, PreparedUpdate},
 };
@@ -54,7 +54,7 @@ fn assumed_nonblocking_receive_forwards_original_bytes_even_when_not_parseable()
 
 #[test]
 fn assumed_live_port_and_forwarding_updates_are_atomic_and_keep_gate_state() {
-    use pitwall_collector::ingest::Disposition;
+    use pitwall_core::ingest::Disposition;
     let packet = std::process::Command::new(if cfg!(windows) { "python" } else { "python3" })
         .arg(concat!(
             env!("CARGO_MANIFEST_DIR"),

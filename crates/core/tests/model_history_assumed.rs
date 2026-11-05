@@ -1,5 +1,5 @@
 //! Assumed synthetic packet-table fixtures, not evidence from game captures.
-use pitwall_collector::{
+use pitwall_core::{
     model::{RaceControlKind, Readout, SessionModel, Source},
     telemetry::{Event, EventDetails, Packet, ParsedDatagram, parse_datagram},
 };

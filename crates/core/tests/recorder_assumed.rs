@@ -2,7 +2,7 @@
 //! the packet tables, labelled `assumed`: no capture has confirmed these
 //! boundaries. Output is checked through the files and sidecars the recorder
 //! leaves in its directory.
-use pitwall_collector::{
+use pitwall_core::{
     ingest::{DatagramTap, Ingest},
     pitrec::{Header, Reader, Record, Writer},
     recorder::{Recorder, RecorderConfig, list, set_pinned},
@@ -515,8 +515,8 @@ fn assumed_malformed_classification_is_recorded_without_closing_the_session() {
         let dir = fresh_dir(&format!("malformed-classification-{format}"));
         let mut rec = start(&dir);
         let mut malformed = classification(format, 10, 1);
-        malformed.truncate(pitwall_collector::telemetry::HEADER_SIZE);
-        assert!(pitwall_collector::telemetry::parse_datagram(&malformed).is_err());
+        malformed.truncate(pitwall_core::telemetry::HEADER_SIZE);
+        assert!(pitwall_core::telemetry::parse_datagram(&malformed).is_err());
         let sent = [
             session_packet(format, 10),
             malformed,

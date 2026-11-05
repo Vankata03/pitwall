@@ -131,6 +131,6 @@ for i in sorted(ENABLED):
     kind = 'super::Event' if i == 3 else 'Packet' + PACKETS[i] + 'Data'
     out.append(f'        {i} => Packet::{PACKETS[i]}(Box::new({kind}::read(r, format)?)),')
 out += ['        _ => return Err(ParseError::UnsupportedPacketId { format, id }),', '    })', '}']
-path = ROOT / 'crates/collector/src/telemetry/generated.rs'
+path = ROOT / 'crates/core/src/telemetry/generated.rs'
 path.write_text('\n'.join(out) + '\n')
 subprocess.run(['rustfmt', '--edition', '2024', str(path)], check=True)

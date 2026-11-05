@@ -9,7 +9,7 @@ length and the points are imported. Every other field, `corners` above all (it c
 the MultiViewer API, which carries no licence), is dropped. Points are written as
 `[bucket, x, z]`: bucket n is lap distance n * 8 m, x and z are game world coordinates.
 
-The output is checked in at crates/collector/assets/tracks.json. The licence text of the
+The output is checked in at crates/core/assets/tracks.json. The licence text of the
 source `LICENSE` is checked in separately, in THIRD-PARTY-NOTICES.md; this script verifies
 that the notice still carries it byte for byte.
 """
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUT = ROOT / 'crates' / 'collector' / 'assets' / 'tracks.json'
+DEFAULT_OUT = ROOT / 'crates' / 'core' / 'assets' / 'tracks.json'
 NOTICE = ROOT / 'THIRD-PARTY-NOTICES.md'
 FILE = re.compile(r'^[A-Za-z-]+_(\d+)-(\d+)\.json$')
 # Spec section 7: the 22 shipped layouts, by game track ID.

@@ -2138,7 +2138,6 @@ dependencies = [
  "axum",
  "chrono",
  "ctrlc",
- "dirs 7.0.0",
  "futures-util",
  "hyper",
  "hyper-util",
@@ -2147,6 +2146,7 @@ dependencies = [
  "mdns-sd",
  "mime_guess",
  "notify-rust",
+ "pitwall-core",
  "qrcode",
  "serde",
  "serde_json",
@@ -2159,6 +2159,18 @@ dependencies = [
  "tray-icon",
  "ts-rs",
  "wry",
+]
+
+[[package]]
+name = "pitwall-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dirs 7.0.0",
+ "serde",
+ "serde_json",
+ "toml 1.1.8+spec-1.1.0",
+ "ts-rs",
  "zstd",
 ]
 

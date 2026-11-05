@@ -1,5 +1,5 @@
 //! Assumed synthetic model tests; packet-table fixtures are not capture evidence.
-use pitwall_collector::{
+use pitwall_core::{
     model::{Lifecycle, Readout, Regulations, SessionId, SessionModel},
     telemetry::{ParsedDatagram, parse_datagram},
 };
@@ -53,8 +53,8 @@ fn assumed_lifecycle_uses_arrival_time_preserves_lost_session_and_resets_identit
     model.apply(seconds(40), &packet(2026, 0, &[]));
     assert_eq!(model.lifecycle(), Lifecycle::Live);
     let mut ended = packet(2026, 3, &[]);
-    if let pitwall_collector::telemetry::Packet::Event(event) = &mut ended.packet {
-        event.details = pitwall_collector::telemetry::EventDetails::SessionEnded;
+    if let pitwall_core::telemetry::Packet::Event(event) = &mut ended.packet {
+        event.details = pitwall_core::telemetry::EventDetails::SessionEnded;
     }
     model.apply(seconds(41), &ended);
     model.advance(seconds(80));
@@ -382,8 +382,8 @@ fn assumed_ended_session_accepts_only_late_history_and_classification_with_time_
         &packet(2026, 6, &[("car_telemetry_data.0.speed", "100")]),
     );
     let mut ended = packet(2026, 3, &[]);
-    if let pitwall_collector::telemetry::Packet::Event(event) = &mut ended.packet {
-        event.details = pitwall_collector::telemetry::EventDetails::SessionEnded;
+    if let pitwall_core::telemetry::Packet::Event(event) = &mut ended.packet {
+        event.details = pitwall_core::telemetry::EventDetails::SessionEnded;
     }
     model.apply(seconds(1), &ended);
     model.apply(

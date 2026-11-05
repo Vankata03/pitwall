@@ -39,9 +39,19 @@ pub fn routes(shell: HttpShell, library: LayoutLibrary) -> HttpShell {
         )
 }
 
-impl IntoResponse for LayoutError {
+/// A [`LayoutError`] as an HTTP response. The error type lives in the core crate, so the
+/// response conversion needs a local wrapper.
+struct ApiError(LayoutError);
+
+impl From<LayoutError> for ApiError {
+    fn from(error: LayoutError) -> Self {
+        Self(error)
+    }
+}
+
+impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
+        let (status, message) = match self.0 {
             LayoutError::NotFound => (StatusCode::NOT_FOUND, "no such layout".to_string()),
             LayoutError::NameTaken => (StatusCode::CONFLICT, "name already in use".to_string()),
             LayoutError::InvalidName => {
@@ -110,7 +120,7 @@ async fn list(State(library): State<LayoutLibrary>) -> Json<Value> {
 async fn read(
     State(library): State<LayoutLibrary>,
     Path(name): Path<String>,
-) -> Result<Json<Value>, LayoutError> {
+) -> Result<Json<Value>, ApiError> {
     let layout = library.get(&name).ok_or(LayoutError::NotFound)?;
     Ok(Json(view(&library, &layout)))
 }
@@ -119,7 +129,7 @@ async fn save(
     State(library): State<LayoutLibrary>,
     Path(name): Path<String>,
     Json(body): Json<Value>,
-) -> Result<Response, LayoutError> {
+) -> Result<Response, ApiError> {
     let created = library.save(&name, parse(body)?)?;
     let saved = library.get(&name).ok_or(LayoutError::NotFound)?;
     let status = if created {
@@ -139,7 +149,7 @@ async fn duplicate(
     State(library): State<LayoutLibrary>,
     Path(name): Path<String>,
     Json(body): Json<NameBody>,
-) -> Result<Response, LayoutError> {
+) -> Result<Response, ApiError> {
     let copy = library.duplicate(&name, body.name.as_deref())?;
     Ok((StatusCode::CREATED, Json(view(&library, &copy))).into_response())
 }
@@ -148,7 +158,7 @@ async fn rename(
     State(library): State<LayoutLibrary>,
     Path(name): Path<String>,
     Json(body): Json<NameBody>,
-) -> Result<Json<Value>, LayoutError> {
+) -> Result<Json<Value>, ApiError> {
     let new_name = body.name.ok_or(LayoutError::InvalidName)?;
     let renamed = library.rename(&name, &new_name)?;
     Ok(Json(view(&library, &renamed)))
@@ -157,7 +167,7 @@ async fn rename(
 async fn delete(
     State(library): State<LayoutLibrary>,
     Path(name): Path<String>,
-) -> Result<StatusCode, LayoutError> {
+) -> Result<StatusCode, ApiError> {
     library.delete(&name)?;
     Ok(StatusCode::NO_CONTENT)
 }
