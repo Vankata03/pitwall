@@ -27,14 +27,21 @@ batch with input and every 50 ms when idle).
 
 Three mechanisms were candidates: a lock-free ring, a seqlock and a triple buffer.
 
-- A ring keeps history the UI does not want: a frame-rate reader needs only the latest
-  frame.
+- A readout needs only the latest frame. Traces also need intervening samples, so #68
+  adds a bounded ring of independently seqlocked frames alongside the latest frame.
 - A triple buffer has one reader. Several native windows and the in-game overlay may read
   at once.
 - A seqlock has one writer, any number of readers, and a writer that never waits.
 
-The fast frame is a fixed size (608 bytes as a struct), so the seqlock stores it as 73
-`AtomicU64` words: one header word and three per car slot. The writer marks the sequence
+The fast frame is a fixed size, so the seqlock stores it as 98 `AtomicU64` words: one
+header word, three per car slot for the inputs, one per car slot for lap distance and
+one model epoch word. The optional catch-up read (`fast_since`) retains 256 publications
+in approximately 198 KiB of atomic storage per channel. It reports overruns; the overlay
+clears its old history before consuming the retained tail. Epoch tags prevent a new
+snapshot from displaying old frames while the two feed paths catch up.
+The measurements below were taken before the lap-distance word was added (73 words, 608
+bytes as a struct); #68 added it so the overlay can align a live sample with the
+reference lap at the same circuit position. The writer marks the sequence
 odd, stores the words, then marks it even. A reader copies the words and retries if the
 sequence moved. Because every word is an atomic, a racing read is never a data race, and
 there is no `unsafe`. The `Publisher` is not `Clone` and takes `&mut self`, which enforces
@@ -91,3 +98,14 @@ well under a microsecond, so a reader never waits long.
 staleness, the independence of the two paths, and three concurrent readers that never
 see a torn frame across 200,000 writes. Removing the sequence recheck from the reader
 makes that last test fail with torn frames.
+
+## #68 catch-up history measurement
+
+The preceding tables describe the original latest-frame path before lap distance,
+epoch and catch-up history were added. A rerun on 2026-11-05 with
+`cargo run --release -p pitwall-core --example fast_path_bench` reports an 808-byte
+`FastFrame`, 265.8 ns per uncontended publish (including extraction and both seqlock
+writes), 71.7 ns per latest-frame read and 1.0 ns per generation read. These figures
+do not measure `fast_since` copying a batch. The concurrency test now also checks
+retained frames against their publication generations while three readers race the
+200,000 writes. The bounded-history and publication-order cases have separate tests.
