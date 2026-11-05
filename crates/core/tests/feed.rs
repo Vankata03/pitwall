@@ -98,6 +98,35 @@ fn fast_path_carries_each_cars_inputs_with_their_staleness() {
 }
 
 #[test]
+fn fast_path_carries_each_cars_lap_distance_with_its_own_staleness() {
+    let (mut publisher, reader) = feed::channel();
+    let mut model = SessionModel::default();
+    model.apply(
+        Duration::ZERO,
+        &packet(
+            2,
+            &[
+                ("lap_data.0.result_status", "2"),
+                ("lap_data.0.lap_distance", "1234.5"),
+                ("lap_data.1.result_status", "2"),
+                ("lap_data.1.lap_distance", "-12.25"),
+            ],
+        ),
+    );
+    publisher.publish_fast(&model);
+    let frame = reader.fast();
+    assert_eq!(frame.lap_distances[0], Readout::Live(1234.5));
+    assert_eq!(frame.lap_distances[1], Readout::Live(-12.25));
+    assert_eq!(frame.lap_distances[2], Readout::Absent);
+    // Lap distance has no telemetry yet: the inputs stay absent.
+    assert_eq!(frame.cars[0], Readout::Absent);
+
+    model.advance(Duration::from_millis(150));
+    publisher.publish_fast(&model);
+    assert_eq!(reader.fast().lap_distances[0], Readout::Stale(1234.5));
+}
+
+#[test]
 fn fast_and_slow_paths_publish_independently() {
     let (mut publisher, reader) = feed::channel();
     let model = model_with_inputs(Duration::ZERO, &[("car_telemetry_data.0.speed", "200")]);

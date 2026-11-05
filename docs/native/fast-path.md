@@ -33,8 +33,11 @@ Three mechanisms were candidates: a lock-free ring, a seqlock and a triple buffe
   at once.
 - A seqlock has one writer, any number of readers, and a writer that never waits.
 
-The fast frame is a fixed size (608 bytes as a struct), so the seqlock stores it as 73
-`AtomicU64` words: one header word and three per car slot. The writer marks the sequence
+The fast frame is a fixed size, so the seqlock stores it as 97 `AtomicU64` words: one
+header word, three per car slot for the inputs and one per car slot for the lap distance.
+The measurements below were taken before the lap-distance word was added (73 words, 608
+bytes as a struct); #68 added it so the overlay can align a live sample with the
+reference lap at the same circuit position. The writer marks the sequence
 odd, stores the words, then marks it even. A reader copies the words and retries if the
 sequence moved. Because every word is an atomic, a racing read is never a data race, and
 there is no `unsafe`. The `Publisher` is not `Clone` and takes `&mut self`, which enforces

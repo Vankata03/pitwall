@@ -77,6 +77,10 @@ pub struct FastFrame {
     /// `Live` or `Stale` per the model's staleness rules, `Absent` for an empty or unseen
     /// slot.
     pub cars: [Readout<CarInputs>; MAX_CARS],
+    /// Metres along the lap per car slot, from Lap Data, with that packet's own staleness.
+    /// Negative before the line at a race start. Lets a trace align a live sample with a
+    /// reference lap at the same circuit position.
+    pub lap_distances: [Readout<f32>; MAX_CARS],
 }
 
 /// One slow-state publish: a shared, immutable session model. Dereferences to
@@ -129,6 +133,7 @@ impl Publisher {
         for (index, slot) in frame.cars.iter_mut().enumerate() {
             if let Some(car) = model.car(index) {
                 *slot = car.telemetry().map(CarInputs::from);
+                frame.lap_distances[index] = car.lap().map(|lap| lap.lap_distance);
             }
         }
         self.shared.fast.write(&encode(&frame));
@@ -181,10 +186,12 @@ const EMPTY_FRAME: FastFrame = FastFrame {
     session_time: 0.0,
     player_car_index: None,
     cars: [Readout::Absent; MAX_CARS],
+    lap_distances: [Readout::Absent; MAX_CARS],
 };
 
-/// One header word plus three words per car.
-const WORDS: usize = 1 + 3 * MAX_CARS;
+/// One header word, three input words per car, then one lap-distance word per car.
+const WORDS: usize = 1 + 4 * MAX_CARS;
+const LAP_BASE: usize = 1 + 3 * MAX_CARS;
 
 /// A single-writer sequence lock over plain atomic words, so a racing read is never a
 /// data race: at worst it sees a mix of two frames, which the sequence check rejects.
@@ -261,6 +268,13 @@ fn encode(frame: &FastFrame) -> [u64; WORDS] {
         }
         words[base + 2] |= state << 56;
     }
+    for (index, distance) in frame.lap_distances.iter().enumerate() {
+        words[LAP_BASE + index] = match distance {
+            Readout::Live(metres) => u64::from(metres.to_bits()) | LIVE << 56,
+            Readout::Stale(metres) => u64::from(metres.to_bits()) | STALE << 56,
+            Readout::Restricted | Readout::Absent => ABSENT << 56,
+        };
+    }
     words
 }
 
@@ -287,6 +301,15 @@ fn decode(generation: u64, words: &[u64; WORDS]) -> FastFrame {
             match c >> 56 {
                 LIVE => Readout::Live(inputs),
                 STALE => Readout::Stale(inputs),
+                _ => Readout::Absent,
+            }
+        }),
+        lap_distances: std::array::from_fn(|index| {
+            let word = words[LAP_BASE + index];
+            let metres = f32::from_bits(word as u32);
+            match word >> 56 {
+                LIVE => Readout::Live(metres),
+                STALE => Readout::Stale(metres),
                 _ => Readout::Absent,
             }
         }),
