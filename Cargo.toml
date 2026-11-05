@@ -1,8 +1,13 @@
 [workspace]
-members = ["crates/core", "crates/collector"]
+members = ["crates/core", "crates/collector", "crates/app"]
 resolver = "3"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 publish = false
+
+# Zed's own [patch.crates-io] is not inherited by git dependents. gpui's fork of
+# async-task fixes task waker vtable identity; move it together with the gpui pin.
+[patch.crates-io]
+async-task = { git = "https://github.com/zed-industries/async-task.git", rev = "015845a19fc31752c02367567d3b8900a406f9da" }
