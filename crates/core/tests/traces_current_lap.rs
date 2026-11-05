@@ -11,8 +11,7 @@ fn close(a: Option<f64>, b: f64) -> bool {
 }
 
 #[test]
-fn buckets_hold_the_value_at_their_exact_distance_and_samples_between_boundaries_only_shape_it()
-{
+fn buckets_hold_the_value_at_their_exact_distance_and_samples_between_boundaries_only_shape_it() {
     let mut lap = CurrentLap::new();
     lap.record(0.0, 100.0, 0.0, 200.0);
     lap.record(5.0, 80.0, 0.0, 210.0);

@@ -108,6 +108,10 @@ fn trace_overlaps_the_reference_lap_at_the_same_lap_distance() {
 #[test]
 fn an_empty_history_or_box_draws_nothing() {
     let h = history(&[(1.0, 0.0, 10.0, 0.0), (1.1, 0.0, 20.0, 0.0)]);
-    assert!(input_trace(&InputHistory::new(), 100.0, 100.0, None).throttle.is_empty());
+    assert!(
+        input_trace(&InputHistory::new(), 100.0, 100.0, None)
+            .throttle
+            .is_empty()
+    );
     assert!(input_trace(&h, 0.0, 100.0, None).throttle.is_empty());
 }

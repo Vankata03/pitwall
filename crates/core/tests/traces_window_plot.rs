@@ -28,9 +28,12 @@ impl Samples {
         self.add(time, 0.0, 70.0, 0.0);
     }
     fn plot(&self, reference: Option<&[LapSample]>) -> WindowPlot {
-        build_window_plot(&self.0, reference, &[Channel::Throttle, Channel::Brake], |kmh| {
-            kmh
-        })
+        build_window_plot(
+            &self.0,
+            reference,
+            &[Channel::Throttle, Channel::Brake],
+            |kmh| kmh,
+        )
     }
 }
 

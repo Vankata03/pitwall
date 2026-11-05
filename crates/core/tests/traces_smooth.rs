@@ -38,10 +38,22 @@ fn a_zero_radius_changes_nothing() {
 
 #[test]
 fn line_smoothing_averages_neighbours_within_the_radius_and_keeps_the_ends() {
-    let stairs = vec![(0.0, 0.0), (1.0, 0.0), (2.0, 30.0), (3.0, 30.0), (4.0, 60.0)];
+    let stairs = vec![
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (2.0, 30.0),
+        (3.0, 30.0),
+        (4.0, 60.0),
+    ];
     assert_eq!(
         smooth_line(stairs.clone(), 1.0),
-        [(0.0, 0.0), (1.0, 10.0), (2.0, 20.0), (3.0, 40.0), (4.0, 60.0)]
+        [
+            (0.0, 0.0),
+            (1.0, 10.0),
+            (2.0, 20.0),
+            (3.0, 40.0),
+            (4.0, 60.0)
+        ]
     );
     assert_eq!(smooth_line(stairs.clone(), 0.0), stairs);
 }

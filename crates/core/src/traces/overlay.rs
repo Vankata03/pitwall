@@ -83,7 +83,10 @@ pub fn input_trace(
                         reference_open[index] = true;
                     }
                     // Lap traces store inputs as fractions; live inputs are percentages.
-                    reference_lines.last_mut().unwrap().push((x, y(past * 100.0)));
+                    reference_lines
+                        .last_mut()
+                        .unwrap()
+                        .push((x, y(past * 100.0)));
                 }
                 _ => reference_open[index] = false,
             }

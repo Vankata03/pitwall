@@ -226,11 +226,13 @@ pub fn build_window_plot(
                     reference_value(reference.unwrap_or(&[]), sample.lap_distance, s.channel)
                 }
             };
-            let value = raw.filter(|v| v.is_finite()).map(|v| match (s.channel, s.lap) {
-                (Channel::Speed, _) => speed(v),
-                (_, Lap::Reference) => v * 100.0,
-                _ => v,
-            });
+            let value = raw
+                .filter(|v| v.is_finite())
+                .map(|v| match (s.channel, s.lap) {
+                    (Channel::Speed, _) => speed(v),
+                    (_, Lap::Reference) => v * 100.0,
+                    _ => v,
+                });
             s.values.push(value);
             if s.lap == Lap::Current && value.is_some() {
                 plot.has_data = true;
