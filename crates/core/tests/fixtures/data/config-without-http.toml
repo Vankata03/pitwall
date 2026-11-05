@@ -3,7 +3,7 @@ port = 20777
 
 [forward]
 enabled = true
-targets = ["192.168.1.40:20777"]
+targets = ["192.0.2.40:20777"]
 
 [recording]
 enabled = false

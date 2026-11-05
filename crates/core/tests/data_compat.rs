@@ -85,7 +85,7 @@ fn config_without_http_loads_every_setting() {
 
     assert!(data.obsolete.is_empty());
     assert!(data.issues.is_empty());
-    assert_eq!(data.config.forward.targets, ["192.168.1.40:20777"]);
+    assert_eq!(data.config.forward.targets, ["192.0.2.40:20777"]);
     assert!(data.config.forward.enabled);
     assert!(!data.config.recording.enabled);
     assert_eq!(data.config.recording.size_cap_gb, 5);
