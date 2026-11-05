@@ -3,8 +3,8 @@
 
 use gpui::{Hsla, IntoElement, ParentElement, PathBuilder, Styled, canvas, div, point, px};
 use pitwall_core::{
-    feed::CarInputs,
-    model::{Lifecycle, Readout},
+    feed::{CarInputs, FastFrame},
+    model::{Lifecycle, Readout, SessionModel},
     readout::{ReadoutState, ReadoutView, readout_view, whole_tile_message},
     units::{self, Units},
 };
@@ -34,6 +34,32 @@ pub struct Inputs {
     pub height: f32,
 }
 
+impl Inputs {
+    /// Bind a fast frame to the matching model timeline before reading car values.
+    pub fn from_source(
+        frame: &FastFrame,
+        model: &SessionModel,
+        index: Option<usize>,
+        units: Units,
+        size: (f32, f32),
+    ) -> Self {
+        let index = index.filter(|i| frame.epoch == model.epoch() && model.car(*i).is_some());
+        Self {
+            car: index
+                .and_then(|i| frame.cars.get(i).copied())
+                .unwrap_or(Readout::Absent),
+            max_rpm: index
+                .and_then(|i| model.car(i))
+                .and_then(|c| c.status().value().map(|s| s.max_rpm))
+                .filter(|m| *m > 0),
+            units,
+            lifecycle: model.lifecycle(),
+            width: size.0,
+            height: size.1,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Strip {
     pub lit: u8,
@@ -48,8 +74,8 @@ pub struct Dial {
     /// Share of the maximum RPM, clamped; `None` draws the empty track only.
     pub fill: Option<f32>,
     pub stale: bool,
-    /// For the thousands labels.
-    pub max_rpm: Option<u16>,
+    /// Quarter-sweep labels, in thousands of RPM.
+    pub labels: Option<[String; 5]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,7 +146,9 @@ pub fn view(inputs: &Inputs) -> View {
                 .zip(max_rpm)
                 .map(|(c, max)| (f32::from(c.engine_rpm) / f32::from(max)).clamp(0.0, 1.0)),
             stale: state == ReadoutState::Stale,
-            max_rpm,
+            labels: max_rpm.map(|max| {
+                std::array::from_fn(|i| format!("{}", (f32::from(max) * i as f32 / 4000.0).round()))
+            }),
         }),
         message: whole_tile_message([state], inputs.lifecycle, true),
     }
@@ -234,7 +262,9 @@ fn render_strip(strip: &Strip) -> impl IntoElement + use<> {
 /// The RPM dial: a 270° track with ticks outside it and a fill to the share of the
 /// maximum, coloured by the strip's zones. Steady, never animated.
 fn render_dial(dial: Dial) -> impl IntoElement {
-    canvas(
+    let labels = dial.labels.clone();
+    let size = dial.size;
+    let paint = canvas(
         |_, _, _| (),
         move |bounds, (), window, _| {
             let size = dial.size;
@@ -303,7 +333,29 @@ fn render_dial(dial: Dial) -> impl IntoElement {
             }
         },
     )
-    .size_full()
+    .size_full();
+    let mut result = div().relative().size_full().child(paint);
+    if let Some(labels) = labels {
+        let center = size / 2.0;
+        let radius = center - 6.0;
+        for (i, label) in labels.into_iter().enumerate() {
+            let angle = std::f32::consts::PI * (0.75 + 1.5 * i as f32 / 4.0);
+            result = result.child(
+                div()
+                    .absolute()
+                    .left(px(center + angle.cos() * radius - 12.0))
+                    .top(px(center + angle.sin() * radius - 7.0))
+                    .w(px(24.0))
+                    .h(px(14.0))
+                    .text_center()
+                    .text_size(px(11.0))
+                    .line_height(px(14.0))
+                    .text_color(theme::muted())
+                    .child(label),
+            );
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -334,6 +386,81 @@ mod tests {
             width: 400.0,
             height: 400.0,
         }
+    }
+
+    #[test]
+    fn dial_labels_show_quarters_of_maximum_rpm_in_rounded_thousands() {
+        let v = view(&Inputs {
+            max_rpm: Some(13000),
+            ..base(Readout::Live(inputs(200, 6500, 4)))
+        });
+        assert_eq!(v.dial.unwrap().labels.unwrap(), ["0", "3", "7", "10", "13"]);
+        let missing = view(&Inputs {
+            max_rpm: None,
+            ..base(Readout::Absent)
+        });
+        assert!(missing.dial.unwrap().labels.is_none());
+    }
+
+    #[test]
+    fn source_to_tile_rejects_fast_values_from_another_timeline() {
+        use pitwall_core::{feed, model::SessionModel};
+        let (_publisher, reader) = feed::channel();
+        let mut model = SessionModel::default();
+        let output = std::process::Command::new("python")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../tools/telemetry/assumed_datagram.py"
+            ))
+            .args([
+                "2026",
+                "2",
+                "--set",
+                "header.session_uid=101",
+                "--set",
+                "lap_data.0.result_status=2",
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        model.apply(
+            std::time::Duration::ZERO,
+            &pitwall_core::telemetry::parse_datagram(&output.stdout).unwrap(),
+        );
+        let mut frame = reader.fast();
+        frame.cars[0] = Readout::Live(inputs(287, 11800, 7));
+        frame.epoch = model.epoch().wrapping_add(1);
+        let v = view(&Inputs::from_source(
+            &frame,
+            &model,
+            Some(0),
+            Units::DEFAULT,
+            (400.0, 400.0),
+        ));
+        assert_eq!(v.speed.state, ReadoutState::Absent);
+        assert_eq!(v.gear.state, ReadoutState::Absent);
+        assert!(v.dial.unwrap().fill.is_none());
+        frame.epoch = model.epoch();
+        let matched = view(&Inputs::from_source(
+            &frame,
+            &model,
+            Some(0),
+            Units {
+                speed: SpeedUnit::Mph,
+                ..Units::DEFAULT
+            },
+            (400.0, 400.0),
+        ));
+        assert_eq!(matched.speed.text, "178");
+        assert_eq!(matched.gear.text, "7");
+        let unbound = view(&Inputs::from_source(
+            &frame,
+            &model,
+            None,
+            Units::DEFAULT,
+            (400.0, 400.0),
+        ));
+        assert_eq!(unbound.speed.state, ReadoutState::Absent);
     }
 
     #[test]

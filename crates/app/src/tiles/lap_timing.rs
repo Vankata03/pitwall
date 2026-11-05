@@ -4,12 +4,10 @@
 //! `rate: 'frame'`; natively the clock and delta come from the slow snapshot, which the
 //! source publishes at up to 60 Hz.
 //!
-//! Not ported yet: sector rank cues (session/personal best), Time Trial personal-best and
-//! rival references (they read as Best here).
 
 use gpui::{IntoElement, ParentElement, Styled, div};
 use pitwall_core::{
-    model::{CarView, Lifecycle, Readout, Reference},
+    model::{CarView, Lifecycle, Readout, Reference, SessionModel},
     readout::{ReadoutState, ReadoutView, readout_view, whole_tile_message},
 };
 use serde_json::Value;
@@ -32,6 +30,8 @@ pub const HOLD_RESULT_MS: u32 = 5000;
 pub enum LapReference {
     Best,
     Previous,
+    PersonalBest,
+    Rival,
 }
 
 impl LapReference {
@@ -39,19 +39,41 @@ impl LapReference {
     pub fn of(settings: &Value) -> Self {
         match settings.get("reference").and_then(Value::as_str) {
             Some("previous") => Self::Previous,
+            Some("personal-best") => Self::PersonalBest,
+            Some("rival") => Self::Rival,
             _ => Self::Best,
         }
     }
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::Best => "Best lap",
             Self::Previous => "Previous lap",
+            Self::PersonalBest => "Personal best",
+            Self::Rival => "Rival",
         }
+    }
+    /// Cycle the reference control, keeping unrelated saved tile settings intact.
+    pub fn cycle(settings: &mut Value, time_trial: bool) {
+        let next = match Self::of(settings) {
+            Self::Best => "previous",
+            Self::Previous if time_trial => "personal-best",
+            Self::PersonalBest if time_trial => "rival",
+            _ => "best",
+        };
+        if let Some(settings) = settings.as_object_mut() {
+            settings.insert("reference".into(), Value::from(next));
+        }
+    }
+
+    fn extra(self) -> bool {
+        matches!(self, Self::PersonalBest | Self::Rival)
     }
     fn model(self) -> Reference {
         match self {
             Self::Best => Reference::Best,
             Self::Previous => Reference::Previous,
+            Self::PersonalBest => Reference::PersonalBest,
+            Self::Rival => Reference::Rival,
         }
     }
 }
@@ -80,7 +102,7 @@ pub struct Completed {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RefLap {
-    pub lap_number: u8,
+    pub lap_number: Option<u8>,
     pub lap_time_ms: u32,
     pub sectors_ms: [Option<u32>; 3],
 }
@@ -88,6 +110,7 @@ pub struct RefLap {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Inputs {
     pub reference: LapReference,
+    pub sector_ranks: [Option<SectorRank>; 3],
     pub lap: Readout<LapNow>,
     /// Signed ms against the reference lap; negative is ahead.
     pub live_delta: Readout<f32>,
@@ -100,6 +123,94 @@ pub struct Inputs {
 }
 
 impl Inputs {
+    /// Resolve all session histories for sector ranks, excluding the displayed lap.
+    pub fn from_model(
+        model: &SessionModel,
+        index: Option<usize>,
+        reference: LapReference,
+        size: (f32, f32),
+    ) -> Self {
+        let mut inputs = Self::of(
+            index.and_then(|i| model.car(i)),
+            reference,
+            model.lifecycle(),
+            size,
+        );
+        let Some((index, lap)) = index.zip(inputs.lap.value()) else {
+            return inputs;
+        };
+        let held = inputs
+            .completed
+            .as_ref()
+            .filter(|_| lap.time_ms < HOLD_RESULT_MS);
+        let number = held.map_or(lap.number, |c| c.lap_number);
+        let times = held.map_or(
+            [
+                Some(lap.sector1_ms).filter(|m| *m > 0),
+                Some(lap.sector2_ms).filter(|m| *m > 0),
+                None,
+            ],
+            |c| c.sectors_ms,
+        );
+        let history = model.car(index).unwrap().session_history();
+        inputs.sector_ranks = std::array::from_fn(|sector| {
+            let ms = times[sector]?;
+            let valid = if let Some(done) = held {
+                history
+                    .laps
+                    .iter()
+                    .find(|l| l.lap_number == number)
+                    .map_or(done.valid, |l| l.sector_valid[sector])
+            } else {
+                history
+                    .sectors
+                    .iter()
+                    .find(|s| s.lap_number == number && usize::from(s.sector) == sector)
+                    .map_or(!lap.invalid, |s| s.valid)
+            };
+            if !valid {
+                return Some(SectorRank::Slower);
+            }
+            let mut personal = u32::MAX;
+            let mut session = u32::MAX;
+            for other in 0..pitwall_core::telemetry::MAX_CARS {
+                let Some(car) = model.car(other) else {
+                    continue;
+                };
+                let history = car.session_history();
+                let candidates = history
+                    .sectors
+                    .iter()
+                    .filter(|s| usize::from(s.sector) == sector && s.valid)
+                    .map(|s| (s.lap_number, s.time_ms))
+                    .chain(
+                        history
+                            .laps
+                            .iter()
+                            .filter(|l| l.sector_valid[sector])
+                            .filter_map(|l| l.sectors_ms[sector].map(|ms| (l.lap_number, ms))),
+                    );
+                for (lap_number, candidate) in candidates {
+                    if candidate == 0 || (other == index && lap_number >= number) {
+                        continue;
+                    }
+                    session = session.min(candidate);
+                    if other == index {
+                        personal = personal.min(candidate);
+                    }
+                }
+            }
+            Some(if ms < session {
+                SectorRank::SessionBest
+            } else if ms <= personal {
+                SectorRank::PersonalBest
+            } else {
+                SectorRank::Slower
+            })
+        });
+        inputs
+    }
+
     /// Read one car of the model; `None` for an unbound car.
     pub fn of(
         car: Option<CarView<'_>>,
@@ -111,6 +222,7 @@ impl Inputs {
         let Some(car) = car else {
             return Self {
                 reference,
+                sector_ranks: [None; 3],
                 lap: Readout::Absent,
                 live_delta: Readout::Absent,
                 completed: None,
@@ -151,21 +263,36 @@ impl Inputs {
         let held = result
             .as_ref()
             .filter(|_| lap.value().is_some_and(|l| l.time_ms < HOLD_RESULT_MS));
-        let reference_lap = match held {
-            Some(result) => result.reference_lap_number.and_then(|number| {
-                laps.iter()
-                    .find(|l| l.lap_number == number)
-                    .map(|l| l.as_ref())
-            }),
-            None => car.reference_lap(reference.model()),
-        }
-        .map(|l| RefLap {
-            lap_number: l.lap_number,
-            lap_time_ms: l.lap_time_ms,
-            sectors_ms: l.sectors_ms,
-        });
+        let reference_lap = if reference.extra() {
+            car.time_trial_reference(reference.model())
+                .map(|tt| RefLap {
+                    lap_number: None,
+                    lap_time_ms: tt.lap_time_in_ms,
+                    sectors_ms: [
+                        tt.sector1_time_in_ms,
+                        tt.sector2_time_in_ms,
+                        tt.sector3_time_in_ms,
+                    ]
+                    .map(|ms| (ms > 0).then_some(ms)),
+                })
+        } else {
+            match held {
+                Some(result) => result.reference_lap_number.and_then(|number| {
+                    laps.iter()
+                        .find(|l| l.lap_number == number)
+                        .map(|l| l.as_ref())
+                }),
+                None => car.reference_lap(reference.model()),
+            }
+            .map(|l| RefLap {
+                lap_number: Some(l.lap_number),
+                lap_time_ms: l.lap_time_ms,
+                sectors_ms: l.sectors_ms,
+            })
+        };
         Self {
             reference,
+            sector_ranks: [None; 3],
             lap,
             live_delta: car.live_delta(reference.model()),
             completed,
@@ -177,8 +304,16 @@ impl Inputs {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SectorRank {
+    SessionBest,
+    PersonalBest,
+    Slower,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sector {
+    pub rank: Option<SectorRank>,
     pub time: ReadoutView,
     pub delta: ReadoutView,
     pub current: bool,
@@ -197,6 +332,7 @@ pub struct View {
     pub sectors: Option<[Sector; 3]>,
     /// Full density: label and time of the reference lap.
     pub reference: Option<(String, ReadoutView)>,
+    pub reference_sectors: Option<[ReadoutView; 3]>,
     pub message: Option<&'static str>,
 }
 
@@ -257,10 +393,17 @@ pub fn view(inputs: &Inputs) -> View {
                 .zip(ref_sectors[s].filter(|&r| r > 0))
                 .map(|(ms, r)| i64::from(ms) - i64::from(r)),
         };
+        let rank = inputs.sector_ranks[s].filter(|_| sector_states[s].has_data());
+        let glyph = match rank {
+            Some(SectorRank::SessionBest) => " \u{25c6}",
+            Some(SectorRank::PersonalBest) => " \u{25cf}",
+            _ => "",
+        };
         Sector {
+            rank,
             time: readout_view(
                 sector_states[s],
-                &sector_ms[s].map_or(String::new(), |ms| clock(ms, false)),
+                &sector_ms[s].map_or(String::new(), |ms| format!("{}{}", clock(ms, false), glyph)),
             ),
             delta: readout_view(
                 if delta.is_some() {
@@ -313,11 +456,24 @@ pub fn view(inputs: &Inputs) -> View {
                     inputs
                         .reference_lap
                         .as_ref()
-                        .map_or("\u{2014}".into(), |r| r.lap_number.to_string()),
+                        .and_then(|r| r.lap_number)
+                        .map_or("\u{2014}".into(), |n| n.to_string()),
                     inputs.reference.label()
                 ),
                 readout_view(reference_state, &clock(reference_time.unwrap_or(0), true)),
             )
+        }),
+        reference_sectors: (density == Density::Full && inputs.reference.extra()).then(|| {
+            ref_sectors.map(|ms| {
+                readout_view(
+                    if ms.is_some() {
+                        ReadoutState::Live
+                    } else {
+                        ReadoutState::Absent
+                    },
+                    &clock(ms.unwrap_or(0), false),
+                )
+            })
         }),
         message: whole_tile_message(states, inputs.lifecycle, true),
     }
@@ -359,12 +515,34 @@ pub fn render(view: View) -> impl IntoElement {
                 .p_1()
                 .rounded_sm()
                 .child(widgets::label(["S1", "S2", "S3"][i]))
-                .child(widgets::readout(&s.time, 18.0))
+                .child(widgets::readout_coloured(
+                    &s.time,
+                    18.0,
+                    s.rank.map(|rank| match rank {
+                        SectorRank::SessionBest => crate::theme::session_best(),
+                        SectorRank::PersonalBest => crate::theme::personal_best(),
+                        SectorRank::Slower => crate::theme::slower(),
+                    }),
+                ))
                 .child(widgets::readout(&s.delta, 14.0));
             if s.current {
                 cell = cell.bg(crate::theme::meter_empty());
             }
             row = row.child(cell);
+        }
+        body = body.child(row);
+    }
+    if let Some(sectors) = &view.reference_sectors {
+        let mut row = div().flex().gap_2().w_full();
+        for (i, sector) in sectors.iter().enumerate() {
+            row = row.child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .child(widgets::label(format!("REF S{}", i + 1)))
+                    .child(widgets::readout(sector, 18.0)),
+            );
         }
         body = body.child(row);
     }
@@ -401,11 +579,12 @@ mod tests {
     fn base(lap: Readout<LapNow>) -> Inputs {
         Inputs {
             reference: LapReference::Best,
+            sector_ranks: [None; 3],
             lap,
             live_delta: Readout::Live(-432.1),
             completed: None,
             reference_lap: Some(RefLap {
-                lap_number: 3,
+                lap_number: Some(3),
                 lap_time_ms: 90_000,
                 sectors_ms: [Some(30_000), Some(31_000), Some(29_000)],
             }),
@@ -423,6 +602,24 @@ mod tests {
             delta_ms: Some(-500),
             sectors_ms: [Some(29_800), Some(30_900), Some(28_800)],
             sector_deltas_ms: [Some(-200), Some(-100), Some(-200)],
+        }
+    }
+
+    #[test]
+    fn reference_control_cycles_available_choices_and_preserves_other_settings() {
+        let mut settings = json!({"other": 1, "car": {"target": "focus"}});
+        for (tt, expected) in [
+            (false, "previous"),
+            (false, "best"),
+            (true, "previous"),
+            (true, "personal-best"),
+            (true, "rival"),
+            (true, "best"),
+        ] {
+            LapReference::cycle(&mut settings, tt);
+            assert_eq!(settings["reference"], expected);
+            assert_eq!(settings["other"], 1);
+            assert_eq!(settings["car"]["target"], "focus");
         }
     }
 
