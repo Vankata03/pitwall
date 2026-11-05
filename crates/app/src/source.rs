@@ -1,166 +1,113 @@
-//! Where the session model comes from: live UDP or a `.pitrec` replay, each driven on its
-//! own thread and published to the UI through `pitwall_core::feed`.
+//! Native command line. Obsolete HTTP values are accepted without parsing: they
+//! cannot affect startup because this app has no HTTP listener.
+use pitwall_core::ingest::config::Cli;
+use std::{path::PathBuf, time::Duration};
 
-use std::{
-    fs::File,
-    io,
-    net::{Ipv4Addr, SocketAddr},
-    path::PathBuf,
-    thread,
-    time::{Duration, Instant},
-};
-
-use pitwall_core::{
-    feed::Publisher,
-    ingest::{Disposition, config::ForwardConfig, udp::LiveUdp},
-    model::SessionModel,
-    replay::Replay,
-};
-
-/// Slow-state publishes at most this often. The Lap timing clock reads the snapshot,
-/// so this is also its refresh ceiling.
-const SNAPSHOT_INTERVAL: Duration = Duration::from_nanos(16_666_667);
-/// Without input, publish anyway this often so staleness (time-driven) shows.
-const IDLE_PUBLISH: Duration = Duration::from_millis(250);
-const WAKE_TIMEOUT: Duration = Duration::from_millis(100);
-/// Replay ticks at the game's frame rate, so the UI redraws at most 60 times a second.
-const REPLAY_TICK: Duration = Duration::from_nanos(16_666_667);
-
-#[derive(Debug, Clone)]
-pub enum Source {
-    Live {
-        port: u16,
-    },
-    Replay {
-        path: PathBuf,
-        from: Duration,
-        looped: bool,
-    },
+pub struct Args {
+    pub cli: Cli,
+    pub replay: Option<PathBuf>,
+    pub from: Duration,
+    pub looped: bool,
+    pub size: (f32, f32),
+    pub stats: bool,
+    pub obsolete: Vec<String>,
 }
-
-impl Source {
-    pub fn label(&self) -> String {
-        match self {
-            Self::Live { port } => format!("Live UDP :{port}"),
-            Self::Replay { path, .. } => format!(
-                "Replay {}",
-                path.file_name().map_or_else(
-                    || path.display().to_string(),
-                    |n| n.to_string_lossy().into_owned()
-                )
-            ),
-        }
-    }
-
-    /// Start the source thread. Errors before the first publish (bind, open) return here.
-    pub fn spawn(self, publisher: Publisher) -> io::Result<thread::JoinHandle<io::Result<()>>> {
-        match self {
-            Self::Live { port } => {
-                let live = LiveUdp::bind(
-                    SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)),
-                    &ForwardConfig::default(),
-                )?;
-                thread::Builder::new()
-                    .name("pitwall-live".into())
-                    .spawn(move || run_live(live, publisher))
-            }
-            Self::Replay { path, from, looped } => {
-                let mut replay = Replay::load(File::open(&path)?, |_| {})?;
-                replay.seek(from.min(replay_duration(&replay)))?;
-                thread::Builder::new()
-                    .name("pitwall-replay".into())
-                    .spawn(move || run_replay(replay, publisher, from, looped))
-            }
-        }
-    }
-}
-
-fn replay_duration(replay: &Replay) -> Duration {
-    Duration::from_secs_f64(replay.state(None).duration)
-}
-
-struct Throttle {
-    last_snapshot: Option<Instant>,
-}
-
-impl Throttle {
-    fn publish(&mut self, publisher: &mut Publisher, model: &SessionModel, had_input: bool) {
-        let now = Instant::now();
-        if had_input {
-            publisher.publish_fast(model);
-        }
-        let due = self.last_snapshot.is_none_or(|last| {
-            now - last
-                >= if had_input {
-                    SNAPSHOT_INTERVAL
-                } else {
-                    IDLE_PUBLISH
+impl Args {
+    pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Self, String> {
+        let mut result = Self {
+            cli: Cli::default(),
+            replay: None,
+            from: Duration::ZERO,
+            looped: false,
+            size: (900.0, 480.0),
+            stats: false,
+            obsolete: vec![],
+        };
+        let mut args = args.into_iter();
+        while let Some(arg) = args.next() {
+            let (flag, inline) = arg
+                .split_once('=')
+                .map_or((arg.as_str(), None), |(f, v)| (f, Some(v.to_owned())));
+            let mut value = || {
+                inline
+                    .clone()
+                    .or_else(|| args.next())
+                    .ok_or_else(|| format!("{flag} needs a value"))
+            };
+            match flag {
+                "--console" => result.cli.console = true,
+                "--help" | "-h" => result.cli.help = true,
+                "--stats" => result.stats = true,
+                "--loop" => result.looped = true,
+                "--http-port" | "--bind" => {
+                    value()?;
+                    result.obsolete.push(flag.to_owned());
                 }
-        });
-        if due {
-            if !had_input {
-                // Time-driven staleness reaches the fast path too.
-                publisher.publish_fast(model);
+                "--config" => result.cli.config_path = Some(value()?.into()),
+                "--data-dir" => result.cli.data_dir = Some(value()?.into()),
+                "--port" | "--udp-port" => {
+                    let port: u16 = value()?.parse().map_err(|_| "invalid UDP port")?;
+                    if port == 0 {
+                        return Err("invalid UDP port".into());
+                    }
+                    result.cli.udp_port = Some(port);
+                }
+                "--replay" => result.replay = Some(value()?.into()),
+                "--from" => {
+                    result.from = Duration::try_from_secs_f64(
+                        value()?.parse().map_err(|_| "invalid --from")?,
+                    )
+                    .map_err(|_| "invalid --from")?;
+                }
+                "--size" => {
+                    let text = value()?;
+                    let (w, h) = text.split_once('x').ok_or("--size takes WIDTHxHEIGHT")?;
+                    result.size = (
+                        w.parse().map_err(|_| "invalid width")?,
+                        h.parse().map_err(|_| "invalid height")?,
+                    );
+                    if !result.size.0.is_finite()
+                        || !result.size.1.is_finite()
+                        || result.size.0 <= 0.0
+                        || result.size.1 <= 0.0
+                    {
+                        return Err("invalid window size".into());
+                    }
+                }
+                _ => return Err(format!("unknown argument {arg}")),
             }
-            publisher.publish_snapshot(model);
-            self.last_snapshot = Some(now);
         }
+        Ok(result)
     }
 }
-
-fn run_live(mut live: LiveUdp, mut publisher: Publisher) -> io::Result<()> {
-    let origin = Instant::now();
-    let now = || origin.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
-    let mut model = SessionModel::default();
-    let mut throttle = Throttle {
-        last_snapshot: None,
-    };
-    let mut tap = |_: u64, _: &[u8]| {};
-    loop {
-        let received = live.poll(256, now, &mut tap)?;
-        let had_input = !received.is_empty();
-        for received in received {
-            if let Ok((parsed, Disposition::Apply)) = received.result {
-                model.apply(Duration::from_micros(received.arrival_time_us), &parsed);
-            }
-        }
-        model.advance(Duration::from_micros(now()));
-        throttle.publish(&mut publisher, &model, had_input);
-        // Wake on arrival; the timeout only bounds idle staleness publishes.
-        live.wait(WAKE_TIMEOUT)?;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn obsolete_flags_never_validate_their_unused_values() {
+        let args = Args::parse(
+            [
+                "--http-port=not-a-port",
+                "--bind",
+                "not-an-address",
+                "--data-dir=C:/copy",
+            ]
+            .map(str::to_owned),
+        )
+        .unwrap();
+        assert_eq!(args.obsolete, ["--http-port", "--bind"]);
+        assert_eq!(args.cli.data_dir, Some(PathBuf::from("C:/copy")));
     }
-}
-
-fn run_replay(
-    mut replay: Replay,
-    mut publisher: Publisher,
-    from: Duration,
-    looped: bool,
-) -> io::Result<()> {
-    let duration = replay_duration(&replay);
-    let mut next = Instant::now();
-    let mut last = Instant::now();
-    let mut published = None;
-    loop {
-        let now = Instant::now();
-        replay.tick(now - last)?;
-        last = now;
-        // A paused or finished replay publishes nothing, so the UI stops redrawing.
-        if published != Some(replay.position()) {
-            publisher.publish_fast(replay.model());
-            publisher.publish_snapshot(replay.model());
-            published = Some(replay.position());
-        }
-        if replay.position() >= duration && looped {
-            replay.seek(from.min(duration))?;
-            replay.pause(false);
-        }
-        next += REPLAY_TICK;
-        let now = Instant::now();
-        if next > now {
-            thread::sleep(next - now);
-        } else {
-            next = now;
+    #[test]
+    fn rejects_unsafe_duration_and_unknown_arguments() {
+        for input in [
+            vec!["--from", "NaN"],
+            vec!["--from", "-1"],
+            vec!["--udp-port", "0"],
+            vec!["--wat"],
+            vec!["--config"],
+        ] {
+            assert!(Args::parse(input.into_iter().map(str::to_owned)).is_err());
         }
     }
 }
