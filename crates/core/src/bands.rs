@@ -42,15 +42,15 @@ pub const BRAKE_BAND: Band = Band {
 /// Tyre band by actual compound ID (`m_actualTyreCompound`), for surface and inner.
 pub fn tyre_band(actual_compound: u8) -> Option<Band> {
     let (cold, hot) = match actual_compound {
-        22 => (78.0, 98.0),   // C6
-        16 => (80.0, 100.0),  // C5
-        17 => (82.0, 102.0),  // C4
-        18 => (84.0, 104.0),  // C3
-        19 => (86.0, 106.0),  // C2
-        20 => (88.0, 108.0),  // C1
-        21 => (90.0, 110.0),  // C0
-        7 => (60.0, 85.0),    // intermediate
-        8 => (50.0, 75.0),    // wet
+        22 => (78.0, 98.0),  // C6
+        16 => (80.0, 100.0), // C5
+        17 => (82.0, 102.0), // C4
+        18 => (84.0, 104.0), // C3
+        19 => (86.0, 106.0), // C2
+        20 => (88.0, 108.0), // C1
+        21 => (90.0, 110.0), // C0
+        7 => (60.0, 85.0),   // intermediate
+        8 => (50.0, 75.0),   // wet
         _ => return None,
     };
     Some(Band { cold, hot })
@@ -58,7 +58,11 @@ pub fn tyre_band(actual_compound: u8) -> Option<Band> {
 
 /// Band of a temperature in °C. A tyre with an unknown or missing compound has no band:
 /// the tile shows the number without colour or glyph.
-pub fn band_of(kind: TemperatureKind, celsius: f32, actual_compound: Option<u8>) -> Option<BandName> {
+pub fn band_of(
+    kind: TemperatureKind,
+    celsius: f32,
+    actual_compound: Option<u8>,
+) -> Option<BandName> {
     let band = match kind {
         TemperatureKind::Brake => BRAKE_BAND,
         TemperatureKind::Tyre => tyre_band(actual_compound?)?,

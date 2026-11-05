@@ -617,14 +617,19 @@ impl<S: LayoutStore> LayoutController<S> {
     /// Add a tile of `kind` at its default size (`w` by `h` cells) under the others.
     pub fn add_tile(&mut self, kind: &str, w: u32, h: u32) {
         self.change_draft(|draft, class| {
-            let (tiles, _) = super::add_tile(&draft.arrangement(class), kind, w, h, class.columns());
+            let (tiles, _) =
+                super::add_tile(&draft.arrangement(class), kind, w, h, class.columns());
             super::replace_arrangement(draft, class, tiles)
         });
     }
 
     pub fn remove_tile(&mut self, id: &str) {
         self.change_draft(|draft, class| {
-            super::replace_arrangement(draft, class, super::remove_tile(&draft.arrangement(class), id))
+            super::replace_arrangement(
+                draft,
+                class,
+                super::remove_tile(&draft.arrangement(class), id),
+            )
         });
     }
 

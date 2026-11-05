@@ -9,7 +9,12 @@ fn bytes(text: &str) -> [u8; 32] {
     out
 }
 
-fn participant(ai_controlled: u8, network_id: u16, show_online_names: u8, name: &str) -> ParticipantData {
+fn participant(
+    ai_controlled: u8,
+    network_id: u16,
+    show_online_names: u8,
+    name: &str,
+) -> ParticipantData {
     let colour = LiveryColour {
         red: 0,
         green: 0,

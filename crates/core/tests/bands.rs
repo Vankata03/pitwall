@@ -36,11 +36,21 @@ fn compounds_are_keyed_by_actual_compound_so_a_different_compound_gets_a_differe
         (8, 50.0, 75.0),
     ];
     for (compound, cold, hot) in expected {
-        assert_eq!(tyre_band(compound), Some(Band { cold, hot }), "compound {compound}");
+        assert_eq!(
+            tyre_band(compound),
+            Some(Band { cold, hot }),
+            "compound {compound}"
+        );
     }
     assert_ne!(tyre_band(16), tyre_band(21));
-    assert_eq!(band_of(TemperatureKind::Tyre, 90.0, Some(16)), Some(BandName::Window));
-    assert_eq!(band_of(TemperatureKind::Tyre, 40.0, Some(7)), Some(BandName::Cold));
+    assert_eq!(
+        band_of(TemperatureKind::Tyre, 90.0, Some(16)),
+        Some(BandName::Window)
+    );
+    assert_eq!(
+        band_of(TemperatureKind::Tyre, 40.0, Some(7)),
+        Some(BandName::Cold)
+    );
 }
 
 #[test]
@@ -51,7 +61,13 @@ fn an_unknown_or_missing_compound_has_no_tyre_band_so_the_number_shows_uncoloure
 
 #[test]
 fn brakes_use_their_own_table_and_need_no_compound() {
-    assert_eq!(BRAKE_BAND, Band { cold: 300.0, hot: 850.0 });
+    assert_eq!(
+        BRAKE_BAND,
+        Band {
+            cold: 300.0,
+            hot: 850.0
+        }
+    );
     let b = TemperatureKind::Brake;
     assert_eq!(band_of(b, 299.0, None), Some(BandName::Cold));
     assert_eq!(band_of(b, 851.0, Some(16)), Some(BandName::Hot));

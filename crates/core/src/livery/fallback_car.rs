@@ -64,7 +64,8 @@ fn pair(left: &str) -> [String; 2] {
 
 /// The four recolour zones, as lists of closed outlines, in the game's slot order.
 fn zones() -> [Vec<String>; 4] {
-    let mut body = vec!["M452 112C438 150 426 212 412 302L548 302C534 212 522 150 508 112Z".to_string()];
+    let mut body =
+        vec!["M452 112C438 150 426 212 412 302L548 302C534 212 522 150 508 112Z".to_string()];
     body.extend(pair("M426 190C398 220 350 270 322 338C304 382 300 420 312 450C342 462 384 476 420 492L436 492L428 300Z"));
     body.push("M412 288C398 338 388 402 396 468C404 524 430 566 438 604C442 628 454 646 468 650L492 650C506 646 518 628 522 604C530 566 556 524 564 468C572 402 562 338 548 288Z".to_string());
 
@@ -72,19 +73,25 @@ fn zones() -> [Vec<String>; 4] {
         "M464 424L496 424L490 646L470 646Z".to_string(),
         "M470 116L490 116L496 292L464 292Z".to_string(),
     ];
-    secondary.extend(pair("M332 344C352 298 388 252 424 218L426 256C398 286 372 330 358 376Z"));
+    secondary.extend(pair(
+        "M332 344C352 298 388 252 424 218L426 256C398 286 372 330 358 376Z",
+    ));
 
     let mut wings = vec![
         "M300 42C380 28 580 28 660 42L668 94C580 82 380 82 292 94Z".to_string(),
         "M308 96C390 86 570 86 652 96L648 118C570 108 390 108 312 118Z".to_string(),
         "M72 640C200 598 340 618 440 648L520 648C620 618 760 598 888 640L898 684C760 650 620 676 520 692L440 692C340 676 200 650 62 684Z".to_string(),
     ];
-    wings.extend(pair("M96 610C204 578 322 590 430 624L430 642C322 612 204 602 90 634Z"));
+    wings.extend(pair(
+        "M96 610C204 578 322 590 430 624L430 642C322 612 204 602 90 634Z",
+    ));
 
     let mut trim = Vec::new();
     trim.extend(pair("M278 24L306 28L300 124L270 120Z"));
     trim.extend(pair("M50 594L96 588L90 696L42 702Z"));
-    trim.extend(pair("M296 446C306 492 352 526 412 534L412 548C344 540 290 502 282 450Z"));
+    trim.extend(pair(
+        "M296 446C306 492 352 526 412 534L412 548C344 540 290 502 282 450Z",
+    ));
 
     [body, secondary, wings, trim]
 }

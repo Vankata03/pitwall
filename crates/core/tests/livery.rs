@@ -37,26 +37,54 @@ fn my_team_uses_my_team_png_whatever_its_team_id() {
 
 #[test]
 fn a_team_car_uses_its_own_team_id_png() {
-    let choice = choose_livery(Some(&car(481, false, 2)), &files(&["3.png", "481.png", "my-team.png"]));
+    let choice = choose_livery(
+        Some(&car(481, false, 2)),
+        &files(&["3.png", "481.png", "my-team.png"]),
+    );
     assert_eq!(pack_file(&choice), Some("481.png"));
 }
 
 #[test]
 fn a_car_with_no_matching_file_gets_the_fallback() {
-    assert_eq!(pack_file(&choose_livery(Some(&car(7, false, 2)), &files(&["3.png", "readme.txt"]))), None);
-    assert_eq!(pack_file(&choose_livery(Some(&car(7, false, 2)), &[])), None);
+    assert_eq!(
+        pack_file(&choose_livery(
+            Some(&car(7, false, 2)),
+            &files(&["3.png", "readme.txt"])
+        )),
+        None
+    );
+    assert_eq!(
+        pack_file(&choose_livery(Some(&car(7, false, 2)), &[])),
+        None
+    );
 }
 
 #[test]
 fn my_team_without_my_team_png_falls_through_to_its_team_id_png_then_the_fallback() {
-    assert_eq!(pack_file(&choose_livery(Some(&car(3, true, 2)), &files(&["3.png"]))), Some("3.png"));
-    assert_eq!(pack_file(&choose_livery(Some(&car(3, true, 2)), &files(&["4.png"]))), None);
+    assert_eq!(
+        pack_file(&choose_livery(Some(&car(3, true, 2)), &files(&["3.png"]))),
+        Some("3.png")
+    );
+    assert_eq!(
+        pack_file(&choose_livery(Some(&car(3, true, 2)), &files(&["4.png"]))),
+        None
+    );
 }
 
 #[test]
 fn files_that_match_nothing_are_ignored_including_near_misses() {
-    let near = files(&["03.png", "3.PNG", "3.png.bak", "team-3.png", "/liveries/3.png", "../3.png"]);
-    assert_eq!(pack_file(&choose_livery(Some(&car(3, false, 2)), &near)), None);
+    let near = files(&[
+        "03.png",
+        "3.PNG",
+        "3.png.bak",
+        "team-3.png",
+        "/liveries/3.png",
+        "../3.png",
+    ]);
+    assert_eq!(
+        pack_file(&choose_livery(Some(&car(3, false, 2)), &near)),
+        None
+    );
 }
 
 #[test]
@@ -76,7 +104,10 @@ fn colour_slots_the_game_did_not_send_are_neutral() {
 
 #[test]
 fn no_game_colours_means_all_neutral() {
-    assert_eq!(*choose_livery(Some(&car(3, false, 0)), &[]).colours(), NEUTRAL_COLOURS);
+    assert_eq!(
+        *choose_livery(Some(&car(3, false, 0)), &[]).colours(),
+        NEUTRAL_COLOURS
+    );
 }
 
 #[test]
@@ -162,7 +193,10 @@ fn the_car_is_a_transparent_4_3_picture_at_960_by_720() {
     assert!(svg.contains("width=\"960\""));
     assert!(svg.contains("height=\"720\""));
     for tag in tagged(&svg, "<rect") {
-        assert!(!(tag.contains("width=\"960\"") && tag.contains("height=\"720\"")), "backdrop {tag}");
+        assert!(
+            !(tag.contains("width=\"960\"") && tag.contains("height=\"720\"")),
+            "backdrop {tag}"
+        );
     }
     let root = &tagged(&svg, "<svg")[0];
     for banned in ["fill=", "style=", "background="] {
@@ -174,7 +208,14 @@ fn the_car_is_a_transparent_4_3_picture_at_960_by_720() {
 fn the_art_is_self_contained_no_images_links_text_or_script() {
     for svg in [fallback_car_svg(&COLOURS), fallback_car_mask_svg()] {
         let lower = svg.to_lowercase();
-        for element in ["<image", "<text", "<script", "<foreignobject", "<use", "<a "] {
+        for element in [
+            "<image",
+            "<text",
+            "<script",
+            "<foreignobject",
+            "<use",
+            "<a ",
+        ] {
             assert!(!lower.contains(element), "{element}");
         }
         assert!(!lower.contains("href="));
@@ -242,7 +283,10 @@ fn the_car_is_symmetric_about_the_centre_line_wheels_included() {
         assert_eq!(centres[0] + centres[1], 960.0);
     }
     // Mirrored outlines: each paired zone outline reflects x about 480.
-    let zone0: Vec<String> = tagged(&svg, "data-zone=\"0\"").iter().map(|t| path_d(t)).collect();
+    let zone0: Vec<String> = tagged(&svg, "data-zone=\"0\"")
+        .iter()
+        .map(|t| path_d(t))
+        .collect();
     assert!(zone0.contains(&"M426 190C398 220 350 270 322 338C304 382 300 420 312 450C342 462 384 476 420 492L436 492L428 300Z".to_string()));
     assert!(zone0.contains(&"M534 190C562 220 610 270 638 338C656 382 660 420 648 450C618 462 576 476 540 492L524 492L532 300Z".to_string()));
 }
@@ -271,7 +315,10 @@ fn the_mask_marks_the_same_four_zones_in_four_fixed_colours_and_nothing_else() {
     let car = fallback_car_svg(&COLOURS);
     let mask = fallback_car_mask_svg();
     assert!(mask.contains("viewBox=\"0 0 960 720\""));
-    for (slot, fill) in ["#ff0000", "#00ff00", "#0000ff", "#ffff00"].iter().enumerate() {
+    for (slot, fill) in ["#ff0000", "#00ff00", "#0000ff", "#ffff00"]
+        .iter()
+        .enumerate()
+    {
         let marker = format!("data-zone=\"{slot}\"");
         let zone = tagged(&mask, &marker);
         let car_zone = tagged(&car, &marker);

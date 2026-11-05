@@ -52,9 +52,21 @@ fn width_is_columns_plus_gaps_from_the_container_width() {
 
 fn cell_rules() -> Vec<DensityRule> {
     density_rules_from_cells(&[
-        DensityCells { density: Density::Compact, w: 0, h: 0 },
-        DensityCells { density: Density::Regular, w: 5, h: 8 },
-        DensityCells { density: Density::Full, w: 9, h: 16 },
+        DensityCells {
+            density: Density::Compact,
+            w: 0,
+            h: 0,
+        },
+        DensityCells {
+            density: Density::Regular,
+            w: 5,
+            h: 8,
+        },
+        DensityCells {
+            density: Density::Full,
+            w: 9,
+            h: 16,
+        },
     ])
 }
 
@@ -115,9 +127,21 @@ fn a_short_layout_stops_growing_at_64_px() {
 // runtime/tile.test.ts: pickDensity and the density part of defineTile.
 fn speed_rules() -> Vec<DensityRule> {
     vec![
-        DensityRule { density: Density::Compact, min_width: 0.0, min_height: 0.0 },
-        DensityRule { density: Density::Regular, min_width: 200.0, min_height: 120.0 },
-        DensityRule { density: Density::Full, min_width: 360.0, min_height: 220.0 },
+        DensityRule {
+            density: Density::Compact,
+            min_width: 0.0,
+            min_height: 0.0,
+        },
+        DensityRule {
+            density: Density::Regular,
+            min_width: 200.0,
+            min_height: 120.0,
+        },
+        DensityRule {
+            density: Density::Full,
+            min_width: 360.0,
+            min_height: 220.0,
+        },
     ]
 }
 
@@ -133,8 +157,16 @@ fn the_largest_density_whose_thresholds_both_fit() {
 #[test]
 fn falls_back_to_compact_below_every_threshold() {
     let rules = [
-        DensityRule { density: Density::Compact, min_width: 80.0, min_height: 80.0 },
-        DensityRule { density: Density::Regular, min_width: 200.0, min_height: 120.0 },
+        DensityRule {
+            density: Density::Compact,
+            min_width: 80.0,
+            min_height: 80.0,
+        },
+        DensityRule {
+            density: Density::Regular,
+            min_width: 200.0,
+            min_height: 120.0,
+        },
     ];
     assert_eq!(pick_density(&rules, 10.0, 10.0), Density::Compact);
 }
@@ -143,18 +175,46 @@ fn falls_back_to_compact_below_every_threshold() {
 fn densities_must_be_two_or_three_in_order_from_compact_and_never_shrink() {
     let rules = speed_rules();
     assert!(check_densities(&rules).is_ok());
-    assert!(check_densities(&rules[..1]).unwrap_err().contains("densities"));
+    assert!(
+        check_densities(&rules[..1])
+            .unwrap_err()
+            .contains("densities")
+    );
     let reversed: Vec<_> = rules.iter().rev().copied().collect();
     assert!(check_densities(&reversed).is_err());
     let no_compact = [
-        DensityRule { density: Density::Regular, min_width: 0.0, min_height: 0.0 },
-        DensityRule { density: Density::Full, min_width: 100.0, min_height: 100.0 },
+        DensityRule {
+            density: Density::Regular,
+            min_width: 0.0,
+            min_height: 0.0,
+        },
+        DensityRule {
+            density: Density::Full,
+            min_width: 100.0,
+            min_height: 100.0,
+        },
     ];
-    assert!(check_densities(&no_compact).unwrap_err().contains("compact"));
+    assert!(
+        check_densities(&no_compact)
+            .unwrap_err()
+            .contains("compact")
+    );
     let shrinking = [
-        DensityRule { density: Density::Compact, min_width: 0.0, min_height: 0.0 },
-        DensityRule { density: Density::Regular, min_width: 200.0, min_height: 120.0 },
-        DensityRule { density: Density::Full, min_width: 300.0, min_height: 100.0 },
+        DensityRule {
+            density: Density::Compact,
+            min_width: 0.0,
+            min_height: 0.0,
+        },
+        DensityRule {
+            density: Density::Regular,
+            min_width: 200.0,
+            min_height: 120.0,
+        },
+        DensityRule {
+            density: Density::Full,
+            min_width: 300.0,
+            min_height: 100.0,
+        },
     ];
     assert!(check_densities(&shrinking).unwrap_err().contains("shrink"));
 }

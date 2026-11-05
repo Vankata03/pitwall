@@ -45,16 +45,30 @@ fn arrangement_returns_the_tiles_of_one_screen_class() {
 #[test]
 fn editing_a_generated_class_makes_it_the_layouts_own() {
     let before = mine();
-    assert_eq!(generated_classes(&before), [ScreenClass::Tablet, ScreenClass::Phone]);
-    let next = replace_arrangement(&before, ScreenClass::Tablet, vec![tile("notice", "notice", 0, 2, 12, 1)]);
+    assert_eq!(
+        generated_classes(&before),
+        [ScreenClass::Tablet, ScreenClass::Phone]
+    );
+    let next = replace_arrangement(
+        &before,
+        ScreenClass::Tablet,
+        vec![tile("notice", "notice", 0, 2, 12, 1)],
+    );
     assert_eq!(generated_classes(&next), [ScreenClass::Phone]);
     assert_eq!(next.arrangement(ScreenClass::Tablet)[0].y, 2);
 }
 
 #[test]
 fn editing_wide_leaves_the_generated_classes_generated() {
-    let next = replace_arrangement(&mine(), ScreenClass::Wide, vec![tile("notice", "notice", 0, 5, 24, 1)]);
-    assert_eq!(generated_classes(&next), [ScreenClass::Tablet, ScreenClass::Phone]);
+    let next = replace_arrangement(
+        &mine(),
+        ScreenClass::Wide,
+        vec![tile("notice", "notice", 0, 5, 24, 1)],
+    );
+    assert_eq!(
+        generated_classes(&next),
+        [ScreenClass::Tablet, ScreenClass::Phone]
+    );
     assert_eq!(next.arrangements.wide[0].y, 5);
 }
 
@@ -70,7 +84,10 @@ fn does_not_change_the_layout_it_was_given() {
 fn new_tile_id_is_the_kebab_case_type_when_free_then_numbered() {
     let taken = |ids: &[&str]| ids.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     assert_eq!(new_tile_id("lap-timing", &taken(&[])), "lap-timing");
-    assert_eq!(new_tile_id("lap-timing", &taken(&["lap-timing"])), "lap-timing-2");
+    assert_eq!(
+        new_tile_id("lap-timing", &taken(&["lap-timing"])),
+        "lap-timing-2"
+    );
     assert_eq!(
         new_tile_id("lap-timing", &taken(&["lap-timing", "lap-timing-2"])),
         "lap-timing-3"
@@ -117,7 +134,10 @@ fn with_mystery() -> Vec<Tile> {
 
 #[test]
 fn remove_tile_drops_one_tile_by_id() {
-    let ids: Vec<String> = remove_tile(&with_mystery(), "a").into_iter().map(|t| t.i).collect();
+    let ids: Vec<String> = remove_tile(&with_mystery(), "a")
+        .into_iter()
+        .map(|t| t.i)
+        .collect();
     assert_eq!(ids, ["b"]);
 }
 
@@ -146,7 +166,10 @@ fn unknown_fields_on_tiles_and_on_the_layout_survive_serialisation() {
     assert_eq!(body["future"], json!({ "a": 1 }));
     assert_eq!(body["arrangements"]["wide"][0]["type"], "mystery-type");
     assert_eq!(body["arrangements"]["wide"][0]["colour"], "red");
-    assert_eq!(body["arrangements"]["wide"][0]["settings"], json!({ "z": 1 }));
+    assert_eq!(
+        body["arrangements"]["wide"][0]["settings"],
+        json!({ "z": 1 })
+    );
     assert!(body.get("preset").is_none());
     let back: Layout = serde_json::from_value(body).unwrap();
     assert_eq!(back, layout);

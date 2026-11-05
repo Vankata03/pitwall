@@ -165,7 +165,13 @@ fn kinds(c: &LayoutController<TestStore>) -> Vec<NoticeKind> {
 fn items(tiles: &[(&str, u32, u32, u32, u32)]) -> Vec<GridItem> {
     tiles
         .iter()
-        .map(|&(i, x, y, w, h)| GridItem { i: i.into(), x, y, w, h })
+        .map(|&(i, x, y, w, h)| GridItem {
+            i: i.into(),
+            x,
+            y,
+            w,
+            h,
+        })
         .collect()
 }
 
@@ -177,7 +183,11 @@ fn a_new_window_opens_pitwall_classic_and_remembers_nothing_yet() {
     assert_eq!(current_name(&controller).as_deref(), Some(CLASSIC));
     assert_eq!(DEFAULT_LAYOUT, CLASSIC);
     assert_eq!(controller.remembered(), None);
-    let names: Vec<_> = controller.layouts().iter().map(|l| l.name.as_str()).collect();
+    let names: Vec<_> = controller
+        .layouts()
+        .iter()
+        .map(|l| l.name.as_str())
+        .collect();
     assert_eq!(names, [CLASSIC, "Driver", "Race"]);
     assert!(controller.layouts().iter().all(|l| l.preset));
     assert_eq!(controller.status(), Status::Ready);
@@ -236,7 +246,10 @@ fn choosing_a_layout_that_vanished_says_so_and_keeps_the_current_one() {
     let Setup { mut controller } = setup(&[], None, None);
     controller.select("Nope");
     assert_eq!(current_name(&controller).as_deref(), Some(CLASSIC));
-    assert_eq!(controller.notices().last().unwrap().text, "\"Nope\" no longer exists.");
+    assert_eq!(
+        controller.notices().last().unwrap().text,
+        "\"Nope\" no longer exists."
+    );
     assert_eq!(controller.notices().last().unwrap().kind, NoticeKind::Error);
 }
 
@@ -261,11 +274,15 @@ fn rename_follows_the_layout_this_window_shows() {
 
 #[test]
 fn a_refused_rename_reports_why_and_changes_nothing() {
-    let Setup { mut controller } = setup(&[layout_of("Mine"), layout_of("Taken")], Some("Mine"), None);
+    let Setup { mut controller } =
+        setup(&[layout_of("Mine"), layout_of("Taken")], Some("Mine"), None);
     controller.rename("Mine", "Taken");
     assert_eq!(current_name(&controller).as_deref(), Some("Mine"));
     let last = controller.notices().last().unwrap();
-    assert_eq!((last.kind, last.text.as_str()), (NoticeKind::Error, "name already in use"));
+    assert_eq!(
+        (last.kind, last.text.as_str()),
+        (NoticeKind::Error, "name already in use")
+    );
     assert!(controller.store().library.get("Mine").is_some());
 }
 
@@ -334,7 +351,13 @@ fn while_editing_a_save_elsewhere_leaves_the_draft_and_warns_that_done_replaces_
     controller.store().library.save("Mine", theirs).unwrap();
     controller.sync_library();
     let edit = controller.edit().unwrap();
-    let moved = edit.draft.arrangements.wide.iter().find(|t| t.i == "future-tile").unwrap();
+    let moved = edit
+        .draft
+        .arrangements
+        .wide
+        .iter()
+        .find(|t| t.i == "future-tile")
+        .unwrap();
     assert_eq!(moved.x, 6);
     let last = controller.notices().last().unwrap();
     assert_eq!(last.kind, NoticeKind::Conflict);
@@ -362,7 +385,16 @@ fn this_windows_own_save_does_not_warn_itself() {
     controller.sync_library();
     assert!(controller.notices().is_empty());
     let current = controller.current().unwrap();
-    assert_eq!(current.arrangements.wide.iter().find(|t| t.i == "future-tile").unwrap().x, 6);
+    assert_eq!(
+        current
+            .arrangements
+            .wide
+            .iter()
+            .find(|t| t.i == "future-tile")
+            .unwrap()
+            .x,
+        6
+    );
 }
 
 #[test]
@@ -416,7 +448,13 @@ fn done_without_a_change_saves_nothing_and_makes_no_copy_of_a_preset() {
         .arrangements
         .wide
         .iter()
-        .map(|t| GridItem { i: t.i.clone(), x: t.x, y: t.y, w: t.w, h: t.h })
+        .map(|t| GridItem {
+            i: t.i.clone(),
+            x: t.x,
+            y: t.y,
+            w: t.w,
+            h: t.h,
+        })
         .collect();
     controller.move_resize(&same);
     assert!(!controller.edit().unwrap().dirty);
@@ -429,12 +467,20 @@ fn done_without_a_change_saves_nothing_and_makes_no_copy_of_a_preset() {
 fn moving_and_resizing_change_the_draft_and_done_saves_it_over_the_layout() {
     let Setup { mut controller } = mine();
     controller.start_edit(ScreenClass::Wide);
-    controller.move_resize(&items(&[("notice", 0, 0, 24, 1), ("future-tile", 18, 1, 6, 4)]));
+    controller.move_resize(&items(&[
+        ("notice", 0, 0, 24, 1),
+        ("future-tile", 18, 1, 6, 4),
+    ]));
     assert!(controller.edit().unwrap().dirty);
     controller.done();
     assert_eq!(controller.store().log(), ["PUT Mine"]);
     let saved = controller.store().library.get("Mine").unwrap();
-    let moved = saved.arrangements.wide.iter().find(|t| t.i == "future-tile").unwrap();
+    let moved = saved
+        .arrangements
+        .wide
+        .iter()
+        .find(|t| t.i == "future-tile")
+        .unwrap();
     assert_eq!((moved.x, moved.h), (18, 4));
     assert!(controller.edit().is_none());
 }
@@ -443,7 +489,10 @@ fn moving_and_resizing_change_the_draft_and_done_saves_it_over_the_layout() {
 fn editing_changes_only_the_current_screen_class_and_that_class_stops_being_generated() {
     let Setup { mut controller } = mine();
     controller.start_edit(ScreenClass::Tablet);
-    controller.move_resize(&items(&[("notice", 0, 0, 12, 1), ("future-tile", 6, 1, 6, 2)]));
+    controller.move_resize(&items(&[
+        ("notice", 0, 0, 12, 1),
+        ("future-tile", 6, 1, 6, 2),
+    ]));
     controller.done();
     let saved = controller.store().library.get("Mine").unwrap();
     let original = layout_of("Mine");
@@ -460,7 +509,10 @@ fn the_first_change_to_a_preset_is_saved_as_a_copy_and_the_window_moves_to_it() 
     controller.start_edit(ScreenClass::Wide);
     assert_eq!(controller.edit().unwrap().target_name, CLASSIC);
     controller.remove_tile("notice");
-    assert_eq!(controller.edit().unwrap().target_name, "Pitwall Classic copy");
+    assert_eq!(
+        controller.edit().unwrap().target_name,
+        "Pitwall Classic copy"
+    );
     controller.done();
     assert_eq!(
         controller.store().log(),
@@ -471,7 +523,10 @@ fn the_first_change_to_a_preset_is_saved_as_a_copy_and_the_window_moves_to_it() 
     let copy = library.get("Pitwall Classic copy").unwrap();
     assert!(copy.arrangements.wide.iter().all(|t| t.i != "notice"));
     assert_eq!(copy.arrangements.wide.len(), preset_wide.len() - 1);
-    assert_eq!(current_name(&controller).as_deref(), Some("Pitwall Classic copy"));
+    assert_eq!(
+        current_name(&controller).as_deref(),
+        Some("Pitwall Classic copy")
+    );
     assert_eq!(controller.remembered(), Some("Pitwall Classic copy"));
 }
 
@@ -480,7 +535,10 @@ fn the_predicted_copy_name_skips_names_already_taken() {
     let Setup { mut controller } = setup(&[layout_of("pitwall classic COPY")], None, None);
     controller.start_edit(ScreenClass::Wide);
     controller.remove_tile("notice");
-    assert_eq!(controller.edit().unwrap().target_name, "Pitwall Classic copy 2");
+    assert_eq!(
+        controller.edit().unwrap().target_name,
+        "Pitwall Classic copy 2"
+    );
 }
 
 #[test]
@@ -491,7 +549,14 @@ fn add_puts_a_tile_under_the_others_at_its_default_size_with_its_own_id() {
     let edit = controller.edit().unwrap();
     let added = edit.draft.arrangements.wide.last().unwrap();
     assert_eq!(
-        (added.i.as_str(), added.kind.as_str(), added.x, added.y, added.w, added.h),
+        (
+            added.i.as_str(),
+            added.kind.as_str(),
+            added.x,
+            added.y,
+            added.w,
+            added.h
+        ),
         ("future-tile-2", "future-tile", 0, 3, 6, 2)
     );
     assert!(edit.dirty);
@@ -504,7 +569,12 @@ fn tile_settings_are_saved_with_the_tile_instance() {
     controller.set_tile_settings("future-tile", json!({ "car": { "target": "focus" } }));
     controller.done();
     let saved = controller.store().library.get("Mine").unwrap();
-    let tile = saved.arrangements.wide.iter().find(|t| t.i == "future-tile").unwrap();
+    let tile = saved
+        .arrangements
+        .wide
+        .iter()
+        .find(|t| t.i == "future-tile")
+        .unwrap();
     assert_eq!(tile.settings, json!({ "car": { "target": "focus" } }));
 }
 
@@ -521,7 +591,12 @@ fn an_unknown_tile_type_survives_moving_resizing_and_saving_untouched() {
     controller.move_resize(&items(&[("future-1", 4, 3, 4, 2)]));
     controller.done();
     let saved = controller.store().library.get("Odd").unwrap();
-    let tile = saved.arrangements.wide.iter().find(|t| t.i == "future-1").unwrap();
+    let tile = saved
+        .arrangements
+        .wide
+        .iter()
+        .find(|t| t.i == "future-1")
+        .unwrap();
     assert_eq!(
         serde_json::to_value(tile).unwrap(),
         json!({ "i": "future-1", "type": "warp-core", "x": 4, "y": 3, "w": 4, "h": 2, "settings": { "flux": 3 }, "colour": "red" })
@@ -559,7 +634,10 @@ fn a_retry_after_the_copy_was_made_but_the_save_failed_reuses_the_copy() {
         .count();
     assert_eq!(duplicates, 1);
     assert!(controller.edit().is_none());
-    assert_eq!(current_name(&controller).as_deref(), Some("Pitwall Classic copy"));
+    assert_eq!(
+        current_name(&controller).as_deref(),
+        Some("Pitwall Classic copy")
+    );
 }
 
 #[test]
@@ -599,7 +677,11 @@ fn stream_view_stays_blank_for_a_missing_named_layout_and_recovers_on_a_library_
     assert!(controller.notices().is_empty());
     assert_eq!(controller.missing_stream_layout(), Some("Air"));
     assert_eq!(controller.remembered(), Some("Race"));
-    controller.store().library.save("Air", layout_of("Air")).unwrap();
+    controller
+        .store()
+        .library
+        .save("Air", layout_of("Air"))
+        .unwrap();
     controller.sync_library();
     assert_eq!(current_name(&controller).as_deref(), Some("Air"));
     assert_eq!(controller.missing_stream_layout(), None);

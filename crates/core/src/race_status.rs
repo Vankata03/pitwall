@@ -18,7 +18,10 @@ fn safety_car_band(status: Option<u8>) -> &'static str {
 /// `safety_car_status` (None when the session readout has no value) and the race-control
 /// log. Event chronology decides when a red flag is superseded by a restart or lights
 /// out; rewound entries never count.
-pub fn race_status(safety_car_status: Option<u8>, race_control: &[RaceControlEntry]) -> &'static str {
+pub fn race_status(
+    safety_car_status: Option<u8>,
+    race_control: &[RaceControlEntry],
+) -> &'static str {
     let mut band = safety_car_band(safety_car_status);
     for entry in race_control.iter().filter(|entry| !entry.rewound) {
         if let RaceControlKind::Game(event) = &entry.kind {
