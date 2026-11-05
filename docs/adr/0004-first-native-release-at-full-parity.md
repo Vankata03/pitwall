@@ -5,7 +5,7 @@ Status: Accepted
 
 ## Context
 
-The native rewrite replaces every part of the product: 27 tile types, layouts, presets and edit mode, the status page, replay controls, liveries, the throttle/brake overlay and, per ADR 0001, multiple dashboard windows and a stream window. The work can ship as one release or as a smaller native slice first.
+The native rewrite replaces every part of the product: 19 tile types, layouts, presets and edit mode, the status page, replay controls, liveries, the throttle/brake overlay and, per ADR 0001, multiple dashboard windows and a stream window. The work can ship as one release or as a smaller native slice first.
 
 ## Decision
 

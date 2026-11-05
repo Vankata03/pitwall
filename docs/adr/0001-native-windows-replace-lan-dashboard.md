@@ -12,6 +12,7 @@ pitwall is being rewritten as one native Windows application in Rust, with no HT
 - **Dropped:** viewing pitwall from other devices on the LAN, the HTTP server, the QR code and candidate URLs, `pitwall.local` over mDNS, the LAN trust rules, and stream view as a browser source.
 - **Kept, natively:** pitwall can open several native dashboard windows, each showing one layout, on any monitor of the host. A second monitor replaces the iPad as the second screen.
 - **Kept, natively:** a chrome-less stream window shows one layout with no controls, for OBS Window Capture. It uses a solid or chroma-key background. True transparency in OBS is not promised, because OBS window capture does not reliably preserve alpha.
+- **Stream failure policy (owner-confirmed 2026-11-05):** a missing, deleted, renamed or load-failed selected layout leaves the stream window blank, using its solid or chroma-key background. Report the error in status and logs, and recover when the selected layout becomes available.
 - UDP forwarding of raw packets to configured `host:port` targets is unaffected. It is telemetry sharing, not dashboard serving.
 
 ## Consequences
