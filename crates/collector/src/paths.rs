@@ -14,8 +14,7 @@ pub struct AppPaths {
 }
 
 impl AppPaths {
-    /// Resolve `%APPDATA%/pitwall` on Windows or
-    /// `~/Library/Application Support/pitwall` on macOS.
+    /// Resolve `%APPDATA%/pitwall`.
     pub fn resolve() -> io::Result<Self> {
         let data_dir = dirs::data_dir()
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no per-user data directory"))?;

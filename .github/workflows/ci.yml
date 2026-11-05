@@ -11,11 +11,11 @@ permissions:
 
 jobs:
   scaffold:
-    name: ${{ github.event_name == 'pull_request' && 'Windows x64' || 'macOS arm64' }}
-    runs-on: ${{ github.event_name == 'pull_request' && 'windows-latest' || 'macos-14' }}
+    name: Windows x64
+    runs-on: windows-latest
     env:
       PITWALL_BUILD_ID: ${{ github.sha }}
-      CARGO_TARGET: ${{ github.event_name == 'pull_request' && 'x86_64-pc-windows-msvc' || 'aarch64-apple-darwin' }}
+      CARGO_TARGET: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -26,6 +26,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           targets: ${{ env.CARGO_TARGET }}
+          components: clippy
       - name: Fetch dependencies
         run: |
           pnpm fetch --frozen-lockfile
@@ -37,9 +38,10 @@ jobs:
           pnpm typecheck
           node --test tools/harness/goldens.test.mjs tools/harness/benchmark-gate.test.mjs
           pnpm build
-      - name: Collector tests and release build
+      - name: Collector tests, clippy and release build
         run: |
           cargo test --workspace --locked --offline --target ${{ env.CARGO_TARGET }}
+          cargo clippy --workspace --all-targets --locked --offline --target ${{ env.CARGO_TARGET }} -- -D warnings
           cargo test --workspace --release --locked --offline --target ${{ env.CARGO_TARGET }}
           cargo build --release --locked --offline --target ${{ env.CARGO_TARGET }} --bin pitwall
 

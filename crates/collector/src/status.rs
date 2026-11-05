@@ -329,13 +329,7 @@ async fn rescan(State(s): State<Status>) -> StatusCode {
 }
 async fn open_folder(State(s): State<Status>) -> Result<StatusCode, StatusCode> {
     let path = s.0.lock().unwrap().paths.recordings.clone();
-    #[cfg(target_os = "macos")]
-    let command = "open";
-    #[cfg(target_os = "windows")]
-    let command = "explorer";
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let command = "xdg-open";
-    std::process::Command::new(command)
+    std::process::Command::new("explorer")
         .arg(path)
         .spawn()
         .map_err(error)?;

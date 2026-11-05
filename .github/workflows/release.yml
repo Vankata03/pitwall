@@ -5,18 +5,10 @@ permissions:
   contents: read
 jobs:
   package:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary: pitwall.exe
-          - os: macos-14
-            target: aarch64-apple-darwin
-            binary: pitwall
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     env:
       PITWALL_BUILD_ID: ${{ github.sha }}
+      CARGO_TARGET: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -26,22 +18,22 @@ jobs:
           cache: pnpm
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ env.CARGO_TARGET }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm typecheck
       - run: pnpm build
-      - run: cargo test --workspace --locked --target ${{ matrix.target }}
-      - run: cargo build --release --locked --target ${{ matrix.target }} --bin pitwall
+      - run: cargo test --workspace --locked --target ${{ env.CARGO_TARGET }}
+      - run: cargo build --release --locked --target ${{ env.CARGO_TARGET }} --bin pitwall
       - name: Stage portable files
         shell: bash
         run: |
           mkdir package
-          cp target/${{ matrix.target }}/release/${{ matrix.binary }} package/
+          cp target/${{ env.CARGO_TARGET }}/release/pitwall.exe package/
           cp README.md THIRD-PARTY-NOTICES.md RELEASE-NOTES.md package/
           printf '%s\n' "$PITWALL_BUILD_ID" > package/BUILD-ID.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: pitwall-${{ matrix.target }}
+          name: pitwall-${{ env.CARGO_TARGET }}
           path: package/
           if-no-files-found: error

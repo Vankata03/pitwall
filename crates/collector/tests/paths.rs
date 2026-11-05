@@ -17,16 +17,10 @@ fn all_persistent_files_share_the_per_user_pitwall_directory() {
 }
 
 #[test]
-fn resolves_the_current_users_platform_directory() {
+fn resolves_the_current_users_appdata_directory() {
     let paths = AppPaths::resolve().expect("the current user has a data directory");
 
-    #[cfg(target_os = "macos")]
-    let expected = PathBuf::from(std::env::var_os("HOME").unwrap())
-        .join("Library/Application Support/pitwall");
-    #[cfg(target_os = "windows")]
     let expected = PathBuf::from(std::env::var_os("APPDATA").unwrap()).join("pitwall");
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let expected = dirs::data_dir().unwrap().join("pitwall");
 
     assert_eq!(paths.root, expected);
 }

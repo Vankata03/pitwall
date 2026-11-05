@@ -111,10 +111,8 @@ pub fn default_position(monitor: (i32, i32, u32, u32), window: (u32, u32)) -> (i
     (left, top)
 }
 
-#[cfg(windows)]
 pub use native::Overlay;
 
-#[cfg(windows)]
 mod native {
     use super::*;
     use std::path::PathBuf;

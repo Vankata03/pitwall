@@ -94,17 +94,11 @@ pub fn dashboard_url(config: &Config) -> String {
     format!("http://{}", std::net::SocketAddr::new(ip, config.http.port))
 }
 pub fn open(target: impl AsRef<std::ffi::OsStr>) -> io::Result<()> {
-    #[cfg(windows)]
-    let mut command = {
-        let mut c = std::process::Command::new("rundll32.exe");
-        c.arg("url.dll,FileProtocolHandler");
-        c
-    };
-    #[cfg(target_os = "macos")]
-    let mut command = std::process::Command::new("open");
-    #[cfg(not(any(windows, target_os = "macos")))]
-    let mut command = std::process::Command::new("xdg-open");
-    command.arg(target).spawn().map(|_| ())
+    std::process::Command::new("rundll32.exe")
+        .arg("url.dll,FileProtocolHandler")
+        .arg(target)
+        .spawn()
+        .map(|_| ())
 }
 pub fn log(paths: &AppPaths, message: &str) {
     if let Ok(mut file) = OpenOptions::new()
@@ -128,41 +122,36 @@ pub fn first_run(root: &Path) -> io::Result<bool> {
 }
 /// Startup-folder entry is opt-in and scoped to the current Windows user.
 pub fn autostart(enabled: bool, cli: &Cli) -> io::Result<()> {
-    #[cfg(windows)]
-    {
-        let root =
-            std::env::var_os("APPDATA").ok_or_else(|| io::Error::other("APPDATA unavailable"))?;
-        let path = std::path::PathBuf::from(root)
-            .join("Microsoft/Windows/Start Menu/Programs/Startup/pitwall.vbs");
-        if enabled {
-            let exe = std::env::current_exe()?.display().to_string();
-            let mut args = format!("\"{exe}\"");
-            if let Some(path) = &cli.config_path {
-                args.push_str(&format!(" --config \"{}\"", path.display()));
-            }
-            for (flag, value) in [
-                ("--udp-port", cli.udp_port.map(|v| v.to_string())),
-                ("--http-port", cli.http_port.map(|v| v.to_string())),
-                ("--bind", cli.bind.map(|v| v.to_string())),
-            ] {
-                if let Some(value) = value {
-                    args.push_str(&format!(" {flag} {value}"));
-                }
-            }
-            fs::create_dir_all(path.parent().unwrap())?;
-            fs::write(
-                path,
-                format!(
-                    "CreateObject(\"WScript.Shell\").Run \"{}\", 0, False\r\n",
-                    args.replace('"', "\"\"")
-                ),
-            )?;
-        } else if path.exists() {
-            fs::remove_file(path)?;
+    let root =
+        std::env::var_os("APPDATA").ok_or_else(|| io::Error::other("APPDATA unavailable"))?;
+    let path = std::path::PathBuf::from(root)
+        .join("Microsoft/Windows/Start Menu/Programs/Startup/pitwall.vbs");
+    if enabled {
+        let exe = std::env::current_exe()?.display().to_string();
+        let mut args = format!("\"{exe}\"");
+        if let Some(path) = &cli.config_path {
+            args.push_str(&format!(" --config \"{}\"", path.display()));
         }
+        for (flag, value) in [
+            ("--udp-port", cli.udp_port.map(|v| v.to_string())),
+            ("--http-port", cli.http_port.map(|v| v.to_string())),
+            ("--bind", cli.bind.map(|v| v.to_string())),
+        ] {
+            if let Some(value) = value {
+                args.push_str(&format!(" {flag} {value}"));
+            }
+        }
+        fs::create_dir_all(path.parent().unwrap())?;
+        fs::write(
+            path,
+            format!(
+                "CreateObject(\"WScript.Shell\").Run \"{}\", 0, False\r\n",
+                args.replace('"', "\"\"")
+            ),
+        )?;
+    } else if path.exists() {
+        fs::remove_file(path)?;
     }
-    #[cfg(not(windows))]
-    let _ = (enabled, cli);
     Ok(())
 }
 
@@ -205,7 +194,6 @@ pub fn run(cli: Cli, paths: AppPaths) -> io::Result<()> {
                     if worker_cli.console {
                         eprintln!("{message}");
                     }
-                    #[cfg(any(windows, target_os = "macos"))]
                     if !worker_cli.console {
                         let _ = notify_rust::Notification::new()
                             .summary("pitwall needs attention")
@@ -228,19 +216,11 @@ pub fn run(cli: Cli, paths: AppPaths) -> io::Result<()> {
             std::thread::sleep(Duration::from_millis(250));
         }
     } else {
-        #[cfg(any(windows, target_os = "macos"))]
-        {
-            let result = tray(&control, &mut instance, &paths, &cli);
-            control.request_stop();
-            if let Err(e) = result {
-                let _ = worker.join();
-                return Err(e);
-            }
-        }
-        #[cfg(not(any(windows, target_os = "macos")))]
-        while !control.stopped() && !worker.is_finished() {
-            tick(&control, &mut instance, &paths);
-            std::thread::sleep(Duration::from_millis(250));
+        let result = tray(&control, &mut instance, &paths, &cli);
+        control.request_stop();
+        if let Err(e) = result {
+            let _ = worker.join();
+            return Err(e);
         }
     }
     control.request_stop();
@@ -270,7 +250,6 @@ fn tick(control: &Control, instance: &mut Instance, paths: &AppPaths) {
         }
     }
 }
-#[cfg(any(windows, target_os = "macos"))]
 fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli) -> io::Result<()> {
     use tao::{
         event::Event,
@@ -281,16 +260,8 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
         Icon, TrayIconBuilder,
         menu::{Menu, MenuEvent, MenuItem},
     };
-    #[cfg(windows)]
     let mut event_loop =
         EventLoopBuilder::<crate::overlay::OverlayEvent>::with_user_event().build();
-    #[cfg(not(windows))]
-    let mut event_loop = EventLoopBuilder::new().build();
-    #[cfg(target_os = "macos")]
-    {
-        use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
-        event_loop.set_activation_policy(ActivationPolicy::Accessory);
-    }
     let menu = Menu::new();
     let state = MenuItem::new("Waiting for game", false, None);
     let dashboard = MenuItem::new("Open dashboard", true, None);
@@ -300,7 +271,6 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
     let quit = MenuItem::new("Quit", true, None);
     menu.append_items(&[&state, &dashboard, &qr, &settings, &logs])
         .map_err(io::Error::other)?;
-    #[cfg(windows)]
     let mut overlay = OverlayMenu::new(&menu, paths, event_loop.create_proxy())?;
     menu.append(&quit).map_err(io::Error::other)?;
     // Original geometric icon: two vertical timing bars, no third-party marks.
@@ -315,7 +285,6 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
     let mut tray = None;
     let mut failure = None;
     event_loop.run_return(|event, _target, flow| {
-        #[cfg(windows)]
         overlay.handle(&event);
         *flow = ControlFlow::WaitUntil(std::time::Instant::now() + Duration::from_millis(250));
         if matches!(event, Event::NewEvents(tao::event::StartCause::Init)) {
@@ -340,7 +309,6 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
             }
             tick(control, instance, paths);
             let s = control.state.lock().unwrap();
-            #[cfg(windows)]
             overlay.sync(_target, &s, paths);
             state.set_text(if s.line.is_empty() {
                 "Waiting for game"
@@ -348,7 +316,6 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
                 &s.line
             });
             while let Ok(event) = MenuEvent::receiver().try_recv() {
-                #[cfg(windows)]
                 if overlay.menu_event(&event.id, _target, &s, paths) {
                     continue;
                 }
@@ -380,7 +347,6 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
             }
         }
     });
-    #[cfg(windows)]
     overlay.close(paths);
     drop(tray);
     if let Some(e) = failure {
@@ -390,8 +356,7 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
     }
 }
 
-/// Tray entries and window of the in-game overlay. Windows only: WebView2 hosts the page.
-#[cfg(windows)]
+/// Tray entries and window of the in-game overlay. WebView2 hosts the page.
 struct OverlayMenu {
     show: tray_icon::menu::CheckMenuItem,
     moving: tray_icon::menu::CheckMenuItem,
@@ -401,7 +366,6 @@ struct OverlayMenu {
     failed: bool,
 }
 
-#[cfg(windows)]
 impl OverlayMenu {
     fn new(
         menu: &tray_icon::menu::Menu,

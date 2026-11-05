@@ -1,12 +1,11 @@
 # Release packaging notes
 
-The portable packages are unsigned. Read the README for SmartScreen, Windows Firewall
-and Gatekeeper guidance. Distribute THIRD-PARTY-NOTICES.md with each binary and include
+The portable Windows package is unsigned. Read the README for SmartScreen and Windows
+Firewall guidance. Distribute THIRD-PARTY-NOTICES.md with the binary and include
 its contents and the full notice below on the release page.
 
 Tile arrangement is pointer-only. Windows tray operation, notifications, console
 attachment, browser activation and start with Windows need verification on Windows.
-The macOS menu bar, first-run browser and mDNS discovery need interactive verification.
 A Rust cross-check is not a Windows build or a runtime check.
 
 The v1 release gates in docs/spec/v1.md section 18 remain open: required captures,
