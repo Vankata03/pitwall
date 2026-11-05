@@ -1,0 +1,19 @@
+{
+  "layouts": [
+    {
+      "name": "Unversioned",
+      "arrangements": {
+        "wide": [
+          {
+            "i": "fuel",
+            "type": "fuel",
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 2
+          }
+        ]
+      }
+    }
+  ]
+}

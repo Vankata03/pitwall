@@ -43,6 +43,9 @@ struct Inner {
     user: Vec<Layout>,
     extra: Map<String, Value>,
     revision: u64,
+    /// The file's `schemaVersion` while it differs from [`SCHEMA_VERSION`]: the first
+    /// write copies the file to `layouts.json.bak` before replacing it.
+    needs_backup: bool,
 }
 
 /// The shared layout library. Cloning shares one library.
@@ -52,13 +55,16 @@ pub struct LayoutLibrary(Arc<Mutex<Inner>>);
 impl LayoutLibrary {
     /// Open the library at `path` (`layouts.json`); a missing file is an empty library.
     pub fn open(path: PathBuf) -> io::Result<Self> {
-        let (user, extra) = match fs::read(&path) {
+        let (user, extra, needs_backup) = match fs::read(&path) {
             Ok(bytes) => {
                 let stored: Stored = serde_json::from_slice(&bytes)
                     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                (stored.layouts, stored.extra)
+                let needs_backup = stored.schema_version != SCHEMA_VERSION;
+                (stored.layouts, stored.extra, needs_backup)
             }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => (Vec::new(), Map::new()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                (Vec::new(), Map::new(), false)
+            }
             Err(error) => return Err(error),
         };
         Ok(Self(Arc::new(Mutex::new(Inner {
@@ -67,6 +73,7 @@ impl LayoutLibrary {
             user,
             extra,
             revision: 0,
+            needs_backup,
         }))))
     }
 
@@ -208,8 +215,16 @@ impl Inner {
     }
 
     /// Write the new user layouts to disk, then adopt them and advance the revision. A
-    /// failed write leaves memory and the file as they were.
+    /// failed write leaves memory and the file as they were. The first write over a file
+    /// of another `schemaVersion` copies it to `layouts.json.bak` first (ADR 0003).
     fn commit(&mut self, user: Vec<Layout>) -> io::Result<()> {
+        if self.needs_backup {
+            match fs::copy(&self.path, self.path.with_extension("json.bak")) {
+                Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+                _ => {}
+            }
+            self.needs_backup = false;
+        }
         let stored = Stored {
             schema_version: SCHEMA_VERSION,
             layouts: user,

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "layouts": [
+    {
+      "schemaVersion": 1,
+      "name": "Cut off mid-write",
+      "arrangements": {
+        "wide": [
+          { "i": "fuel", "type": "fuel", "x": 0, "y": 0, "w": 6,
