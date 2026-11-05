@@ -4311,8 +4311,13 @@ version = "0.1.0"
 dependencies = [
  "gpui",
  "gpui_platform",
+ "notify-rust",
  "pitwall-core",
+ "pitwall-overlay",
  "serde_json",
+ "sysinfo",
+ "toml 1.1.8+spec-1.1.0",
+ "tray-icon",
 ]
 
 [[package]]
