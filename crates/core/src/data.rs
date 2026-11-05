@@ -231,6 +231,17 @@ fn parse_config(text: &str) -> Result<(Config, Vec<String>), String> {
 
 /// Rename an unparseable file to the first free `<name>.bad`, `<name>.2.bad`, ...
 fn quarantine(file: DataFile, path: &Path, error: String) -> io::Result<LoadIssue> {
+    Ok(LoadIssue {
+        file,
+        path: path.to_path_buf(),
+        kept_as: keep_as_bad(path)?,
+        error,
+    })
+}
+
+/// Move an unparseable file aside to the first free `<name>.bad`, `<name>.2.bad`, ...
+/// and return where it went. Never overwrites an earlier copy.
+pub(crate) fn keep_as_bad(path: &Path) -> io::Result<PathBuf> {
     let name = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -243,10 +254,5 @@ fn quarantine(file: DataFile, path: &Path, error: String) -> io::Result<LoadIssu
         .find(|candidate| !candidate.exists())
         .expect("a free name exists");
     fs::rename(path, &kept_as)?;
-    Ok(LoadIssue {
-        file,
-        path: path.to_path_buf(),
-        kept_as,
-        error,
-    })
+    Ok(kept_as)
 }

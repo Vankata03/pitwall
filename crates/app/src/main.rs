@@ -18,7 +18,7 @@ use crate::{
     status::StatusWindow,
 };
 use gpui::{App, AppContext, Bounds, WindowBounds, WindowOptions, px, size};
-use pitwall_core::{data::DataFolder, feed::Reader, paths::AppPaths};
+use pitwall_core::{data::DataFolder, feed::Reader, layouts::LayoutLibrary, paths::AppPaths};
 use pitwall_native::{
     desktop::{self, FirstRun, Instance, Launch},
     host::{Command, Control, Desktop, Runtime},
@@ -42,6 +42,8 @@ fn open_dashboard(
     reader: Reader,
     stats: Arc<Stats>,
     dimensions: (f32, f32),
+    library: LayoutLibrary,
+    paths: AppPaths,
 ) -> Result<(), String> {
     let bounds = Bounds::centered(None, size(px(dimensions.0), px(dimensions.1)), cx);
     cx.open_window(
@@ -54,7 +56,11 @@ fn open_dashboard(
             thermal_frame_interval: None,
             ..Default::default()
         },
-        |window, cx| cx.new(|cx| Dashboard::new(reader, "pitwall".into(), stats, window, cx)),
+        |window, cx| {
+            cx.new(|cx| {
+                Dashboard::new(reader, "pitwall".into(), stats, library, &paths, window, cx)
+            })
+        },
     )
     .map(|_| ())
     .map_err(|e| format!("Dashboard window: {e:#}"))
@@ -128,6 +134,8 @@ fn main() -> ExitCode {
         folder.obsolete.extend(args.obsolete.iter().cloned());
     }
     let overlay = folder.overlay;
+    // Every dashboard window shares this one library.
+    let layouts = folder.layouts.clone();
     let runtime = match Runtime::start(folder, args.cli.clone(), Desktop::user()) {
         Ok(runtime) => runtime,
         Err(error) => return fatal(Some(&paths), &format!("host: {error}")),
@@ -154,9 +162,17 @@ fn main() -> ExitCode {
         let dashboard: Arc<dyn Fn(&mut App)> = {
             let (reader, stats, paths, size) =
                 (reader.clone(), stats.clone(), app_paths.clone(), args.size);
+            let layouts = layouts.clone();
             let first_run = FirstRun::new(&app_paths);
-            Arc::new(
-                move |cx| match open_dashboard(cx, reader.clone(), stats.clone(), size) {
+            Arc::new(move |cx| {
+                match open_dashboard(
+                    cx,
+                    reader.clone(),
+                    stats.clone(),
+                    size,
+                    layouts.clone(),
+                    paths.clone(),
+                ) {
                     Ok(()) => {
                         if first_run.pending()
                             && let Err(error) = first_run.opened()
@@ -169,8 +185,8 @@ fn main() -> ExitCode {
                         desktop::log(&paths, &error);
                         desktop::notify("pitwall window failed", &error);
                     }
-                },
-            )
+                }
+            })
         };
         // Only the first successful run and debugging starts open a window; ordinary
         // starts stay in the tray.
