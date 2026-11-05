@@ -5,9 +5,11 @@ This is the first vertical slice and the ADR 0002 gate. `crates/app` (binary
 live UDP or by replaying a `.pitrec` recording, and it shows the Speed/RPM/gear and Lap
 timing tiles with their readout states and focus-car binding.
 
-**Gate verdict: gpui passes.** It builds on Windows, renders text and custom paint, and
-gives us the repaint control we need. The numbers are below. One platform caveat (monitors
-asleep) is noted under [Findings](#findings).
+**Recovery status: the ADR 0002 gate remains open.** This document was recovered from
+commit `48c4193`; its original measurements and screenshot are historical evidence.
+The fresh recovery run built gpui and replayed the recording, but drew about 4 Hz.
+See [the recovery report](slice-1-recovery.md) for current measurements, the compositor
+blocker, verification commands and remaining gates. Live game data remains unverified.
 
 ![The slice replaying Suzuka Qualifying 3 at 900×480](slice-1.png)
 
@@ -54,7 +56,7 @@ the "slow tile". Natively, its clock and delta read the slow snapshot, which the
 publishes at up to 60 Hz. Its values therefore move at frame rate, but through the snapshot
 path rather than `FastFrame`. `FastFrame` carries no lap time or delta yet.
 
-## Measurements
+## Original implementation measurements (recovered)
 
 These measure a release build replaying
 `2026-11-03_1633_Suzuka_Qualifying_3.pitrec` (a copy, 15.6 MB, format 2026) from 120 s,

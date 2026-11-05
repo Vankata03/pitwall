@@ -9,7 +9,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{model::SessionModel, telemetry::ParticipantData};
+use crate::{
+    car_names::{decode_name, label_from, shows_name},
+    model::SessionModel,
+    telemetry::ParticipantData,
+};
 
 /// The game sends 255 as the network id of a car that is not an online human.
 const NOT_NETWORKED: u16 = 255;
@@ -42,12 +46,6 @@ pub struct Participant {
     pub position: Option<u8>,
 }
 
-/// The game's NUL-padded name bytes as UTF-8, cut at the first NUL.
-pub fn decode_name(raw: &[u8]) -> String {
-    let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
-    String::from_utf8_lossy(&raw[..end]).into_owned()
-}
-
 pub fn identity_of(data: &ParticipantData) -> CarIdentity {
     if data.ai_controlled == 0 && data.network_id != NOT_NETWORKED {
         CarIdentity::Name {
@@ -70,7 +68,7 @@ pub fn participants_of(model: &SessionModel) -> Vec<Participant> {
                 index,
                 name: decode_name(&data.name),
                 race_number: data.race_number,
-                show_online_names: data.ai_controlled == 1 || data.show_online_names != 0,
+                show_online_names: shows_name(data),
                 identity: identity_of(data),
                 retired: car.retired(),
                 position: car.lap().value().map(|lap| lap.car_position),
@@ -79,13 +77,10 @@ pub fn participants_of(model: &SessionModel) -> Vec<Participant> {
         .collect()
 }
 
-/// The shown name: the name as received, or `#<race number>` when hidden or blank.
+/// The shown name, by the `car_names` rule: the name as received, or `#<race number>`
+/// when hidden or blank.
 pub fn car_label(p: &Participant) -> String {
-    if p.show_online_names && !p.name.trim().is_empty() {
-        p.name.clone()
-    } else {
-        format!("#{}", p.race_number)
-    }
+    label_from(&p.name, p.race_number, p.show_online_names)
 }
 
 /// The stored form of an identity (JSON, as the browser stored it).

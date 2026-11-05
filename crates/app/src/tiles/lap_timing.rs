@@ -132,21 +132,34 @@ impl Inputs {
         });
         let in_first_sector = lap.value().is_some_and(|l| l.sector == 0);
         let laps = &car.session_history().laps;
-        let completed = car
+        let result = car
             .completed_result(reference.model())
-            .filter(|_| in_first_sector)
-            .map(|r| Completed {
-                sectors_ms: laps
-                    .iter()
-                    .find(|l| l.lap_number == r.lap_number)
-                    .map_or([None; 3], |l| l.sectors_ms),
-                lap_number: r.lap_number,
-                lap_time_ms: r.lap_time_ms,
-                valid: r.valid,
-                delta_ms: r.delta_ms,
-                sector_deltas_ms: r.sector_deltas_ms,
-            });
-        let reference_lap = car.reference_lap(reference.model()).map(|l| RefLap {
+            .filter(|_| in_first_sector);
+        let completed = result.as_ref().map(|r| Completed {
+            sectors_ms: laps
+                .iter()
+                .find(|l| l.lap_number == r.lap_number)
+                .map_or([None; 3], |l| l.sectors_ms),
+            lap_number: r.lap_number,
+            lap_time_ms: r.lap_time_ms,
+            valid: r.valid,
+            delta_ms: r.delta_ms,
+            sector_deltas_ms: r.sector_deltas_ms,
+        });
+        // A held result compares with the prior reference, even when that result
+        // has just become the new best/previous lap.
+        let held = result
+            .as_ref()
+            .filter(|_| lap.value().is_some_and(|l| l.time_ms < HOLD_RESULT_MS));
+        let reference_lap = match held {
+            Some(result) => result.reference_lap_number.and_then(|number| {
+                laps.iter()
+                    .find(|l| l.lap_number == number)
+                    .map(|l| l.as_ref())
+            }),
+            None => car.reference_lap(reference.model()),
+        }
+        .map(|l| RefLap {
             lap_number: l.lap_number,
             lap_time_ms: l.lap_time_ms,
             sectors_ms: l.sectors_ms,
@@ -512,6 +525,51 @@ mod tests {
             ..base(Readout::Live(running(100)))
         });
         assert!(v.invalid);
+    }
+
+    #[test]
+    fn a_new_best_result_shows_the_prior_reference_used_for_its_delta() {
+        use pitwall_core::{
+            model::SessionModel,
+            telemetry::{Packet, parse_datagram},
+        };
+        use std::{process::Command, time::Duration};
+
+        // Assumed telemetry, not a game capture: lap 2 beats lap 1 by 200 ms.
+        let output = Command::new("python")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../tools/telemetry/assumed_datagram.py"
+            ))
+            .args(["2026", "2", "--set", "header.session_uid=101"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let mut packet = parse_datagram(&output.stdout).unwrap();
+        let mut model = SessionModel::default();
+        for (number, last_ms, at) in [(1, 0, 0.0), (2, 2000, 2.0), (3, 1800, 3.8)] {
+            packet.header.session_time = at;
+            let Packet::Lap(data) = &mut packet.packet else {
+                unreachable!()
+            };
+            let lap = data.lap_data[0].as_mut().unwrap();
+            lap.result_status = 2;
+            lap.current_lap_num = number;
+            lap.last_lap_time_in_ms = last_ms;
+            lap.current_lap_time_in_ms = 100;
+            model.apply(Duration::from_secs_f32(at), &packet);
+        }
+        let v = view(&Inputs::of(
+            model.car(0),
+            LapReference::Best,
+            model.lifecycle(),
+            (500.0, 300.0),
+        ));
+        assert_eq!(v.clock.text, "0:01.800");
+        assert_eq!(v.delta.text, "\u{2212}0.200");
+        let (label, time) = v.reference.unwrap();
+        assert_eq!(label, "REF LAP 1 \u{b7} Best lap");
+        assert_eq!(time.text, "0:02.000");
     }
 
     #[test]

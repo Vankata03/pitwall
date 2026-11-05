@@ -4,8 +4,8 @@
 use pitwall_core::{
     binding::{
         BindingContext, CarBinding, CarIdentity, CarTarget, Participant, ResolvedCar,
-        car_binding_of, car_label, decode_name, identity_key, identity_of, missing_car_message,
-        parse_identity, participants_of, resolve_binding, resolve_identity,
+        car_binding_of, car_label, identity_key, identity_of, missing_car_message, parse_identity,
+        participants_of, resolve_binding, resolve_identity,
     },
     model::SessionModel,
     telemetry::{Packet, ParsedDatagram, ParticipantData, parse_datagram},
@@ -162,13 +162,6 @@ fn retired_cars_stay_listed_and_are_marked() {
 fn race_position_comes_from_lap_data() {
     let model = model(&[(data(|_| {}), Some(3))], &[]);
     assert_eq!(participants_of(&model)[0].position, Some(3));
-}
-
-#[test]
-fn names_are_the_received_utf8_cut_at_the_first_nul() {
-    assert_eq!(decode_name(&name_bytes("Hülkenberg")), "Hülkenberg");
-    assert_eq!(decode_name(b"AB\0CD"), "AB");
-    assert_eq!(decode_name(b""), "");
 }
 
 // Identity: one rule for focus and pins (spec section 5).
