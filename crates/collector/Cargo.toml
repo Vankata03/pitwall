@@ -24,13 +24,9 @@ sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 
 ctrlc = "3.5"
 mdns-sd = "0.21"
-
-[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 tray-icon = "0.21"
 tao = "0.34"
 notify-rust = "4"
-
-[target.'cfg(windows)'.dependencies]
 wry = { version = "0.57", default-features = false }
 
 [dev-dependencies]

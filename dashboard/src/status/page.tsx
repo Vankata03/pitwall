@@ -87,7 +87,7 @@ export function StatusPage() {
       </ul>
         {c?.lastFormat != null && ![2025, 2026].includes(c.lastFormat) ? <p role="status">Unsupported telemetry format {c.lastFormat}. Set UDP Format to 2025 or 2026. Unsupported packets are neither parsed nor recorded.</p> : <p>Received format: {c?.lastFormat ?? 'none'}. Both 2025 and 2026 are accepted.</p>}
         <p>Allow pitwall through the first-launch Windows Firewall prompt on Private networks. Public-network blocking can prevent LAN screens and telemetry from connecting.</p>
-        <p>The portable binary is unsigned. Windows SmartScreen may warn; use More info → Run anyway only for a build you trust. On macOS, Gatekeeper may require Open Anyway in System Settings → Privacy &amp; Security.</p>
+        <p>The portable binary is unsigned. Windows SmartScreen may warn; use More info → Run anyway only for a build you trust.</p>
         <p>Plain HTTP cannot use Wake Lock. On iPad, set Settings → Display &amp; Brightness → Auto-Lock → Never while using the dashboard, then restore your preference.</p>
       </section>
       <section><h2>Recordings and replay</h2>
