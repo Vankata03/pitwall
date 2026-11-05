@@ -1,5 +1,8 @@
 # Native slice recovery: issue #67
 
+This is the earlier recovery record. See [the two-tile follow-up](two-tile-parity.md)
+for subsequent implementation and remaining gates.
+
 The assigned checkout recovered `6f03e2b` and `48c4193` from
 `impl/67-gpui-slice`, plus the useful unstaged binding changes from
 `C:/Projects/pitwall/.claude/worktrees/agent-a934504e17819eb98`.

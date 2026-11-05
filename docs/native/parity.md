@@ -363,6 +363,13 @@ and Win32 lifecycle tests live in `crates/overlay/tests`. This evidence does not
 OVERLAY, PEDALS or DRAW: native tray integration, real F1 checks and the full performance
 budget remain open.
 
+### Two-tile implementation evidence (#67)
+
+Speed/RPM/gear and Lap timing implementation and regression tests are recorded in
+[two-tile-parity.md](two-tile-parity.md). Sector rank cues, Time Trial references,
+reference sectors and dial labels are implemented. Live-game, GPU and visual checks
+remain open; this evidence does not close the full release inventory.
+
 ## Collector route and tray audit
 
 HTTP delivery/access mechanics are dropped by ADR 0001. The following mappings retain every local data/action outcome and its validation/errors without requiring HTTP response codes or a replacement server.
