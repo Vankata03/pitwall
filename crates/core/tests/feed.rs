@@ -41,6 +41,42 @@ fn reader_starts_with_an_empty_snapshot_and_no_car_inputs() {
     assert!(fast.cars.iter().all(|car| *car == Readout::Absent));
 }
 
+#[test]
+fn trace_readers_receive_every_intervening_frame_in_publication_order() {
+    let (mut publisher, reader) = feed::channel();
+    let model = SessionModel::default();
+    for _ in 0..3 {
+        publisher.publish_fast(&model);
+    }
+    let batch = reader.fast_since(0);
+    assert!(!batch.overrun);
+    assert_eq!(
+        batch
+            .frames
+            .iter()
+            .map(|f| f.generation)
+            .collect::<Vec<_>>(),
+        [1, 2, 3]
+    );
+    assert!(reader.fast_since(3).frames.is_empty());
+    publisher.publish_fast(&model);
+    assert_eq!(reader.fast_since(3).frames[0].generation, 4);
+}
+
+#[test]
+fn a_slow_trace_reader_is_told_when_bounded_history_overwrites_old_frames() {
+    let (mut publisher, reader) = feed::channel();
+    for _ in 0..259 {
+        publisher.publish_fast(&SessionModel::default());
+    }
+    let batch = reader.fast_since(0);
+    assert!(batch.overrun);
+    assert_eq!(batch.frames.len(), 256);
+    assert_eq!(batch.frames.first().unwrap().generation, 4);
+    assert_eq!(batch.frames.last().unwrap().generation, 259);
+    assert!(!reader.fast_since(259).overrun);
+}
+
 /// A model with car 0 valid and one Car Telemetry packet applied at `at`.
 fn model_with_inputs(at: Duration, fields: &[(&str, &str)]) -> SessionModel {
     let mut model = SessionModel::default();
@@ -98,6 +134,35 @@ fn fast_path_carries_each_cars_inputs_with_their_staleness() {
 }
 
 #[test]
+fn fast_path_carries_each_cars_lap_distance_with_its_own_staleness() {
+    let (mut publisher, reader) = feed::channel();
+    let mut model = SessionModel::default();
+    model.apply(
+        Duration::ZERO,
+        &packet(
+            2,
+            &[
+                ("lap_data.0.result_status", "2"),
+                ("lap_data.0.lap_distance", "1234.5"),
+                ("lap_data.1.result_status", "2"),
+                ("lap_data.1.lap_distance", "-12.25"),
+            ],
+        ),
+    );
+    publisher.publish_fast(&model);
+    let frame = reader.fast();
+    assert_eq!(frame.lap_distances[0], Readout::Live(1234.5));
+    assert_eq!(frame.lap_distances[1], Readout::Live(-12.25));
+    assert_eq!(frame.lap_distances[2], Readout::Absent);
+    // Lap distance has no telemetry yet: the inputs stay absent.
+    assert_eq!(frame.cars[0], Readout::Absent);
+
+    model.advance(Duration::from_millis(150));
+    publisher.publish_fast(&model);
+    assert_eq!(reader.fast().lap_distances[0], Readout::Stale(1234.5));
+}
+
+#[test]
 fn fast_and_slow_paths_publish_independently() {
     let (mut publisher, reader) = feed::channel();
     let model = model_with_inputs(Duration::ZERO, &[("car_telemetry_data.0.speed", "200")]);
@@ -152,6 +217,7 @@ fn concurrent_readers_never_see_a_torn_fast_frame() {
             std::thread::spawn(move || {
                 let mut reads = 0u64;
                 let mut last = 0;
+                let mut trace_generation = 0;
                 while !stop.load(Ordering::Relaxed) {
                     let frame = reader.fast();
                     assert!(frame.generation >= last, "generation went backwards");
@@ -167,6 +233,23 @@ fn concurrent_readers_never_see_a_torn_fast_frame() {
                         "torn frame: {car:?}"
                     );
                     reads += 1;
+                    for retained in reader.fast_since(trace_generation).frames {
+                        assert!(retained.generation > trace_generation);
+                        trace_generation = retained.generation;
+                        let Readout::Live(car) = retained.cars[0] else {
+                            panic!("retained car 0 missing");
+                        };
+                        let expected = if retained.generation.is_multiple_of(2) {
+                            (300, 0.9, 7)
+                        } else {
+                            (100, 0.1, 2)
+                        };
+                        assert_eq!(
+                            (car.speed, car.throttle, car.gear),
+                            expected,
+                            "retained frame must match its publication generation"
+                        );
+                    }
                 }
                 reads
             })

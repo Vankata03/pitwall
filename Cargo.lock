@@ -4316,6 +4316,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pitwall-overlay"
+version = "0.1.0"
+dependencies = [
+ "pitwall-core",
+ "serde",
+ "serde_json",
+ "windows 0.62.2",
+ "windows-numerics 0.3.1",
+]
+
+[[package]]
 name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"

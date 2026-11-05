@@ -352,6 +352,17 @@ Each TypeScript test file below has a Rust counterpart under `crates/core/tests`
 | `tiles/slow-tiles.test.tsx` (Gaps cases) | `gaps.rs` | The other slow tiles are #73's. |
 | `tiles/types/timing-tower.test.tsx` | `tower.rs` | DOM structure, team-marker colour and the settings form are the tile's (#72). A disconnected collector no longer exists; the model's Lost lifecycle already marks values stale (MODEL-06). |
 
+### Overlay implementation evidence (#68)
+
+The standalone native renderer and trace test ports are recorded in
+[overlay.md](overlay.md), including replay measurements and unverified gates. Shared
+smoothing, current-lap buckets, time-window plots and five-second overlay traces live in
+`pitwall-core::traces`. Bounded fast-feed catch-up preserves intervening publications;
+epoch tags reject frames from another model timeline. Settings, geometry, controller
+and Win32 lifecycle tests live in `crates/overlay/tests`. This evidence does not close
+OVERLAY, PEDALS or DRAW: native tray integration, real F1 checks and the full performance
+budget remain open.
+
 ## Collector route and tray audit
 
 HTTP delivery/access mechanics are dropped by ADR 0001. The following mappings retain every local data/action outcome and its validation/errors without requiring HTTP response codes or a replacement server.

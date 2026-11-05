@@ -11,6 +11,8 @@
 //!   every car slot. It is a fixed-size frame behind a seqlock of atomic words: the writer
 //!   never waits and never allocates, and a reader copies the frame without taking a lock.
 //!   Publish it after every applied telemetry datagram.
+//!   Trace readers can catch up through [`Reader::fast_since`], a bounded ring of
+//!   independently seqlocked frames, without delaying the writer.
 //!
 //! Both carry a generation that advances on every publish, so a UI repaints only when
 //! the generation it last drew differs. See `docs/native/fast-path.md` for the
@@ -71,13 +73,30 @@ impl From<&CarTelemetryData> for CarInputs {
 pub struct FastFrame {
     /// Advances by one on every fast publish; 0 before the first.
     pub generation: u64,
+    /// The model timeline this frame belongs to. Never combine it with another epoch's
+    /// snapshot when building traces.
+    pub epoch: u64,
     /// The game's session clock in seconds when the frame was published.
     pub session_time: f32,
     pub player_car_index: Option<usize>,
     /// `Live` or `Stale` per the model's staleness rules, `Absent` for an empty or unseen
     /// slot.
     pub cars: [Readout<CarInputs>; MAX_CARS],
+    /// Metres along the lap per car slot, from Lap Data, with that packet's own staleness.
+    /// Negative before the line at a race start. Lets a trace align a live sample with a
+    /// reference lap at the same circuit position.
+    pub lap_distances: [Readout<f32>; MAX_CARS],
 }
+
+/// A bounded catch-up read for traces. An overrun means some intervening publications
+/// have been overwritten; callers must break their trace instead of bridging the loss.
+pub struct FastBatch {
+    pub frames: Vec<FastFrame>,
+    pub overrun: bool,
+}
+
+/// One second of publications at up to 240 Hz. The writer never waits for readers.
+pub const FAST_HISTORY_CAPACITY: usize = 256;
 
 /// One slow-state publish: a shared, immutable session model. Dereferences to
 /// [`SessionModel`], so `snapshot.car(0)` and `snapshot.race_control()` work directly.
@@ -103,6 +122,9 @@ pub fn channel() -> (Publisher, Reader) {
             model: Arc::new(SessionModel::default()),
         }),
         fast: SeqLock::new(encode(&EMPTY_FRAME)),
+        history: (0..FAST_HISTORY_CAPACITY)
+            .map(|_| SeqLock::new(encode(&EMPTY_FRAME)))
+            .collect(),
     });
     (
         Publisher {
@@ -124,14 +146,20 @@ impl Publisher {
     /// Publish the frame-rate car data of `model`. Never blocks and never allocates.
     pub fn publish_fast(&mut self, model: &SessionModel) {
         let mut frame = EMPTY_FRAME;
+        frame.epoch = model.epoch();
         frame.session_time = model.session_time();
         frame.player_car_index = model.player_car_index();
         for (index, slot) in frame.cars.iter_mut().enumerate() {
             if let Some(car) = model.car(index) {
                 *slot = car.telemetry().map(CarInputs::from);
+                frame.lap_distances[index] = car.lap().map(|lap| lap.lap_distance);
             }
         }
-        self.shared.fast.write(&encode(&frame));
+        let words = encode(&frame);
+        let generation = self.shared.fast.sequence.load(Ordering::Relaxed) / 2 + 1;
+        self.shared.history[generation as usize % FAST_HISTORY_CAPACITY]
+            .write_generation(&words, generation);
+        self.shared.fast.write(&words);
     }
 
     /// Publish `model` as the new slow-state snapshot. Clones the model; readers holding
@@ -169,22 +197,53 @@ impl Reader {
     pub fn fast_generation(&self) -> u64 {
         self.shared.fast.sequence.load(Ordering::Acquire) / 2
     }
+
+    /// Copy publications newer than `generation` in order. Each retained frame has its
+    /// own seqlock, so a reader cannot stall ingest or observe a torn frame. A writer that
+    /// laps this read causes an overrun; only matching generations are returned.
+    pub fn fast_since(&self, generation: u64) -> FastBatch {
+        let latest = self.fast_generation();
+        let first = generation
+            .saturating_add(1)
+            .max(latest.saturating_sub(FAST_HISTORY_CAPACITY as u64 - 1));
+        let mut batch = FastBatch {
+            frames: Vec::new(),
+            overrun: latest.saturating_sub(generation) > FAST_HISTORY_CAPACITY as u64,
+        };
+        for expected in first..=latest {
+            let (sequence, words) =
+                self.shared.history[expected as usize % FAST_HISTORY_CAPACITY].read();
+            if sequence / 2 == expected {
+                batch.frames.push(decode(expected, &words));
+            } else {
+                batch.overrun = true;
+                // Return only the contiguous tail after the last overwritten slot.
+                batch.frames.clear();
+            }
+        }
+        batch
+    }
 }
 
 struct Shared {
     snapshot: Mutex<Snapshot>,
     fast: SeqLock,
+    history: Box<[SeqLock]>,
 }
 
 const EMPTY_FRAME: FastFrame = FastFrame {
     generation: 0,
+    epoch: 0,
     session_time: 0.0,
     player_car_index: None,
     cars: [Readout::Absent; MAX_CARS],
+    lap_distances: [Readout::Absent; MAX_CARS],
 };
 
-/// One header word plus three words per car.
-const WORDS: usize = 1 + 3 * MAX_CARS;
+/// One header word, three input words per car, one lap-distance word per car, then epoch.
+const WORDS: usize = 2 + 4 * MAX_CARS;
+const LAP_BASE: usize = 1 + 3 * MAX_CARS;
+const EPOCH_WORD: usize = WORDS - 1;
 
 /// A single-writer sequence lock over plain atomic words, so a racing read is never a
 /// data race: at worst it sees a mix of two frames, which the sequence check rejects.
@@ -204,13 +263,17 @@ impl SeqLock {
 
     /// Callers guarantee a single writer (`Publisher` is not `Clone` and takes `&mut`).
     fn write(&self, words: &[u64; WORDS]) {
-        let sequence = self.sequence.load(Ordering::Relaxed);
-        self.sequence.store(sequence + 1, Ordering::Relaxed);
+        let generation = self.sequence.load(Ordering::Relaxed) / 2 + 1;
+        self.write_generation(words, generation);
+    }
+
+    fn write_generation(&self, words: &[u64; WORDS], generation: u64) {
+        self.sequence.store(generation * 2 - 1, Ordering::Relaxed);
         fence(Ordering::Release);
         for (slot, word) in self.words.iter().zip(words) {
             slot.store(*word, Ordering::Relaxed);
         }
-        self.sequence.store(sequence + 2, Ordering::Release);
+        self.sequence.store(generation * 2, Ordering::Release);
     }
 
     /// A consistent copy and the even sequence it was taken at.
@@ -242,6 +305,7 @@ fn encode(frame: &FastFrame) -> [u64; WORDS] {
         .player_car_index
         .map_or(NO_PLAYER, |index| index as u64);
     words[0] = u64::from(frame.session_time.to_bits()) | player << 32;
+    words[EPOCH_WORD] = frame.epoch;
     for (index, car) in frame.cars.iter().enumerate() {
         let (state, inputs) = match car {
             Readout::Live(inputs) => (LIVE, Some(inputs)),
@@ -261,6 +325,13 @@ fn encode(frame: &FastFrame) -> [u64; WORDS] {
         }
         words[base + 2] |= state << 56;
     }
+    for (index, distance) in frame.lap_distances.iter().enumerate() {
+        words[LAP_BASE + index] = match distance {
+            Readout::Live(metres) => u64::from(metres.to_bits()) | LIVE << 56,
+            Readout::Stale(metres) => u64::from(metres.to_bits()) | STALE << 56,
+            Readout::Restricted | Readout::Absent => ABSENT << 56,
+        };
+    }
     words
 }
 
@@ -268,6 +339,7 @@ fn decode(generation: u64, words: &[u64; WORDS]) -> FastFrame {
     let player = (words[0] >> 32) & 0xFF;
     FastFrame {
         generation,
+        epoch: words[EPOCH_WORD],
         session_time: f32::from_bits(words[0] as u32),
         player_car_index: (player != NO_PLAYER).then_some(player as usize),
         cars: std::array::from_fn(|index| {
@@ -287,6 +359,15 @@ fn decode(generation: u64, words: &[u64; WORDS]) -> FastFrame {
             match c >> 56 {
                 LIVE => Readout::Live(inputs),
                 STALE => Readout::Stale(inputs),
+                _ => Readout::Absent,
+            }
+        }),
+        lap_distances: std::array::from_fn(|index| {
+            let word = words[LAP_BASE + index];
+            let metres = f32::from_bits(word as u32);
+            match word >> 56 {
+                LIVE => Readout::Live(metres),
+                STALE => Readout::Stale(metres),
                 _ => Readout::Absent,
             }
         }),
