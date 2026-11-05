@@ -197,6 +197,19 @@ impl DashboardWindow {
         self.error = error;
     }
 
+    /// Why a stream window draws nothing, for the status page and the log; `None` while
+    /// it shows its layout. Recovers on [`sync`](Self::sync) once the layout exists.
+    pub fn stream_problem(&self) -> Option<String> {
+        let controller = &self.controller;
+        if let Some(name) = controller.missing_stream_layout() {
+            return Some(format!(
+                "Stream window shows nothing: layout \u{201C}{name}\u{201D} does not exist. Create or rename a layout to that name, or open a stream window for another layout."
+            ));
+        }
+        (controller.fixed() && controller.status() == crate::layout_edit::Status::Error)
+            .then(|| "Stream window shows nothing: the layouts could not be loaded.".to_owned())
+    }
+
     /// The name shown in the switcher: the layout, or while editing a changed preset, the
     /// copy Done will make.
     pub fn current_name(&self) -> Option<&str> {

@@ -20,32 +20,36 @@ use std::sync::{
 
 use gpui::{
     AnyElement, Context, FocusHandle, FontWeight, IntoElement, MouseButton, ParentElement, Render,
-    SharedString, Styled, WeakEntity, Window, div, prelude::*, px,
+    SharedString, Styled, WeakEntity, Window, WindowControlArea, div, prelude::*, px, rgb,
 };
 use name_input::NameInput;
 use pitwall_core::{
     binding::{
-        BindingContext, CarBinding, CarTarget, ResolvedCar, car_binding_of, car_label,
+        BindingContext, CarBinding, CarTarget, Participant, ResolvedCar, car_binding_of, car_label,
         missing_car_message, participants_of, resolve_binding, resolve_focus,
     },
-    feed::Reader,
+    feed::{FastFrame, Reader, Snapshot},
     layout_edit::{
         ControllerOptions, Status,
         grid::{Gesture, GridGeometry, shown_tiles},
     },
-    layouts::{LayoutLibrary, ScreenClass, Tile},
+    layouts::{ScreenClass, Tile},
     model::Lifecycle,
-    paths::AppPaths,
     screen::{self, PAGE_PADDING},
     tile_catalog,
     units::{PressureUnit, SpeedUnit, TemperatureUnit, Units},
     window::{Command, DashboardWindow, WindowChoices, WindowSetup, choices_path},
+    window_set::{Background, Kind, Window as WindowSpec},
 };
 use serde_json::{Value, json};
 
-use pitwall_native::desktop;
+use pitwall_native::{desktop, host::Command as HostCommand};
 
-use crate::{theme, tiles::lap_timing};
+use crate::{
+    theme,
+    tiles::lap_timing,
+    windows::{Windows, placement_of},
+};
 
 /// Counters a measurement run reads from another thread.
 #[derive(Default)]
@@ -55,9 +59,6 @@ pub struct Stats {
     /// Display frames seen by the generation check.
     pub frames: AtomicU64,
 }
-
-/// The one dashboard window this build opens; its choices file is `windows/main.json`.
-pub const MAIN_WINDOW: &str = "main";
 
 const TILE_HEADER: f32 = 28.0;
 /// Width of the grip at a tile's top left in edit mode; the header text starts after it.
@@ -91,6 +92,8 @@ enum Action {
     Command(Command),
     Open(Menu),
     Close,
+    /// Open a stream window for this window's layout.
+    Stream(Background),
 }
 
 /// A drag on a tile's grip or resize corner, measured from where it started.
@@ -114,22 +117,29 @@ pub struct Dashboard {
     row_height: f32,
     drawn: (u64, u64, u64),
     stats: Arc<Stats>,
+    /// The window's id in the window list; names its choices file.
+    id: String,
+    /// A stream window's background; `None` for a dashboard window.
+    stream: Option<Background>,
+    /// The stream problem last sent to status.
+    reported: Option<String>,
+    services: Windows,
+    _subscriptions: Vec<gpui::Subscription>,
 }
 
 impl Dashboard {
-    /// Open the main dashboard window over the host's layout library (`DataFolder`'s,
-    /// shared by every window) with the choices saved under `paths.root`. An unreadable
-    /// choices file is kept as `.bad`, logged and shown; the window starts at defaults.
-    pub fn new(
-        reader: Reader,
-        source: String,
-        stats: Arc<Stats>,
-        library: LayoutLibrary,
-        paths: &AppPaths,
+    /// Open the window `spec` over the host's one layout library (`DataFolder`'s, shared
+    /// by every window), with the choices saved under its own id. An unreadable choices
+    /// file is kept as `.bad`, logged and shown; the window starts at defaults. A stream
+    /// window shows its layout with no chrome and reports a missing layout to status.
+    pub fn open(
+        spec: &WindowSpec,
+        services: Windows,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let path = choices_path(&paths.root, MAIN_WINDOW);
+        let paths = &services.paths;
+        let path = choices_path(&paths.root, &spec.id);
         let (choices, note) = match WindowChoices::load(&path) {
             Ok((choices, bad)) => (
                 choices,
@@ -148,41 +158,71 @@ impl Dashboard {
             ),
         };
         if let Some(note) = &note {
-            desktop::log(paths, note);
+            desktop::log(paths, &format!("Window {}: {note}", spec.id));
         }
+        let (options, stream) = match &spec.kind {
+            Kind::Dashboard => (ControllerOptions::default(), None),
+            Kind::Stream { layout, background } => (
+                ControllerOptions {
+                    fixed_layout: Some(layout.clone()),
+                    stream: true,
+                },
+                Some(*background),
+            ),
+        };
         let setup = WindowSetup {
-            library,
+            library: services.library.clone(),
             choices,
             path: Some(path),
-            options: ControllerOptions::default(),
+            options,
         };
-        let mut this = Self::with_setup(reader, source, stats, setup, window, cx);
-        if note.is_some() {
-            this.window.set_error(note);
-        }
-        this
-    }
-
-    /// Open a window over a library the host shares between all its windows.
-    pub fn with_setup(
-        reader: Reader,
-        source: String,
-        stats: Arc<Stats>,
-        setup: WindowSetup,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
         poll(cx.entity().downgrade(), window);
+        let subscriptions = vec![
+            cx.observe_window_bounds(window, |this: &mut Self, window, cx| {
+                let placement = placement_of(window, cx);
+                this.services.moved(&this.id, placement);
+            }),
+            cx.on_release(|this: &mut Self, _| this.services.closed(&this.id)),
+        ];
+        let focus_handle = cx.focus_handle();
+        if stream.is_some() {
+            // Escape closes a stream window.
+            window.focus(&focus_handle, cx);
+        }
+        let mut dashboard = DashboardWindow::open(setup);
+        if note.is_some() {
+            dashboard.set_error(note);
+        }
         Self {
-            reader,
-            source: source.into(),
-            window: DashboardWindow::open(setup),
+            reader: services.reader.clone(),
+            source: "pitwall".into(),
+            window: dashboard,
             menu: Menu::Closed,
-            focus_handle: cx.focus_handle(),
+            focus_handle,
             drag: None,
             row_height: screen::ROW_HEIGHT,
             drawn: (u64::MAX, u64::MAX, u64::MAX),
-            stats,
+            stats: services.stats.clone(),
+            id: spec.id.clone(),
+            stream,
+            reported: None,
+            services,
+            _subscriptions: subscriptions,
+        }
+    }
+
+    /// Tell the status page when a stream window starts or stops showing nothing.
+    fn report(&mut self) {
+        if self.stream.is_none() {
+            return;
+        }
+        let problem = self.window.stream_problem();
+        if problem != self.reported {
+            let _ = self
+                .services
+                .control
+                .send(HostCommand::WindowProblem(self.id.clone(), problem.clone()));
+            self.reported = problem;
         }
     }
 
@@ -190,6 +230,7 @@ impl Dashboard {
     fn changed(&mut self) -> bool {
         self.stats.frames.fetch_add(1, Ordering::Relaxed);
         self.window.sync();
+        self.report();
         (
             self.reader.fast_generation(),
             self.reader.snapshot().generation,
@@ -216,6 +257,16 @@ impl Dashboard {
                 window.focus(&self.focus_handle, cx);
             }
             Action::Close => self.menu = Menu::Closed,
+            Action::Stream(background) => {
+                self.menu = Menu::Closed;
+                if let Some(layout) = self.window.controller().current().map(|l| l.name.clone()) {
+                    let services = self.services.clone();
+                    let units = self.window.choices().units;
+                    cx.defer(move |cx| {
+                        let _ = services.open_stream(cx, &layout, background, units);
+                    });
+                }
+            }
         }
         cx.notify();
     }
@@ -401,6 +452,20 @@ impl Dashboard {
                 ..units
             };
             body = body.child(self.choice(key, label, units.pressure == value, set(next), cx));
+        }
+        // A chrome-less copy of this layout for OBS Window Capture, in these units.
+        if let Some(layout) = self.window.controller().current() {
+            body = body.child(format!("Stream window for \u{201C}{}\u{201D}", layout.name));
+            let mut row = div().flex().flex_wrap().gap_1();
+            for background in Background::ALL {
+                row = row.child(self.button(
+                    format!("stream-{}", background.label()),
+                    format!("Open: {}", background.label()),
+                    Action::Stream(background),
+                    cx,
+                ));
+            }
+            body = body.child(row);
         }
         body
     }
@@ -738,6 +803,16 @@ fn class_name(class: ScreenClass) -> &'static str {
     }
 }
 
+/// What every tile in one render reads.
+struct Frame<'a> {
+    snap: &'a Snapshot,
+    fast: &'a FastFrame,
+    context: &'a BindingContext<'a>,
+    participants: &'a [Participant],
+    units: Units,
+    time_trial: bool,
+}
+
 impl Render for Dashboard {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.stats.renders.fetch_add(1, Ordering::Relaxed);
@@ -757,6 +832,26 @@ impl Render for Dashboard {
             .edit()
             .map_or_else(|| screen::screen_class_of(width), |e| e.class);
         let tiles = self.window.tiles(class);
+        if let Some(background) = self.stream {
+            let participants = participants_of(&snap);
+            let context = BindingContext {
+                participants: &participants,
+                player_car: snap.player_car_index(),
+                focus: None,
+            };
+            let frame = Frame {
+                snap: &snap,
+                fast: &fast,
+                context: &context,
+                participants: &participants,
+                units: self.window.choices().units,
+                time_trial: snap
+                    .session()
+                    .value()
+                    .is_some_and(|s| s.session_type == TIME_TRIAL),
+            };
+            return self.render_stream(background, &tiles, (width, height), &frame, cx);
+        }
         let banner = match snap.lifecycle() {
             Lifecycle::Waiting => Some("Waiting for the game"),
             Lifecycle::Lost => Some("No data: game paused or closed"),
@@ -917,6 +1012,141 @@ impl Render for Dashboard {
         }
 
         let geometry = GridGeometry::new(class, grid_width, self.row_height);
+        let frame = Frame {
+            snap: &snap,
+            fast: &fast,
+            context: &context,
+            participants: &participants,
+            units: choices.units,
+            time_trial,
+        };
+        let grid = self.grid(&frame, geometry, &shown, &tiles, editing, cx);
+
+        div()
+            .id("dashboard")
+            .relative()
+            .track_focus(&self.focus_handle)
+            .flex()
+            .flex_col()
+            .size_full()
+            .bg(theme::background())
+            .text_color(theme::text())
+            .font_family(theme::FONT)
+            .child(chrome)
+            .child(
+                div()
+                    .id("grid-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p(px(PAGE_PADDING))
+                    .child(grid),
+            )
+            .child(
+                div()
+                    .h(px(SHORT_LINE_HEIGHT))
+                    .flex_shrink_0()
+                    .px_2()
+                    .text_size(px(11.0))
+                    .text_color(theme::muted())
+                    .child(SHORT_LINE),
+            )
+            .child(self.menu(cx))
+            .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
+                let Some(drag) = &this.drag else { return };
+                if event.pressed_button != Some(MouseButton::Left) {
+                    this.drag = None;
+                    return;
+                }
+                let delta = (
+                    f32::from(event.position.x) - drag.origin.0,
+                    f32::from(event.position.y) - drag.origin.1,
+                );
+                let items =
+                    drag.geometry
+                        .drag(&drag.tiles, &drag.id, delta, drag.gesture, drag.minimum);
+                this.window.apply(Command::MoveResize(items));
+                cx.notify();
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.drag = None;
+                    cx.notify();
+                }),
+            )
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.drag = None;
+                    cx.notify();
+                }),
+            )
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                if event.keystroke.key == "escape" {
+                    this.menu = Menu::Closed;
+                    this.drag = None;
+                    cx.notify();
+                    return;
+                }
+                this.handle_name_key(event, window, cx);
+            }))
+            .into_any_element()
+    }
+}
+
+impl Dashboard {
+    /// A stream window: only the tiles, filling the window on its background, with no
+    /// chrome, banners or footer. It follows the player car (tile pins still apply) and
+    /// draws only its background while its layout is missing. Dragging anywhere moves the
+    /// window; Escape or the system menu (right-click) closes it.
+    fn render_stream(
+        &self,
+        background: Background,
+        tiles: &[Tile],
+        (width, height): (f32, f32),
+        frame: &Frame,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let shown = shown_tiles(tiles, false);
+        let rows: Vec<_> = shown.iter().map(|t| (t.y, t.h)).collect();
+        let metrics = screen::stream_grid_metrics(&rows, height);
+        let geometry = GridGeometry::new(
+            screen::screen_class_of(width),
+            width.max(1.0),
+            metrics.row_height,
+        );
+        div()
+            .id("stream")
+            .track_focus(&self.focus_handle)
+            .size_full()
+            .overflow_hidden()
+            .bg(rgb(background.rgb()))
+            .text_color(theme::text())
+            .font_family(theme::FONT)
+            .window_control_area(WindowControlArea::Drag)
+            .child(self.grid(frame, geometry, &shown, tiles, false, cx))
+            .on_key_down(cx.listener(|_, event: &gpui::KeyDownEvent, window, _| {
+                if event.keystroke.key == "escape" {
+                    window.remove_window();
+                }
+            }))
+            .into_any_element()
+    }
+
+    /// The tile grid: every shown tile at its place, with its header and content.
+    fn grid(
+        &self,
+        frame: &Frame,
+        geometry: GridGeometry,
+        shown: &[&Tile],
+        tiles: &[Tile],
+        editing: bool,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
+        let (snap, fast, context) = (frame.snap, frame.fast, frame.context);
+        let (participants, time_trial) = (frame.participants, frame.time_trial);
+        let grid_width = geometry.width;
         let mut grid = div()
             .relative()
             .w(px(grid_width))
@@ -932,7 +1162,7 @@ impl Render for Dashboard {
             let (x, y, w, h) = geometry.rect(tile);
             let follows = declaration.is_some_and(|d| d.follows_car());
             let binding = car_binding_of(&tile.settings);
-            let resolved = resolve_binding(&binding, &context);
+            let resolved = resolve_binding(&binding, context);
             let mut head = div()
                 .flex()
                 .justify_between()
@@ -1004,10 +1234,10 @@ impl Render for Dashboard {
                         Some(text) => message(text.to_owned()),
                         None => (renderer.render)(&registry::TileInputs {
                             tile,
-                            snapshot: &snap,
-                            fast: &fast,
+                            snapshot: snap,
+                            fast,
                             car: resolved,
-                            units: choices.units,
+                            units: frame.units,
                             size: (w, (h - TILE_HEADER).max(0.0)),
                         }),
                     }
@@ -1028,84 +1258,13 @@ impl Render for Dashboard {
                 .child(head)
                 .child(div().flex_1().min_h_0().overflow_hidden().child(content));
             if editing {
-                cell = cell.children(self.edit_handles(tile, &tiles, geometry, cx));
+                cell = cell.children(self.edit_handles(tile, tiles, geometry, cx));
             }
             grid = grid.child(cell);
         }
-
-        div()
-            .id("dashboard")
-            .relative()
-            .track_focus(&self.focus_handle)
-            .flex()
-            .flex_col()
-            .size_full()
-            .bg(theme::background())
-            .text_color(theme::text())
-            .font_family(theme::FONT)
-            .child(chrome)
-            .child(
-                div()
-                    .id("grid-scroll")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .p(px(PAGE_PADDING))
-                    .child(grid),
-            )
-            .child(
-                div()
-                    .h(px(SHORT_LINE_HEIGHT))
-                    .flex_shrink_0()
-                    .px_2()
-                    .text_size(px(11.0))
-                    .text_color(theme::muted())
-                    .child(SHORT_LINE),
-            )
-            .child(self.menu(cx))
-            .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
-                let Some(drag) = &this.drag else { return };
-                if event.pressed_button != Some(MouseButton::Left) {
-                    this.drag = None;
-                    return;
-                }
-                let delta = (
-                    f32::from(event.position.x) - drag.origin.0,
-                    f32::from(event.position.y) - drag.origin.1,
-                );
-                let items =
-                    drag.geometry
-                        .drag(&drag.tiles, &drag.id, delta, drag.gesture, drag.minimum);
-                this.window.apply(Command::MoveResize(items));
-                cx.notify();
-            }))
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    this.drag = None;
-                    cx.notify();
-                }),
-            )
-            .on_mouse_up_out(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    this.drag = None;
-                    cx.notify();
-                }),
-            )
-            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
-                if event.keystroke.key == "escape" {
-                    this.menu = Menu::Closed;
-                    this.drag = None;
-                    cx.notify();
-                    return;
-                }
-                this.handle_name_key(event, window, cx);
-            }))
+        grid
     }
-}
 
-impl Dashboard {
     /// Height of the chrome above the grid, estimated from what it shows; rows only
     /// need it to decide how much space to share.
     fn chrome_estimate(&self, banner: bool) -> f32 {

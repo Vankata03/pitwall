@@ -14,8 +14,8 @@ Implementation and assertions establish current behavior; the spec helps locate 
 - [ ] **ADR1-02 — dropped by ADR 0001.** Remove QR discovery, candidate URLs, best-effort `pitwall.local` mDNS, and the Show QR tray action. Source: [discovery](../../crates/collector/src/discovery.rs), [status](../../crates/collector/src/status.rs), [tray](../../crates/collector/src/app.rs).
 - [ ] **ADR1-03 — dropped by ADR 0001.** Remove HTTP origin/known-host mutation checks, loopback-only route access and LAN-versus-host control visibility. Local actions retain validation and error reporting. Source: [trust](../../crates/collector/src/http/trust.rs), [ADR 0001](../adr/0001-native-windows-replace-lan-dashboard.md).
 - [ ] **ADR1-04 — dropped by ADR 0001.** Remove browser-source stream URLs, transparent browser page, URL class/unit overrides and HTTP delivery of embedded dashboard/overlay assets. Native windows replace their useful capabilities; true alpha in OBS Window Capture is not promised. Source: [stream parser](../../dashboard/src/app/stream.ts), [HTTP assets](../../crates/collector/src/http/mod.rs), [ADR 0001](../adr/0001-native-windows-replace-lan-dashboard.md).
-- [ ] **WIN-01 — port.** Native replacement: open several dashboard windows, each with one layout, on any host monitor. Each window keeps independent layout, focus and units; screen classes become window-size arrangements. Source: [ADR 0001](../adr/0001-native-windows-replace-lan-dashboard.md).
-- [ ] **WIN-02 — port.** Native replacement: provide a chrome-less stream window for one layout, with solid or chroma-key background, for OBS Window Capture. Preserve tile readout behavior without controls/banners. Missing layouts leave the stream window blank with status/log errors and recovery, as accepted in DEC-03. Source: [ADR 0001](../adr/0001-native-windows-replace-lan-dashboard.md), [dashboard stream assertions](../../dashboard/src/app/dashboard.test.tsx).
+- [x] **WIN-01 — port.** Native replacement: open several dashboard windows, each with one layout, on any host monitor. Each window keeps independent layout, focus and units; screen classes become window-size arrangements. Source: [ADR 0001](../adr/0001-native-windows-replace-lan-dashboard.md). Native: `pitwall_core::window_set` (one id and choices file per window, restore with monitor and position) and `window.rs`; tests in `window_set.rs` and `window.rs` (#75).
+- [x] **WIN-02 — port.** Native replacement: provide a chrome-less stream window for one layout, with solid or chroma-key background, for OBS Window Capture. Preserve tile readout behavior without controls/banners. Missing layouts leave the stream window blank with status/log errors and recovery, as accepted in DEC-03. Source: [ADR 0001](../adr/0001-native-windows-replace-lan-dashboard.md), [dashboard stream assertions](../../dashboard/src/app/dashboard.test.tsx). Native: stream windows opened from the Display menu (#75); OBS capture is not yet verified, see the #75 evidence.
 - [ ] **WIN-03 — port.** Preserve raw UDP forwarding; removing dashboard serving does not remove telemetry sharing. Source: [ADR 0001](../adr/0001-native-windows-replace-lan-dashboard.md), [LiveUdp::poll](../../crates/core/src/ingest/udp.rs).
 - [x] **ADR3-01 — dropped by ADR 0003.** Do not migrate browser localStorage units/focus choices. Native windows start with defaults and remember later choices themselves. Source: [ADR 0003](../adr/0003-existing-data-keeps-loading.md), [device memory](../../dashboard/src/device/device.ts).
 - [ ] **MIG-01 — port.** Read existing per-user data and every existing `.pitrec` unchanged. Prove compatibility using real old files, not regenerated substitutes. Source: [ADR 0003](../adr/0003-existing-data-keeps-loading.md), [recording reader](../../crates/core/src/pitrec.rs).
@@ -215,7 +215,7 @@ Every row has a corresponding unchecked SIZE condition below. Minimum/default si
 - [x] **EDIT-01 — port.** Explicit Edit only, live tiles, add/remove/move/resize/settings for active class, Done/Cancel and no undo. Add below existing tiles at default size clamped to columns; bare type ID then numbered instances. Source: [controller tests](../../dashboard/src/layout/controller.test.ts), [dashboard tests](../../dashboard/src/app/dashboard.test.tsx).
 - [x] **EDIT-02 — port.** Unchanged Done saves nothing/copies no preset. First real preset edit predicts free copy name; Done duplicates/saves/selects it. Cancel discards everything. Failure keeps editor/draft/error and retries using already-created copy. Source: [controller tests](../../dashboard/src/layout/controller.test.ts).
 - [x] **EDIT-03 — port.** Unknown tiles retain place/data, permit remove/move/resize and have no settings UI. Settings Close retains draft edits, Done/Cancel decides persistence. Block active layout switch/rename during edit. Source: [dashboard tests](../../dashboard/src/app/dashboard.test.tsx), [controller](../../dashboard/src/layout/controller.ts).
-- [ ] **EDIT-04 — port.** Saves update other viewing windows; other editors keep drafts with conflict notice and last Done replaces whole layout, no merge/lock. Other-window delete/rename falls back to Classic with dismissible notice; editors keep draft/conflict. Source: [controller tests](../../dashboard/src/layout/controller.test.ts), [dashboard tests](../../dashboard/src/app/dashboard.test.tsx).
+- [x] **EDIT-04 — port.** Saves update other viewing windows; other editors keep drafts with conflict notice and last Done replaces whole layout, no merge/lock. Other-window delete/rename falls back to Classic with dismissible notice; editors keep draft/conflict. Source: [controller tests](../../dashboard/src/layout/controller.test.ts), [dashboard tests](../../dashboard/src/app/dashboard.test.tsx).
 - [x] **EDIT-05 — port.** Successful selection/duplicate/rename follows chosen layout in that window; delete confirms with Keep cancellation, presets only Duplicate. Retry failed refresh even at same revision; late old selection cannot replace latest choice/memory. Initial load error offers retry. Source: [controller tests](../../dashboard/src/layout/controller.test.ts), [API tests](../../dashboard/src/layout/api.test.ts).
 - [x] **PRESET-01 — port.** Ship Pitwall Classic, Driver, Race in order, read-only, all three authored classes, empty tile settings and Notice each. Preserve exact type membership/coordinates/sizes as fixtures from source; do not regenerate authored arrangements. Source: [presets::all](../../crates/core/src/layouts/presets.rs).
 - [x] **PRESET-02 — port.** Classic wide: 23 rows/17 types, feed across top center, SM beneath, central car, inputs/delta/stint/tower below, full-width Notice last; no Gaps/discipline. Driver nine types with large instruments/Gaps/discipline/full-width delta; Race seven types tower/map/weather/lap-state/stint/feed/Notice. Source: [presets](../../crates/core/src/layouts/presets.rs), [spec §12](../spec/v1.md).
@@ -224,7 +224,7 @@ Every row has a corresponding unchecked SIZE condition below. Minimum/default si
 - [ ] **CHROME-02 — port.** Keep race-strip track/session/status/focus context outside stream view. Source: [race strip](../../dashboard/src/app/race-strip.tsx), [dashboard](../../dashboard/src/app/dashboard.tsx).
 - [ ] **CHROME-03 — port.** Dialogs move focus inside, trap Tab/Shift-Tab, close on Escape or scrim press, and restore prior focus. Popovers open by button keyboard activation, close on outside press/Escape/disable, and Escape restores button focus. Source: [dialog](../../dashboard/src/app/dialog.tsx), [popover](../../dashboard/src/app/popover.tsx), [Escape assertion](../../dashboard/src/app/dashboard.test.tsx).
 - [ ] **STREAM-01 — dropped by ADR 0001.** Remove browser fixed-layout/class/unit queries, viewport-fitted stream grid and ignored device focus/storage overrides. Current stream follows player while retaining tile pins, hides all chrome/banners and keeps failed data tiles. Native equivalent is WIN-02. Source: [stream tests](../../dashboard/src/app/stream.test.ts), [dashboard tests](../../dashboard/src/app/dashboard.test.tsx), [screen tests](../../dashboard/src/layout/screen.test.ts).
-- [ ] **STREAM-02 — port.** Current missing/deleted/renamed stream layout gives blank transparent output, reports name to status/log and recovers on revision. Native stream windows keep blank output using the configured solid or chroma-key background, report missing/deleted/renamed/load-failed layouts in status/log errors, and recover when the selected layout becomes available. The browser endpoint disappears under ADR 0001; see accepted DEC-03. Source: [controller tests](../../dashboard/src/layout/controller.test.ts), [missing report](../../crates/collector/src/status.rs).
+- [x] **STREAM-02 — port.** Current missing/deleted/renamed stream layout gives blank transparent output, reports name to status/log and recovers on revision. Native stream windows keep blank output using the configured solid or chroma-key background, report missing/deleted/renamed/load-failed layouts in status/log errors, and recover when the selected layout becomes available. The browser endpoint disappears under ADR 0001; see accepted DEC-03. Source: [controller tests](../../dashboard/src/layout/controller.test.ts), [missing report](../../crates/collector/src/status.rs).
 
 ## Liveries, track store and overlay
 
@@ -259,7 +259,7 @@ Native asset evidence for #76: `pitwall-livery-art` loads local PNGs and rasteri
 
 ## Accepted owner decisions and source gaps
 
-The owner accepted all five recommendations on 2026-11-05. Decision checkboxes below record that approval; they do not claim implementation. STREAM-02, APP-06 and TRACK-05 remain unchecked until implemented and tested.
+The owner accepted all five recommendations on 2026-11-05. Decision checkboxes below record that approval; they do not claim implementation. APP-06 and TRACK-05 remain unchecked until implemented and tested; STREAM-02 is implemented by #75.
 
 - [x] **DEC-01 — port.** Use the 19 registered tile types as the parity baseline. Correct the earlier count of 27 in issue #65 and ADR 0004; no eight additional types are required. Source: [registry](../../dashboard/src/tiles/registry.ts), [spec §11](../spec/v1.md), owner acceptance on 2026-11-05.
 - [ ] **DEC-02 — dropped by ADR 0005.** Remove macOS menu-bar/terminal behavior, platform-specific paths, Linux/macOS build and release targets, platform branches and support documentation at the native switch. The Windows-only decision is now recorded; this removal gate still requires evidence. Source: [ADR 0005](../adr/0005-native-release-is-windows-only.md), [app platform branches](../../crates/collector/src/app.rs), [paths](../../crates/core/src/paths.rs), [spec §2](../spec/v1.md), [#64](https://github.com/Vankata03/pitwall/issues/64).
@@ -395,7 +395,47 @@ exercised by hand.
 
 Still open here: GRID-01 (the row height uses an estimate of the chrome height, not a
 measurement), EDIT-04 (needs several windows, #75), CHROME-01..03 (keyboard access,
-focus trapping and the race strip), WIN-01/02 and STREAM-02 (#75).
+focus trapping and the race strip). EDIT-04, WIN-01/02 and STREAM-02 are covered by #75
+below.
+
+### Several windows and the stream window evidence (#75)
+
+`pitwall_core::window_set` keeps the app's windows in `windows.json` under the data
+folder. Each dashboard window has its own id (`main`, then `dashboard-2`, ...), so its own
+choices file (`windows/<id>.json`); stream windows are `stream-1`, `stream-2`, .... A
+closed window keeps its entry and the next window of its kind reuses it. Windows open at
+quit (or at a crash) come back on the next start; `place` returns each to its monitor
+and position, moves it back onto a shrunken monitor, and centres it on the primary
+monitor when its monitor is gone. A stream window is opened from a dashboard's Display
+menu for that window's layout and units, with a solid, green-key (`#00FF00`) or
+magenta-key (`#FF00FF`) background. It has no title bar, chrome, banners or footer,
+follows the player car (tile pins still apply), moves by dragging anywhere and closes with
+Escape or the system menu. A missing, deleted or renamed layout leaves only the
+background, is reported to status and the log once per change
+(`Command::WindowProblem`), and recovers when the layout exists again.
+
+| Items | Native tests |
+| --- | --- |
+| WIN-01 | `crates/core/tests/window_set.rs` (ids, reuse, restore, quit, `.bad`, monitor-safe placement), `window.rs` (`windows_over_one_library_keep_their_own_choices_and_see_each_others_saves`) |
+| EDIT-04 | `window.rs` (saves reach other windows; an editor keeps its draft with a conflict notice and its Done replaces the whole layout; delete or rename moves viewers to Pitwall Classic), `layout_controller.rs` |
+| WIN-02, STREAM-02 | `window.rs` (`a_layout_deleted_or_renamed_in_another_window_moves_viewers_to_classic_and_blanks_streams`), `layout_controller.rs`, `crates/app/tests/host.rs` (`a_stream_window_problem_is_a_status_alert_logged_once_until_the_window_recovers`) |
+
+A manual check on 2026-11-06 ran the debug build with an isolated data folder on a
+machine with two 2560x1440 monitors. Two dashboard windows (the second from a second
+launch) were moved with `SetWindowPos`, one to each monitor; after the process was killed
+and restarted, both came back at the same rectangles on the same monitors. Seeded stream
+windows restored too: `pitwall stream: Pitwall Classic` at its saved place with a green
+background and no title bar, and a stream window for a missing layout, saved on a monitor
+that does not exist, opened centred on the primary monitor showing only its magenta
+background, with the problem in the log. Its close logged the problem as cleared and
+marked it closed; Escape closed the other stream window; an ordinary restart restored only
+the two dashboards. Screen captures read the backgrounds at the same values as a GDI
+window filled with `#00FF00` on this display.
+
+Not verified: OBS Window Capture of the stream window at 60 fps (OBS was not run), the
+Display menu buttons that open stream windows, dragging a stream window, an orderly
+tray Quit (the restart test killed the process; quitting is covered by a unit test),
+monitors with different scale factors, and maximized-window restore.
 
 ### Status, settings and desktop evidence (#74)
 

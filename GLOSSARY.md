@@ -115,6 +115,10 @@ _Avoid_: Preferences page, user settings
 A screen showing a layout's tiles on a transparent page with no controls, for use as a broadcast source.
 _Avoid_: Stream mode, overlay
 
+**Stream window**:
+The native replacement for stream view (ADR 0001): a window with no title bar or controls that shows one layout's tiles on a solid or chroma-key background, for OBS Window Capture.
+_Avoid_: Stream mode, overlay
+
 **In-game overlay**:
 A small transparent window the collector floats above the game on the collector PC, such as the throttle/brake overlay. It ignores the mouse except in move mode and is not a layout or a tile.
 _Avoid_: HUD, stream view
