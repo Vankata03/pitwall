@@ -327,6 +327,28 @@ All 55 TypeScript test files under `dashboard/src` were read, including fixtures
 | [dashboard/src/tiles/types/timing-tower.test.tsx](../../dashboard/src/tiles/types/timing-tower.test.tsx) | TOWER |
 | [dashboard/src/tiles/types/track-map.test.tsx](../../dashboard/src/tiles/types/track-map.test.tsx) | MAPTILE |
 
+### Domain logic ported to `pitwall-core` (#69)
+
+Each TypeScript test file below has a Rust counterpart under `crates/core/tests`, or a reason it has none. The ports run in `cargo test --workspace` without a window. Readout states, binding resolution and units are #67's; overlay smoothing, traces, the current-lap buckets and the window plot are #68's.
+
+| TypeScript tests | Rust tests | Not ported, and why |
+| --- | --- | --- |
+| `session/race-status.test.ts` | `race_status.rs` | The track and session name case is covered by the existing `names.rs`. |
+| `runtime/banners.test.ts` | `banners.rs` | Connection, reconnect and reload banners: the collector runs in-process and there is no page to reload (WEB-01, WEB-02). The setup hint now names the configured UDP port. |
+| `tiles/car-status/bands.test.ts` | `bands.rs` | None. |
+| `tiles/car-status/view.test.ts` | `bands.rs` (column fill, condition level, compound names, damage parts) | Cell text, readout states and unit conversion need #67's readout and units modules; the Car status tile assembles them (#73). |
+| `session/cars.test.ts` (labels) | `car_names.rs` | Identity, participant listing and binding resolution are #67's. |
+| `layout/screen.test.ts` | `screen.rs` | None. |
+| `runtime/tile.test.ts` | `screen.rs` (density picking and validation) | Declaration reads (frame fields, readout groups) belong to the native tile registry (#70, #71). |
+| `layout/model.test.ts` | `layout_edit.rs` | `toSavedBody`: the native layout is saved as a typed value whose `preset` is the library's; the unknown-field case is kept as a serialisation test. |
+| `layout/controller.test.ts` | `layout_controller.rs` | The late-selection-response case: the native controller calls the in-process library synchronously, so no reply can arrive late. The failed-refresh retry is kept. |
+| `layout/api.test.ts` | None | The HTTP client for the layout routes; the native controller calls `LayoutLibrary` directly (WEB). |
+| `liveries/choose.test.ts` | `livery.rs` | None. |
+| `liveries/fallbackCar.test.ts` | `livery.rs` | The out-of-range and NaN colour case: native colours are `u8`, so neither can occur. A golden test pins the markup to the web build's, byte for byte. |
+| `tiles/traces/lap-traces.test.ts` | `lap_traces.rs` | In-flight dedupe and late or failed HTTP replies: the native cache reads the model snapshot synchronously. Epoch scoping, unavailable-until-invalidated and partial-to-complete replacement are kept. |
+| `tiles/slow-tiles.test.tsx` (Gaps cases) | `gaps.rs` | The other slow tiles are #73's. |
+| `tiles/types/timing-tower.test.tsx` | `tower.rs` | DOM structure, team-marker colour and the settings form are the tile's (#72). A disconnected collector no longer exists; the model's Lost lifecycle already marks values stale (MODEL-06). |
+
 ## Collector route and tray audit
 
 HTTP delivery/access mechanics are dropped by ADR 0001. The following mappings retain every local data/action outcome and its validation/errors without requiring HTTP response codes or a replacement server.
