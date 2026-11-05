@@ -75,7 +75,7 @@ pub enum LiveryChoice {
 }
 
 impl LiveryChoice {
-    /// The car's resolved colours, also used for team markers.
+    /// The car's resolved colours for recolouring the fallback art.
     pub fn colours(&self) -> &[Rgb; LIVERY_SLOTS] {
         match self {
             LiveryChoice::Pack { colours, .. } | LiveryChoice::Fallback { colours } => colours,
@@ -121,4 +121,15 @@ pub fn choose_livery(car: Option<&LiveryCar>, files: &[String]) -> LiveryChoice 
         }
     }
     LiveryChoice::Fallback { colours }
+}
+
+/// A car's team colour, as the timing tower's team marker and the track map's dots draw
+/// it: the first game livery colour, read whatever `m_numColours` says, as the web build
+/// does. `None` (no participant data yet) is drawn in the theme's muted text colour.
+/// Team identity is game colours only (spec section 14); there is no team colour table.
+pub fn team_colour(participant: Option<&ParticipantData>) -> Option<Rgb> {
+    participant.map(|p| {
+        let c = &p.livery_colour[0];
+        Rgb::new(c.red, c.green, c.blue)
+    })
 }
