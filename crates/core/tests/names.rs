@@ -1,4 +1,4 @@
-use pitwall_collector::names::team_name;
+use pitwall_core::names::team_name;
 
 #[test]
 fn both_grids_use_short_team_names_without_title_sponsors() {
@@ -41,7 +41,7 @@ fn my_team_is_selected_by_the_flag_even_for_known_or_sentinel_ids() {
 
 #[test]
 fn tracks_use_appendix_place_names_including_reverse_layouts_and_madrid() {
-    use pitwall_collector::names::track_name;
+    use pitwall_core::names::track_name;
     let expected = [
         (0, "Melbourne"),
         (2, "Shanghai"),
@@ -79,7 +79,7 @@ fn tracks_use_appendix_place_names_including_reverse_layouts_and_madrid() {
 
 #[test]
 fn sessions_use_plain_appendix_names() {
-    use pitwall_collector::names::session_name;
+    use pitwall_core::names::session_name;
     let expected = [
         (1, "Practice 1"),
         (2, "Practice 2"),
@@ -107,7 +107,7 @@ fn sessions_use_plain_appendix_names() {
 
 #[test]
 fn unknown_ids_and_unused_slots_do_not_acquire_invented_names() {
-    use pitwall_collector::names::{session_name, track_name};
+    use pitwall_core::names::{session_name, track_name};
     for id in [10, 255, 475, 487, u16::MAX] {
         assert_eq!(team_name(id, false), None, "team {id}");
     }

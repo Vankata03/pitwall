@@ -25,9 +25,19 @@ pub fn routes(shell: HttpShell, store: TrackStore) -> HttpShell {
         )
 }
 
-impl IntoResponse for TrackError {
+/// A [`TrackError`] as an HTTP response. The error type lives in the core crate, so the
+/// response conversion needs a local wrapper.
+struct ApiError(TrackError);
+
+impl From<TrackError> for ApiError {
+    fn from(error: TrackError) -> Self {
+        Self(error)
+    }
+}
+
+impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
+        let (status, message) = match self.0 {
             TrackError::NotFound => (StatusCode::NOT_FOUND, "no such track map".to_string()),
             TrackError::Io(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
         };
@@ -41,7 +51,7 @@ impl IntoResponse for TrackError {
 async fn read(
     State(store): State<TrackStore>,
     Path((track_id, track_length)): Path<(i8, u16)>,
-) -> Result<Json<Value>, TrackError> {
+) -> Result<Json<Value>, ApiError> {
     let key = TrackKey::new(track_id, track_length);
     let revision = store.revision();
     let map = store.get(key).ok_or(TrackError::NotFound)?;
@@ -63,7 +73,7 @@ async fn read(
 async fn relearn(
     State(store): State<TrackStore>,
     Path((track_id, track_length)): Path<(i8, u16)>,
-) -> Result<StatusCode, TrackError> {
+) -> Result<StatusCode, ApiError> {
     store.relearn(TrackKey::new(track_id, track_length))?;
     Ok(StatusCode::OK)
 }

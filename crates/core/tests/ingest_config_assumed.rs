@@ -1,5 +1,5 @@
 //! Assumed configuration and CLI scenarios, isolated from the user's config.
-use pitwall_collector::ingest::config::{Cli, Config};
+use pitwall_core::ingest::config::{Cli, Config};
 use std::path::PathBuf;
 
 #[test]

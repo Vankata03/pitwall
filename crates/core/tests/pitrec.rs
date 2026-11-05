@@ -1,5 +1,5 @@
 //! Synthetic format fixtures: assumed until checked against a real capture.
-use pitwall_collector::pitrec::{Header, Reader, Writer};
+use pitwall_core::pitrec::{Header, Reader, Writer};
 use std::io::Cursor;
 
 fn header() -> Header {

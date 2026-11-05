@@ -1,6 +1,6 @@
 //! Track store tests. Every scenario is synthetic and `assumed`: laps are generated
 //! circles and lines, not captures. Shipped-map coordinates are checked in #52.
-use pitwall_collector::tracks::{Sample, Source, TrackKey, TrackStore};
+use pitwall_core::tracks::{Sample, Source, TrackKey, TrackStore};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -509,7 +509,7 @@ fn a_pit_pass_on_a_map_still_being_learned_is_kept_and_saved_with_the_map() {
 
 mod from_model {
     use super::*;
-    use pitwall_collector::{
+    use pitwall_core::{
         model::SessionModel,
         telemetry::{ParsedDatagram, parse_datagram},
     };

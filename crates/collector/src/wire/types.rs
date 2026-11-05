@@ -1,3 +1,4 @@
+pub use crate::replay::ReplayState;
 use crate::{model::*, telemetry::*};
 use serde::Serialize;
 use ts_rs::TS;
@@ -30,17 +31,6 @@ pub struct Context {
     pub revisions: Revisions,
     pub collector: CollectorStatus,
     pub replay: Option<ReplayState>,
-}
-#[derive(Debug, Clone, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct ReplayState {
-    pub duration: f64,
-    pub position: f64,
-    pub speed: f64,
-    pub paused: bool,
-    pub banner: String,
-    pub load_progress: f64,
-    pub background_live: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

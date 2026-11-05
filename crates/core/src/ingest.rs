@@ -1,7 +1,6 @@
 //! Live datagram processing. Timestamps are monotonic microseconds supplied by
 //! the caller; this gate reads no clock and is also usable by replay.
 pub mod config;
-pub mod runtime;
 pub mod udp;
 use crate::telemetry::{EventDetails, Packet, ParsedDatagram};
 use std::collections::{HashMap, HashSet, VecDeque};
