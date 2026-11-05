@@ -461,3 +461,16 @@ fn only_user_layouts_are_written_to_disk() {
     assert_eq!(stored_names, ["Mine"]);
     assert_eq!(stored["schemaVersion"], 1);
 }
+
+#[test]
+fn presets_are_exactly_the_source_baselines_three_authored_arrangements() {
+    // Serialised from `presets::all()` at the inventory baseline 1074e84 (the file is
+    // unchanged since); any change to a preset must be deliberate and update it.
+    let fixture: Vec<Layout> = serde_json::from_str(include_str!("fixtures/presets-1074e84.json"))
+        .expect("preset fixture");
+    let shipped: Vec<Layout> = open().list().into_iter().take(3).collect();
+    assert_eq!(shipped, fixture);
+    for layout in &fixture {
+        assert!(layout.arrangements.tablet.is_some() && layout.arrangements.phone.is_some());
+    }
+}

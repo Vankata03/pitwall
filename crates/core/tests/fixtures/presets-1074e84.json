@@ -1,0 +1,929 @@
+[
+  {
+    "schemaVersion": 1,
+    "name": "Pitwall Classic",
+    "arrangements": {
+      "wide": [
+        {
+          "i": "speed-rpm-gear",
+          "type": "speed-rpm-gear",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "engine-temp",
+          "type": "engine-temp",
+          "x": 0,
+          "y": 6,
+          "w": 3,
+          "h": 4,
+          "settings": {}
+        },
+        {
+          "i": "g-force",
+          "type": "g-force",
+          "x": 3,
+          "y": 6,
+          "w": 3,
+          "h": 4,
+          "settings": {}
+        },
+        {
+          "i": "ers",
+          "type": "ers",
+          "x": 0,
+          "y": 10,
+          "w": 6,
+          "h": 4,
+          "settings": {}
+        },
+        {
+          "i": "fuel",
+          "type": "fuel",
+          "x": 0,
+          "y": 14,
+          "w": 6,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "race-control-feed",
+          "type": "race-control-feed",
+          "x": 6,
+          "y": 0,
+          "w": 12,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "sm",
+          "type": "sm",
+          "x": 10,
+          "y": 2,
+          "w": 4,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "car-status",
+          "type": "car-status",
+          "x": 6,
+          "y": 4,
+          "w": 12,
+          "h": 12,
+          "settings": {}
+        },
+        {
+          "i": "weather",
+          "type": "weather",
+          "x": 18,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "track-map",
+          "type": "track-map",
+          "x": 18,
+          "y": 2,
+          "w": 6,
+          "h": 7,
+          "settings": {}
+        },
+        {
+          "i": "lap-state",
+          "type": "lap-state",
+          "x": 18,
+          "y": 9,
+          "w": 6,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "lap-timing",
+          "type": "lap-timing",
+          "x": 18,
+          "y": 11,
+          "w": 6,
+          "h": 5,
+          "settings": {}
+        },
+        {
+          "i": "throttle-brake-traces",
+          "type": "throttle-brake-traces",
+          "x": 0,
+          "y": 16,
+          "w": 7,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "live-delta",
+          "type": "live-delta",
+          "x": 7,
+          "y": 16,
+          "w": 6,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "stint",
+          "type": "stint",
+          "x": 13,
+          "y": 16,
+          "w": 6,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "timing-tower",
+          "type": "timing-tower",
+          "x": 19,
+          "y": 16,
+          "w": 5,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "notice",
+          "type": "notice",
+          "x": 0,
+          "y": 22,
+          "w": 24,
+          "h": 1,
+          "settings": {}
+        }
+      ],
+      "tablet": [
+        {
+          "i": "speed-rpm-gear",
+          "type": "speed-rpm-gear",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "race-control-feed",
+          "type": "race-control-feed",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "sm",
+          "type": "sm",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "weather",
+          "type": "weather",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "car-status",
+          "type": "car-status",
+          "x": 0,
+          "y": 6,
+          "w": 12,
+          "h": 12,
+          "settings": {}
+        },
+        {
+          "i": "track-map",
+          "type": "track-map",
+          "x": 0,
+          "y": 18,
+          "w": 6,
+          "h": 8,
+          "settings": {}
+        },
+        {
+          "i": "engine-temp",
+          "type": "engine-temp",
+          "x": 6,
+          "y": 18,
+          "w": 3,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "g-force",
+          "type": "g-force",
+          "x": 9,
+          "y": 18,
+          "w": 3,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "lap-state",
+          "type": "lap-state",
+          "x": 6,
+          "y": 20,
+          "w": 6,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "lap-timing",
+          "type": "lap-timing",
+          "x": 6,
+          "y": 22,
+          "w": 6,
+          "h": 4,
+          "settings": {}
+        },
+        {
+          "i": "live-delta",
+          "type": "live-delta",
+          "x": 0,
+          "y": 26,
+          "w": 12,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "ers",
+          "type": "ers",
+          "x": 0,
+          "y": 32,
+          "w": 12,
+          "h": 4,
+          "settings": {}
+        },
+        {
+          "i": "fuel",
+          "type": "fuel",
+          "x": 0,
+          "y": 36,
+          "w": 12,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "throttle-brake-traces",
+          "type": "throttle-brake-traces",
+          "x": 0,
+          "y": 38,
+          "w": 12,
+          "h": 7,
+          "settings": {}
+        },
+        {
+          "i": "stint",
+          "type": "stint",
+          "x": 0,
+          "y": 45,
+          "w": 12,
+          "h": 7,
+          "settings": {}
+        },
+        {
+          "i": "timing-tower",
+          "type": "timing-tower",
+          "x": 0,
+          "y": 52,
+          "w": 12,
+          "h": 7,
+          "settings": {}
+        },
+        {
+          "i": "notice",
+          "type": "notice",
+          "x": 0,
+          "y": 59,
+          "w": 12,
+          "h": 1,
+          "settings": {}
+        }
+      ],
+      "phone": [
+        {
+          "i": "lap-timing",
+          "type": "lap-timing",
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "settings": {}
+        },
+        {
+          "i": "live-delta",
+          "type": "live-delta",
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "race-control-feed",
+          "type": "race-control-feed",
+          "x": 0,
+          "y": 10,
+          "w": 4,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "speed-rpm-gear",
+          "type": "speed-rpm-gear",
+          "x": 0,
+          "y": 12,
+          "w": 4,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "sm",
+          "type": "sm",
+          "x": 0,
+          "y": 18,
+          "w": 4,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "lap-state",
+          "type": "lap-state",
+          "x": 0,
+          "y": 20,
+          "w": 4,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "ers",
+          "type": "ers",
+          "x": 0,
+          "y": 22,
+          "w": 4,
+          "h": 4,
+          "settings": {}
+        },
+        {
+          "i": "engine-temp",
+          "type": "engine-temp",
+          "x": 0,
+          "y": 26,
+          "w": 2,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "g-force",
+          "type": "g-force",
+          "x": 2,
+          "y": 26,
+          "w": 2,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "fuel",
+          "type": "fuel",
+          "x": 0,
+          "y": 28,
+          "w": 4,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "weather",
+          "type": "weather",
+          "x": 0,
+          "y": 30,
+          "w": 4,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "car-status",
+          "type": "car-status",
+          "x": 0,
+          "y": 32,
+          "w": 4,
+          "h": 8,
+          "settings": {}
+        },
+        {
+          "i": "track-map",
+          "type": "track-map",
+          "x": 0,
+          "y": 40,
+          "w": 4,
+          "h": 5,
+          "settings": {}
+        },
+        {
+          "i": "throttle-brake-traces",
+          "type": "throttle-brake-traces",
+          "x": 0,
+          "y": 45,
+          "w": 4,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "stint",
+          "type": "stint",
+          "x": 0,
+          "y": 51,
+          "w": 4,
+          "h": 5,
+          "settings": {}
+        },
+        {
+          "i": "timing-tower",
+          "type": "timing-tower",
+          "x": 0,
+          "y": 56,
+          "w": 4,
+          "h": 8,
+          "settings": {}
+        },
+        {
+          "i": "notice",
+          "type": "notice",
+          "x": 0,
+          "y": 64,
+          "w": 4,
+          "h": 1,
+          "settings": {}
+        }
+      ]
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "name": "Driver",
+    "arrangements": {
+      "wide": [
+        {
+          "i": "speed-rpm-gear",
+          "type": "speed-rpm-gear",
+          "x": 0,
+          "y": 0,
+          "w": 10,
+          "h": 8,
+          "settings": {}
+        },
+        {
+          "i": "lap-timing",
+          "type": "lap-timing",
+          "x": 10,
+          "y": 0,
+          "w": 8,
+          "h": 5,
+          "settings": {}
+        },
+        {
+          "i": "sm",
+          "type": "sm",
+          "x": 18,
+          "y": 0,
+          "w": 6,
+          "h": 3,
+          "settings": {}
+        },
+        {
+          "i": "fuel",
+          "type": "fuel",
+          "x": 18,
+          "y": 3,
+          "w": 6,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "gaps",
+          "type": "gaps",
+          "x": 10,
+          "y": 5,
+          "w": 14,
+          "h": 3,
+          "settings": {}
+        },
+        {
+          "i": "ers",
+          "type": "ers",
+          "x": 0,
+          "y": 8,
+          "w": 10,
+          "h": 5,
+          "settings": {}
+        },
+        {
+          "i": "track-discipline",
+          "type": "track-discipline",
+          "x": 10,
+          "y": 8,
+          "w": 14,
+          "h": 5,
+          "settings": {}
+        },
+        {
+          "i": "live-delta",
+          "type": "live-delta",
+          "x": 0,
+          "y": 13,
+          "w": 24,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "notice",
+          "type": "notice",
+          "x": 0,
+          "y": 19,
+          "w": 24,
+          "h": 1,
+          "settings": {}
+        }
+      ],
+      "tablet": [
+        {
+          "i": "speed-rpm-gear",
+          "type": "speed-rpm-gear",
+          "x": 0,
+          "y": 0,
+          "w": 7,
+          "h": 8,
+          "settings": {}
+        },
+        {
+          "i": "lap-timing",
+          "type": "lap-timing",
+          "x": 7,
+          "y": 0,
+          "w": 5,
+          "h": 5,
+          "settings": {}
+        },
+        {
+          "i": "sm",
+          "type": "sm",
+          "x": 7,
+          "y": 5,
+          "w": 5,
+          "h": 3,
+          "settings": {}
+        },
+        {
+          "i": "fuel",
+          "type": "fuel",
+          "x": 0,
+          "y": 8,
+          "w": 12,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "gaps",
+          "type": "gaps",
+          "x": 0,
+          "y": 10,
+          "w": 12,
+          "h": 3,
+          "settings": {}
+        },
+        {
+          "i": "ers",
+          "type": "ers",
+          "x": 0,
+          "y": 13,
+          "w": 12,
+          "h": 5,
+          "settings": {}
+        },
+        {
+          "i": "track-discipline",
+          "type": "track-discipline",
+          "x": 0,
+          "y": 18,
+          "w": 12,
+          "h": 3,
+          "settings": {}
+        },
+        {
+          "i": "live-delta",
+          "type": "live-delta",
+          "x": 0,
+          "y": 21,
+          "w": 12,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "notice",
+          "type": "notice",
+          "x": 0,
+          "y": 27,
+          "w": 12,
+          "h": 1,
+          "settings": {}
+        }
+      ],
+      "phone": [
+        {
+          "i": "lap-timing",
+          "type": "lap-timing",
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 5,
+          "settings": {}
+        },
+        {
+          "i": "live-delta",
+          "type": "live-delta",
+          "x": 0,
+          "y": 5,
+          "w": 4,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "gaps",
+          "type": "gaps",
+          "x": 0,
+          "y": 11,
+          "w": 4,
+          "h": 3,
+          "settings": {}
+        },
+        {
+          "i": "speed-rpm-gear",
+          "type": "speed-rpm-gear",
+          "x": 0,
+          "y": 14,
+          "w": 4,
+          "h": 7,
+          "settings": {}
+        },
+        {
+          "i": "sm",
+          "type": "sm",
+          "x": 0,
+          "y": 21,
+          "w": 4,
+          "h": 3,
+          "settings": {}
+        },
+        {
+          "i": "fuel",
+          "type": "fuel",
+          "x": 0,
+          "y": 24,
+          "w": 4,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "ers",
+          "type": "ers",
+          "x": 0,
+          "y": 26,
+          "w": 4,
+          "h": 5,
+          "settings": {}
+        },
+        {
+          "i": "track-discipline",
+          "type": "track-discipline",
+          "x": 0,
+          "y": 31,
+          "w": 4,
+          "h": 3,
+          "settings": {}
+        },
+        {
+          "i": "notice",
+          "type": "notice",
+          "x": 0,
+          "y": 34,
+          "w": 4,
+          "h": 1,
+          "settings": {}
+        }
+      ]
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "name": "Race",
+    "arrangements": {
+      "wide": [
+        {
+          "i": "timing-tower",
+          "type": "timing-tower",
+          "x": 0,
+          "y": 0,
+          "w": 9,
+          "h": 16,
+          "settings": {}
+        },
+        {
+          "i": "track-map",
+          "type": "track-map",
+          "x": 9,
+          "y": 0,
+          "w": 8,
+          "h": 8,
+          "settings": {}
+        },
+        {
+          "i": "weather",
+          "type": "weather",
+          "x": 17,
+          "y": 0,
+          "w": 7,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "lap-state",
+          "type": "lap-state",
+          "x": 17,
+          "y": 2,
+          "w": 7,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "stint",
+          "type": "stint",
+          "x": 17,
+          "y": 4,
+          "w": 7,
+          "h": 12,
+          "settings": {}
+        },
+        {
+          "i": "race-control-feed",
+          "type": "race-control-feed",
+          "x": 9,
+          "y": 8,
+          "w": 8,
+          "h": 8,
+          "settings": {}
+        },
+        {
+          "i": "notice",
+          "type": "notice",
+          "x": 0,
+          "y": 16,
+          "w": 24,
+          "h": 1,
+          "settings": {}
+        }
+      ],
+      "tablet": [
+        {
+          "i": "timing-tower",
+          "type": "timing-tower",
+          "x": 0,
+          "y": 0,
+          "w": 7,
+          "h": 14,
+          "settings": {}
+        },
+        {
+          "i": "track-map",
+          "type": "track-map",
+          "x": 7,
+          "y": 0,
+          "w": 5,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "weather",
+          "type": "weather",
+          "x": 7,
+          "y": 6,
+          "w": 5,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "lap-state",
+          "type": "lap-state",
+          "x": 7,
+          "y": 8,
+          "w": 5,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "stint",
+          "type": "stint",
+          "x": 0,
+          "y": 14,
+          "w": 12,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "race-control-feed",
+          "type": "race-control-feed",
+          "x": 0,
+          "y": 20,
+          "w": 12,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "notice",
+          "type": "notice",
+          "x": 0,
+          "y": 26,
+          "w": 12,
+          "h": 1,
+          "settings": {}
+        }
+      ],
+      "phone": [
+        {
+          "i": "lap-state",
+          "type": "lap-state",
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "timing-tower",
+          "type": "timing-tower",
+          "x": 0,
+          "y": 2,
+          "w": 4,
+          "h": 14,
+          "settings": {}
+        },
+        {
+          "i": "track-map",
+          "type": "track-map",
+          "x": 0,
+          "y": 16,
+          "w": 4,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "stint",
+          "type": "stint",
+          "x": 0,
+          "y": 22,
+          "w": 4,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "race-control-feed",
+          "type": "race-control-feed",
+          "x": 0,
+          "y": 28,
+          "w": 4,
+          "h": 6,
+          "settings": {}
+        },
+        {
+          "i": "weather",
+          "type": "weather",
+          "x": 0,
+          "y": 34,
+          "w": 4,
+          "h": 2,
+          "settings": {}
+        },
+        {
+          "i": "notice",
+          "type": "notice",
+          "x": 0,
+          "y": 36,
+          "w": 4,
+          "h": 1,
+          "settings": {}
+        }
+      ]
+    }
+  }
+]

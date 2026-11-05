@@ -280,6 +280,22 @@ fn unknown_tiles_have_no_settings_to_change() {
 }
 
 #[test]
+fn session_wide_tiles_have_no_car_to_follow() {
+    let f = Fixture::new();
+    let mut window = f.custom_window();
+    window.apply(Command::Edit(ScreenClass::Wide));
+    window.apply(Command::Add("weather".into()));
+    window.apply(Command::Car(
+        "weather".into(),
+        CarBinding {
+            target: CarTarget::CarAhead,
+            pin: None,
+        },
+    ));
+    assert_eq!(editing_tile(&window, "weather").settings, json!({}));
+}
+
+#[test]
 fn the_window_shows_its_draft_while_editing_and_the_saved_layout_otherwise() {
     let f = Fixture::new();
     let mut window = f.custom_window();
