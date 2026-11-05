@@ -95,8 +95,8 @@ impl EntityInputHandler for Dashboard {
         _: &mut Context<Self>,
     ) -> Option<String> {
         let input = self.name_input()?;
-        let bytes = input.from_utf16(range);
-        *actual = Some(input.to_utf16(bytes.clone()));
+        let bytes = input.bytes_of(range);
+        *actual = Some(input.utf16_of(bytes.clone()));
         Some(input.text[bytes].to_owned())
     }
     fn selected_text_range(
@@ -107,7 +107,7 @@ impl EntityInputHandler for Dashboard {
     ) -> Option<UTF16Selection> {
         let input = self.name_input()?;
         Some(UTF16Selection {
-            range: input.to_utf16(input.selection.clone()),
+            range: input.utf16_of(input.selection.clone()),
             reversed: false,
         })
     }
@@ -118,7 +118,7 @@ impl EntityInputHandler for Dashboard {
         cx: &mut Context<Self>,
     ) {
         if let Some(input) = self.name_input() {
-            input.selection = input.from_utf16(range);
+            input.selection = input.bytes_of(range);
         }
         window.notify_text_selection_changed(&self.focus_handle);
         cx.notify();
@@ -128,7 +128,7 @@ impl EntityInputHandler for Dashboard {
     }
     fn marked_text_range(&self, _: &mut Window, _: &mut Context<Self>) -> Option<Range<usize>> {
         if let Menu::Rename { input, .. } = &self.menu {
-            input.marked.clone().map(|r| input.to_utf16(r))
+            input.marked.clone().map(|r| input.utf16_of(r))
         } else {
             None
         }
@@ -169,7 +169,7 @@ impl EntityInputHandler for Dashboard {
             input.marked = (!text.is_empty()).then_some(start..end);
             if let Some(selected) = selected {
                 let offset = input.text[..start].encode_utf16().count();
-                input.selection = input.from_utf16(offset + selected.start..offset + selected.end);
+                input.selection = input.bytes_of(offset + selected.start..offset + selected.end);
             }
         }
         window.notify_text_input_changed(&self.focus_handle);
@@ -191,6 +191,6 @@ impl EntityInputHandler for Dashboard {
         _: &mut Context<Self>,
     ) -> Option<usize> {
         let input = self.name_input()?;
-        Some(input.to_utf16(input.selection.clone()).end)
+        Some(input.utf16_of(input.selection.clone()).end)
     }
 }

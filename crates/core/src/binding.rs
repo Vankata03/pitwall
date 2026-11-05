@@ -215,6 +215,49 @@ pub fn car_binding_of(settings: &Value) -> CarBinding {
     CarBinding { target, pin }
 }
 
+impl CarTarget {
+    /// Every target, in the order the settings list them.
+    pub const ALL: [CarTarget; 4] = [
+        CarTarget::Focus,
+        CarTarget::Pinned,
+        CarTarget::CarAhead,
+        CarTarget::CarBehind,
+    ];
+
+    /// The stored value.
+    pub fn key(self) -> &'static str {
+        match self {
+            CarTarget::Focus => "focus",
+            CarTarget::Pinned => "pinned",
+            CarTarget::CarAhead => "car-ahead",
+            CarTarget::CarBehind => "car-behind",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            CarTarget::Focus => "Focus car",
+            CarTarget::Pinned => "Pinned driver",
+            CarTarget::CarAhead => "Car ahead",
+            CarTarget::CarBehind => "Car behind",
+        }
+    }
+}
+
+/// A car setting as stored in `settings.car`: `{"target": ..., "pin": ...}`, the pin only
+/// when there is one. A pin stays saved while another target is chosen.
+pub fn car_binding_value(binding: &CarBinding) -> Value {
+    let mut car = serde_json::Map::new();
+    car.insert("target".into(), Value::from(binding.target.key()));
+    if let Some(pin) = &binding.pin {
+        car.insert(
+            "pin".into(),
+            serde_json::to_value(pin).expect("an identity always serialises"),
+        );
+    }
+    Value::Object(car)
+}
+
 /// What a tile shows instead of its content when its car is missing. A retired car
 /// still draws (with a Retired label), so it has no message.
 pub fn missing_car_message(binding: &CarBinding, resolved: ResolvedCar) -> Option<&'static str> {

@@ -1,58 +1,81 @@
-//! Native editable dashboard over the shared core layout controller.
+//! One dashboard window: chrome (layout switcher, Edit, focus-car picker, Display menu),
+//! the tile grid for the window's size class and the edit mode over it.
+//!
+//! Everything apart from drawing lives in `pitwall_core`: the window's layout, choices and
+//! commands in `window::DashboardWindow`, the grid geometry and drag rules in
+//! `layout_edit::grid`, tile names and sizes in `tile_catalog`. This module turns clicks
+//! and drags into `window::Command`s and draws the result.
+//!
+//! Repaint control: a next-frame callback checks the feed generations and the controller
+//! version once per display frame and re-renders only when one moved.
 
-mod grid;
-pub mod model;
 mod name_input;
-pub mod preferences;
 pub mod registry;
 mod text_input;
 
-pub use model::DashboardSetup;
-pub use preferences::WindowPreferences;
-
-use crate::theme;
-use gpui::{
-    Context, FocusHandle, IntoElement, MouseButton, ParentElement, Render, SharedString, Styled,
-    WeakEntity, Window, div, prelude::*, px,
-};
-use grid::GridGeometry;
-use model::{Command, DashboardModel};
-use name_input::NameInput;
-use pitwall_core::{
-    binding::{
-        BindingContext, ResolvedCar, car_binding_of, car_label, missing_car_message,
-        participants_of, resolve_binding, resolve_focus,
-    },
-    feed::Reader,
-    layout_edit::{ControllerOptions, Status},
-    layouts::ScreenClass,
-    model::Lifecycle,
-    screen::{self, PAGE_PADDING},
-    units::{PressureUnit, SpeedUnit, TemperatureUnit},
-};
-use serde_json::{Value, json};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
 
+use gpui::{
+    AnyElement, Context, FocusHandle, FontWeight, IntoElement, MouseButton, ParentElement, Render,
+    SharedString, Styled, WeakEntity, Window, div, prelude::*, px,
+};
+use name_input::NameInput;
+use pitwall_core::{
+    binding::{
+        BindingContext, CarBinding, CarTarget, ResolvedCar, car_binding_of, car_label,
+        missing_car_message, participants_of, resolve_binding, resolve_focus,
+    },
+    data::DataFolder,
+    feed::Reader,
+    layout_edit::{
+        ControllerOptions, Status,
+        grid::{Gesture, GridGeometry, shown_tiles},
+    },
+    layouts::{LayoutLibrary, ScreenClass, Tile},
+    model::Lifecycle,
+    paths::AppPaths,
+    screen::{self, PAGE_PADDING},
+    tile_catalog,
+    units::{PressureUnit, SpeedUnit, TemperatureUnit, Units},
+    window::{Command, DashboardWindow, WindowChoices, WindowSetup, choices_path},
+};
+use serde_json::{Value, json};
+
+use crate::{theme, tiles::lap_timing};
+
+/// Counters a measurement run reads from another thread.
 #[derive(Default)]
 pub struct Stats {
+    /// Dashboard renders (frames with new content).
     pub renders: AtomicU64,
+    /// Display frames seen by the generation check.
     pub frames: AtomicU64,
 }
 
-const TILE_HEADER: f32 = 30.0;
-const SHORT_LINE: &str = "Unofficial. Not associated with the Formula 1 companies or EA.";
-const UDP_HINT: &str = "Turn UDP telemetry on in the game, choose format 2025 or 2026, port 20777, and send to this computer.";
+/// The one dashboard window this build opens; its choices file is `windows/main.json`.
+pub const MAIN_WINDOW: &str = "main";
 
+const TILE_HEADER: f32 = 28.0;
+/// Width of the grip at a tile's top left in edit mode; the header text starts after it.
+const EDIT_HANDLE: f32 = 28.0;
+/// Room for the settings and remove buttons at a tile's top right in edit mode.
+const EDIT_ACTIONS: f32 = 64.0;
+const SHORT_LINE_HEIGHT: f32 = 26.0;
+const SHORT_LINE: &str = "Unofficial. Not associated with the Formula 1 companies or EA.";
+const UDP_HINT: &str = "In the game, turn UDP telemetry on, set UDP Format to 2025 or 2026, port 20777, and send to broadcast or this computer\u{2019}s IP.";
+const TIME_TRIAL: u8 = 18;
+
+/// The popover or dialog open over the grid; one at a time.
 #[derive(Clone, Default)]
 enum Menu {
     #[default]
     Closed,
     Layouts,
     Focus,
-    Units,
+    Display,
     Add,
     Settings(String),
     Rename {
@@ -65,35 +88,62 @@ enum Menu {
 #[derive(Clone)]
 enum Action {
     Command(Command),
-    Menu(Menu),
+    Open(Menu),
     Close,
-    BeginEdit(ScreenClass),
 }
 
-struct Gesture {
+/// A drag on a tile's grip or resize corner, measured from where it started.
+struct Drag {
     id: String,
     origin: (f32, f32),
-    tiles: Vec<pitwall_core::layouts::Tile>,
+    tiles: Vec<Tile>,
     geometry: GridGeometry,
-    resize: bool,
+    gesture: Gesture,
     minimum: (u32, u32),
 }
 
 pub struct Dashboard {
     reader: Reader,
     source: SharedString,
-    pub model: DashboardModel,
+    window: DashboardWindow,
     menu: Menu,
     focus_handle: FocusHandle,
-    gesture: Option<Gesture>,
+    drag: Option<Drag>,
+    /// Kept while editing so tiles do not jump as rows are added.
     row_height: f32,
     drawn: (u64, u64, u64),
     stats: Arc<Stats>,
 }
 
+/// Open the data folder and the main window's choices. Unreadable files are kept as
+/// `.bad` by the core and reported here. `PITWALL_DATA_DIR` points a developer run at
+/// another data folder (`<dir>/pitwall`) instead of the user's.
+fn open_setup() -> std::io::Result<(WindowSetup, Option<String>)> {
+    let dir = std::env::var_os("PITWALL_DATA_DIR").map(std::path::PathBuf::from);
+    let paths = AppPaths::resolve_or(dir.as_deref())?;
+    let data = DataFolder::open(paths, &Default::default())?;
+    let path = choices_path(&data.paths.root, MAIN_WINDOW);
+    let (choices, bad) = WindowChoices::load(&path)?;
+    let note = bad.map(|kept| {
+        format!(
+            "This window's saved choices could not be read; kept as {} and started with the defaults.",
+            kept.display()
+        )
+    });
+    Ok((
+        WindowSetup {
+            library: data.layouts,
+            choices,
+            path: Some(path),
+            options: ControllerOptions::default(),
+        },
+        note,
+    ))
+}
+
 impl Dashboard {
-    /// Compatibility entry point for the developer slice. The host should use
-    /// `with_setup` so every window receives the same LayoutLibrary instance.
+    /// Open the main window over the per-user data folder. When the folder cannot be
+    /// opened the window still works on an empty temporary library and says why.
     pub fn new(
         reader: Reader,
         source: String,
@@ -101,58 +151,42 @@ impl Dashboard {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let setup = (|| -> std::io::Result<DashboardSetup> {
-            let paths = pitwall_core::paths::AppPaths::resolve()?;
-            let data = pitwall_core::data::DataFolder::open(paths, &Default::default())?;
-            let path = data.paths.root.join("windows").join("dashboard.json");
-            let preferences = WindowPreferences::load(&path)?;
-            Ok(DashboardSetup {
-                library: data.layouts,
-                preferences,
-                preferences_path: Some(path),
-                options: ControllerOptions::default(),
-            })
-        })();
-        match setup {
-            Ok(setup) => Self::with_setup(reader, source, stats, setup, window, cx),
+        let (setup, note) = match open_setup() {
+            Ok(opened) => opened,
             Err(error) => {
-                // Never replace unreadable user data. Keep the window usable with an
-                // explicitly reported temporary library until the host can retry.
                 let path = std::env::temp_dir()
                     .join(format!("pitwall-recovery-{}", std::process::id()))
                     .join("layouts.json");
-                let library = pitwall_core::layouts::LayoutLibrary::open(path)
-                    .expect("temporary layout library");
-                let mut this = Self::with_setup(
-                    reader,
-                    source,
-                    stats,
-                    DashboardSetup {
+                let library = LayoutLibrary::open(path).expect("a missing file opens empty");
+                (
+                    WindowSetup {
                         library,
-                        preferences: Default::default(),
-                        preferences_path: None,
-                        options: Default::default(),
+                        choices: WindowChoices::default(),
+                        path: None,
+                        options: ControllerOptions::default(),
                     },
-                    window,
-                    cx,
-                );
-                this.model.error = Some(format!(
-                    "Could not open saved dashboard data: {error}. Using a temporary library."
-                ));
-                eprintln!(
-                    "pitwall-native: {}",
-                    this.model.error.as_deref().unwrap_or_default()
-                );
-                this
+                    Some(format!(
+                        "Could not open the pitwall data folder ({error}). Layout changes are not saved this run."
+                    )),
+                )
             }
+        };
+        if let Some(note) = &note {
+            eprintln!("pitwall-native: {note}");
         }
+        let mut this = Self::with_setup(reader, source, stats, setup, window, cx);
+        if note.is_some() {
+            this.window.set_error(note);
+        }
+        this
     }
 
+    /// Open a window over a library the host shares between all its windows.
     pub fn with_setup(
         reader: Reader,
         source: String,
         stats: Arc<Stats>,
-        setup: DashboardSetup,
+        setup: WindowSetup,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -160,45 +194,46 @@ impl Dashboard {
         Self {
             reader,
             source: source.into(),
-            model: DashboardModel::new(setup),
+            window: DashboardWindow::open(setup),
             menu: Menu::Closed,
             focus_handle: cx.focus_handle(),
-            gesture: None,
+            drag: None,
             row_height: screen::ROW_HEIGHT,
             drawn: (u64::MAX, u64::MAX, u64::MAX),
             stats,
         }
     }
 
+    /// True when the core or the layout library changed since the last render.
     fn changed(&mut self) -> bool {
         self.stats.frames.fetch_add(1, Ordering::Relaxed);
-        self.model.sync();
+        self.window.sync();
         (
             self.reader.fast_generation(),
             self.reader.snapshot().generation,
-            self.model.controller.version(),
+            self.window.controller().version(),
         ) != self.drawn
     }
 
     fn act(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
         match action {
             Action::Command(command) => {
-                let keep_open = matches!(command, Command::Setting(..) | Command::Units(..));
-                self.model.execute(command);
+                // Choosing inside a settings dialog or the Display menu keeps it open.
+                let keep_open = matches!(
+                    command,
+                    Command::Setting(..) | Command::Car(..) | Command::Units(..)
+                );
+                self.window.apply(command);
                 if !keep_open {
                     self.menu = Menu::Closed;
                 }
-                self.gesture = None;
+                self.drag = None;
             }
-            Action::Menu(menu) => {
+            Action::Open(menu) => {
                 self.menu = menu;
                 window.focus(&self.focus_handle, cx);
             }
             Action::Close => self.menu = Menu::Closed,
-            Action::BeginEdit(class) => {
-                self.model.execute(Command::Edit(class));
-                self.menu = Menu::Closed;
-            }
         }
         cx.notify();
     }
@@ -209,14 +244,27 @@ impl Dashboard {
         label: impl Into<SharedString>,
         action: Action,
         cx: &Context<Self>,
-    ) -> gpui::AnyElement {
+    ) -> AnyElement {
+        let label = label.into();
+        self.icon_button(id, label.clone(), label, action, cx)
+    }
+
+    /// A button whose visible text differs from its accessible name, such as "×" for
+    /// "Remove Fuel".
+    fn icon_button(
+        &self,
+        id: impl Into<SharedString>,
+        label: impl Into<SharedString>,
+        name: impl Into<SharedString>,
+        action: Action,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         let id = id.into();
         let label = label.into();
         div()
             .id(id.clone())
-            .accessibility_id(id)
             .role(gpui::Role::Button)
-            .aria_label(label.clone())
+            .aria_label(name.into())
             .px_2()
             .py_1()
             .rounded_sm()
@@ -234,327 +282,349 @@ impl Dashboard {
             .into_any_element()
     }
 
-    fn menu(&self, cx: &Context<Self>) -> gpui::AnyElement {
-        let mut body = div()
+    fn choice(
+        &self,
+        id: impl Into<SharedString>,
+        label: &str,
+        selected: bool,
+        action: Action,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let mark = if selected { "\u{25CF}" } else { "\u{25CB}" };
+        self.button(id, format!("{mark} {label}"), action, cx)
+    }
+
+    fn time_trial(&self) -> bool {
+        self.reader
+            .snapshot()
+            .session()
+            .value()
+            .is_some_and(|s| s.session_type == TIME_TRIAL)
+    }
+
+    fn layouts_menu(&self, mut body: gpui::Div, cx: &Context<Self>) -> gpui::Div {
+        body = body.child("Layouts");
+        let current = self.window.controller().current().map(|l| l.name.clone());
+        for (index, layout) in self.window.controller().layouts().iter().enumerate() {
+            let name = layout.name.clone();
+            let label = format!("{}{}", name, if layout.preset { " (preset)" } else { "" });
+            let mut row = div()
+                .flex()
+                .flex_wrap()
+                .gap_1()
+                .child(self.choice(
+                    format!("select-{index}"),
+                    &label,
+                    current.as_deref() == Some(name.as_str()),
+                    Action::Command(Command::Select(name.clone())),
+                    cx,
+                ))
+                .child(self.button(
+                    format!("copy-{index}"),
+                    "Duplicate",
+                    Action::Command(Command::Duplicate(name.clone())),
+                    cx,
+                ));
+            if !layout.preset {
+                row = row
+                    .child(self.button(
+                        format!("rename-{index}"),
+                        "Rename",
+                        Action::Open(Menu::Rename {
+                            name: name.clone(),
+                            input: NameInput::new(name.clone()),
+                        }),
+                        cx,
+                    ))
+                    .child(self.button(
+                        format!("delete-{index}"),
+                        "Delete",
+                        Action::Open(Menu::Delete(name)),
+                        cx,
+                    ));
+            }
+            body = body.child(row);
+        }
+        body
+    }
+
+    fn focus_menu(&self, mut body: gpui::Div, cx: &Context<Self>) -> gpui::Div {
+        let participants = participants_of(&self.reader.snapshot());
+        let focus = self.window.choices().focus.as_ref();
+        body = body.child("Focus car").child(self.choice(
+            "follow-player",
+            "Follow player",
+            focus.is_none(),
+            Action::Command(Command::Focus(None)),
+            cx,
+        ));
+        if let Some(focus) = focus
+            && !participants.iter().any(|p| &p.identity == focus)
+        {
+            body = body.child(
+                div()
+                    .text_color(theme::muted())
+                    .child("\u{25CF} Car not in session"),
+            );
+        }
+        for p in &participants {
+            let label = format!(
+                "{}{}",
+                car_label(p),
+                if p.retired { " \u{B7} Retired" } else { "" }
+            );
+            body = body.child(self.choice(
+                format!("focus-{}", p.index),
+                &label,
+                focus == Some(&p.identity),
+                Action::Command(Command::Focus(Some(p.identity.clone()))),
+                cx,
+            ));
+        }
+        body
+    }
+
+    fn display_menu(&self, mut body: gpui::Div, cx: &Context<Self>) -> gpui::Div {
+        let units = self.window.choices().units;
+        let set = |next: Units| Action::Command(Command::Units(next));
+        body = body.child("Display units (this window)").child("Speed");
+        for (key, label, value) in [
+            ("kmh", "km/h", SpeedUnit::Kmh),
+            ("mph", "mph", SpeedUnit::Mph),
+        ] {
+            let next = Units {
+                speed: value,
+                ..units
+            };
+            body = body.child(self.choice(key, label, units.speed == value, set(next), cx));
+        }
+        body = body.child("Temperature");
+        for (key, label, value) in [
+            ("c", "\u{B0}C", TemperatureUnit::Celsius),
+            ("f", "\u{B0}F", TemperatureUnit::Fahrenheit),
+        ] {
+            let next = Units {
+                temperature: value,
+                ..units
+            };
+            body = body.child(self.choice(key, label, units.temperature == value, set(next), cx));
+        }
+        body = body.child("Tyre pressure");
+        for (key, label, value) in [
+            ("psi", "psi", PressureUnit::Psi),
+            ("bar", "bar", PressureUnit::Bar),
+        ] {
+            let next = Units {
+                pressure: value,
+                ..units
+            };
+            body = body.child(self.choice(key, label, units.pressure == value, set(next), cx));
+        }
+        body
+    }
+
+    fn add_menu(&self, mut body: gpui::Div, cx: &Context<Self>) -> gpui::Div {
+        body = body.child("Add a tile");
+        for d in tile_catalog::picker() {
+            let mut label = format!("{}  {}\u{D7}{}", d.name, d.default.0, d.default.1);
+            if d.follows_car() {
+                label.push_str(" \u{B7} follows car");
+            }
+            if registry::renderer(d.kind).is_none() {
+                label.push_str(" \u{B7} not yet drawn natively");
+            }
+            body = body.child(self.button(
+                format!("add-{}", d.kind),
+                label,
+                Action::Command(Command::Add(d.kind.into())),
+                cx,
+            ));
+        }
+        body
+    }
+
+    fn settings_menu(&self, mut body: gpui::Div, id: &str, cx: &Context<Self>) -> gpui::Div {
+        let Some(edit) = self.window.controller().edit() else {
+            return body;
+        };
+        let Some(tile) = edit
+            .draft
+            .arrangement(edit.class)
+            .into_iter()
+            .find(|t| t.i == id)
+        else {
+            return body;
+        };
+        let Some(declaration) = tile_catalog::declaration(&tile.kind) else {
+            return body;
+        };
+        body = body.child(format!("{} settings", declaration.name));
+        if declaration.follows_car() {
+            let participants = participants_of(&self.reader.snapshot());
+            let car = car_binding_of(&tile.settings);
+            body = body.child("Follows");
+            for target in CarTarget::ALL {
+                let next = CarBinding {
+                    target,
+                    pin: car.pin.clone(),
+                };
+                body = body.child(self.choice(
+                    format!("target-{}", target.key()),
+                    target.label(),
+                    car.target == target,
+                    Action::Command(Command::Car(id.to_owned(), next)),
+                    cx,
+                ));
+            }
+            if car.target == CarTarget::Pinned {
+                body = body.child("Driver");
+                match &car.pin {
+                    None => {
+                        body = body.child(div().text_color(theme::muted()).child("Choose a driver"))
+                    }
+                    Some(pin) if !participants.iter().any(|p| &p.identity == pin) => {
+                        body = body.child(
+                            div()
+                                .text_color(theme::muted())
+                                .child("\u{25CF} Car not in session"),
+                        );
+                    }
+                    Some(_) => {}
+                }
+                for p in &participants {
+                    let next = CarBinding {
+                        target: CarTarget::Pinned,
+                        pin: Some(p.identity.clone()),
+                    };
+                    body = body.child(self.choice(
+                        format!("pin-{}", p.index),
+                        &car_label(p),
+                        car.pin.as_ref() == Some(&p.identity),
+                        Action::Command(Command::Car(id.to_owned(), next)),
+                        cx,
+                    ));
+                }
+            }
+        }
+        let time_trial = self.time_trial();
+        for field in registry::renderer(&tile.kind).map_or(&[][..], |r| r.settings) {
+            body = body.child(field.label);
+            let saved = tile.settings.get(field.key).and_then(Value::as_str);
+            let selected = saved
+                .filter(|v| field.choices.iter().any(|c| c.value == *v))
+                .unwrap_or(field.default);
+            for choice in field.choices {
+                if choice.time_trial_only && !time_trial && selected != choice.value {
+                    body = body.child(
+                        div()
+                            .text_color(theme::muted())
+                            .px_2()
+                            .child(format!("\u{25CB} {}", choice.label)),
+                    );
+                    continue;
+                }
+                body = body.child(self.choice(
+                    format!("{}-{}", field.key, choice.value),
+                    choice.label,
+                    selected == choice.value,
+                    Action::Command(Command::Setting(
+                        id.to_owned(),
+                        field.key.into(),
+                        json!(choice.value),
+                    )),
+                    cx,
+                ));
+            }
+        }
+        body
+    }
+
+    fn rename_menu(
+        &self,
+        body: gpui::Div,
+        name: &str,
+        input: &NameInput,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
+        let field = div()
+            .p_2()
+            .bg(theme::background())
+            .relative()
+            .id("layout-name-input")
+            .role(gpui::Role::TextInput)
+            .aria_label("Layout name")
+            .aria_value(input.text.clone())
+            .child(format!(
+                "{}\u{2502}{}",
+                &input.text[..input.selection.end],
+                &input.text[input.selection.end..]
+            ))
+            .child({
+                let focus = self.focus_handle.clone();
+                let entity = cx.entity();
+                gpui::canvas(
+                    |_, _, _| (),
+                    move |bounds, _, window, cx| {
+                        window.handle_input(
+                            &focus,
+                            gpui::ElementInputHandler::new(bounds, entity.clone()),
+                            cx,
+                        );
+                    },
+                )
+                .absolute()
+                .inset_0()
+            });
+        body.child("Rename layout")
+            .child(field)
+            .child(
+                div()
+                    .text_color(theme::muted())
+                    .text_size(px(12.0))
+                    .child("Enter renames. Ctrl+A selects all; Ctrl+V pastes."),
+            )
+            .child(self.button(
+                "save-rename",
+                "Rename",
+                Action::Command(Command::Rename(name.to_owned(), input.text.clone())),
+                cx,
+            ))
+    }
+
+    fn menu(&self, cx: &Context<Self>) -> AnyElement {
+        let body = div()
             .flex()
             .flex_col()
             .gap_2()
             .p_3()
-            .w(px(370.0))
+            .w(px(380.0))
             .max_w_full()
-            .max_h(px(600.0))
             .text_size(px(14.0))
             .bg(theme::surface())
             .rounded_md();
-        let participants = participants_of(&self.reader.snapshot());
-        match &self.menu {
+        let body = match &self.menu {
             Menu::Closed => return div().into_any_element(),
-            Menu::Layouts => {
-                body = body.child("Layouts");
-                for (index, layout) in self.model.controller.layouts().iter().enumerate() {
-                    let name = layout.name.clone();
-                    let mut row = div()
-                        .flex()
-                        .flex_wrap()
-                        .gap_1()
-                        .child(self.button(
-                            format!("select-{index}"),
-                            format!("{}{}", name, if layout.preset { " (preset)" } else { "" }),
-                            Action::Command(Command::Select(name.clone())),
-                            cx,
-                        ))
-                        .child(self.button(
-                            format!("copy-{index}"),
-                            "Duplicate",
-                            Action::Command(Command::Duplicate(name.clone())),
-                            cx,
-                        ));
-                    if !layout.preset {
-                        row = row
-                            .child(self.button(
-                                format!("rename-{index}"),
-                                "Rename",
-                                Action::Menu(Menu::Rename {
-                                    name: name.clone(),
-                                    input: NameInput::new(name.clone()),
-                                }),
-                                cx,
-                            ))
-                            .child(self.button(
-                                format!("delete-{index}"),
-                                "Delete",
-                                Action::Menu(Menu::Delete(name)),
-                                cx,
-                            ));
-                    }
-                    body = body.child(row);
-                }
-            }
-            Menu::Focus => {
-                body = body.child("Focus car").child(self.button(
-                    "player",
-                    "Player car",
-                    Action::Command(Command::Focus(None)),
+            Menu::Layouts => self.layouts_menu(body, cx),
+            Menu::Focus => self.focus_menu(body, cx),
+            Menu::Display => self.display_menu(body, cx),
+            Menu::Add => self.add_menu(body, cx),
+            Menu::Settings(id) => self.settings_menu(body, id, cx),
+            Menu::Rename { name, input } => self.rename_menu(body, name, input, cx),
+            Menu::Delete(name) => body
+                .child(format!("Delete \u{201C}{name}\u{201D}?"))
+                .child(self.button(
+                    "confirm-delete",
+                    "Delete",
+                    Action::Command(Command::Delete(name.clone())),
                     cx,
-                ));
-                for p in &participants {
-                    body = body.child(self.button(
-                        format!("focus-{}", p.index),
-                        format!(
-                            "{}{}",
-                            car_label(p),
-                            if p.retired { " · Retired" } else { "" }
-                        ),
-                        Action::Command(Command::Focus(Some(p.identity.clone()))),
-                        cx,
-                    ));
-                }
-            }
-            Menu::Units => {
-                let units = self.model.preferences.units;
-                body = body.child("Display units (this window)");
-                for (key, label, value) in [
-                    ("kmh", "km/h", SpeedUnit::Kmh),
-                    ("mph", "mph", SpeedUnit::Mph),
-                ] {
-                    body = body.child(self.button(
-                        key,
-                        format!("{} {label}", if units.speed == value { "●" } else { "○" }),
-                        Action::Command(Command::Units(pitwall_core::units::Units {
-                            speed: value,
-                            ..units
-                        })),
-                        cx,
-                    ));
-                }
-                for (key, label, value) in [
-                    ("c", "°C", TemperatureUnit::Celsius),
-                    ("f", "°F", TemperatureUnit::Fahrenheit),
-                ] {
-                    body = body.child(self.button(
-                        key,
-                        format!(
-                            "{} {label}",
-                            if units.temperature == value {
-                                "●"
-                            } else {
-                                "○"
-                            }
-                        ),
-                        Action::Command(Command::Units(pitwall_core::units::Units {
-                            temperature: value,
-                            ..units
-                        })),
-                        cx,
-                    ));
-                }
-                for (key, label, value) in [
-                    ("psi", "psi", PressureUnit::Psi),
-                    ("bar", "bar", PressureUnit::Bar),
-                ] {
-                    body = body.child(self.button(
-                        key,
-                        format!(
-                            "{} {label}",
-                            if units.pressure == value {
-                                "●"
-                            } else {
-                                "○"
-                            }
-                        ),
-                        Action::Command(Command::Units(pitwall_core::units::Units {
-                            pressure: value,
-                            ..units
-                        })),
-                        cx,
-                    ));
-                }
-            }
-            Menu::Add => {
-                body = body.child("Add tile");
-                let mut registrations: Vec<_> = registry::ALL.iter().collect();
-                registrations.sort_by_key(|r| r.name);
-                for registration in registrations {
-                    body = if registration.render.is_some() {
-                        body.child(self.button(
-                            registration.kind,
-                            registration.name,
-                            Action::Command(Command::Add(registration.kind.into())),
-                            cx,
-                        ))
-                    } else {
-                        body.child(
-                            div()
-                                .text_color(theme::muted())
-                                .child(format!("{} — not yet ported", registration.name)),
-                        )
-                    };
-                }
-            }
-            Menu::Settings(id) => {
-                if let Some(edit) = self.model.controller.edit()
-                    && let Some(tile) = edit
-                        .draft
-                        .arrangement(edit.class)
-                        .iter()
-                        .find(|t| &t.i == id)
-                    && let Some(registration) =
-                        registry::get(&tile.kind).filter(|r| r.render.is_some())
-                {
-                    body = body.child(format!("{} settings", registration.name));
-                    if registration.follows_car {
-                        let car = car_binding_of(&tile.settings);
-                        body = body.child("Follows");
-                        for (key, label) in [
-                            ("focus", "Focus car"),
-                            ("pinned", "Pinned driver"),
-                            ("car-ahead", "Car ahead"),
-                            ("car-behind", "Car behind"),
-                        ] {
-                            let mut next = tile
-                                .settings
-                                .get("car")
-                                .filter(|v| v.is_object())
-                                .cloned()
-                                .unwrap_or_else(|| json!({}));
-                            next["target"] = json!(key);
-                            let selected = match car.target {
-                                pitwall_core::binding::CarTarget::Focus => "focus",
-                                pitwall_core::binding::CarTarget::Pinned => "pinned",
-                                pitwall_core::binding::CarTarget::CarAhead => "car-ahead",
-                                pitwall_core::binding::CarTarget::CarBehind => "car-behind",
-                            } == key;
-                            body = body.child(self.button(
-                                key,
-                                format!("{} {label}", if selected { "●" } else { "○" }),
-                                Action::Command(Command::Setting(id.clone(), "car".into(), next)),
-                                cx,
-                            ));
-                        }
-                        if car.target == pitwall_core::binding::CarTarget::Pinned {
-                            body = body.child("Driver");
-                            if car.pin.is_none() {
-                                body = body.child("Choose a driver");
-                            }
-                            if car
-                                .pin
-                                .as_ref()
-                                .is_some_and(|pin| !participants.iter().any(|p| &p.identity == pin))
-                            {
-                                body = body.child("Car not in session");
-                            }
-                            for p in &participants {
-                                let mut next = tile
-                                    .settings
-                                    .get("car")
-                                    .filter(|v| v.is_object())
-                                    .cloned()
-                                    .unwrap_or_else(|| json!({}));
-                                next["target"] = json!("pinned");
-                                next["pin"] = json!(p.identity);
-                                body = body.child(self.button(
-                                    format!("pin-{}", p.index),
-                                    format!(
-                                        "{} {}",
-                                        if car.pin.as_ref() == Some(&p.identity) {
-                                            "●"
-                                        } else {
-                                            "○"
-                                        },
-                                        car_label(p)
-                                    ),
-                                    Action::Command(Command::Setting(
-                                        id.clone(),
-                                        "car".into(),
-                                        next,
-                                    )),
-                                    cx,
-                                ));
-                            }
-                        }
-                    }
-                    for field in registration.settings {
-                        body = body.child(field.label);
-                        let selected = tile
-                            .settings
-                            .get(field.key)
-                            .and_then(Value::as_str)
-                            .unwrap_or(field.default);
-                        for &(value, label) in field.choices {
-                            body = body.child(self.button(
-                                format!("{}-{value}", field.key),
-                                format!("{} {label}", if selected == value { "●" } else { "○" }),
-                                Action::Command(Command::Setting(
-                                    id.clone(),
-                                    field.key.into(),
-                                    json!(value),
-                                )),
-                                cx,
-                            ));
-                        }
-                    }
-                }
-            }
-            Menu::Rename { name, input } => {
-                body = body
-                    .child("Rename layout")
-                    .child(
-                        div()
-                            .p_2()
-                            .bg(theme::background())
-                            .text_color(if !input.selection.is_empty() {
-                                theme::personal_best()
-                            } else {
-                                theme::text()
-                            })
-                            .relative()
-                            .id("layout-name-input")
-                            .role(gpui::Role::TextInput)
-                            .aria_label("Layout name")
-                            .aria_value(input.text.clone())
-                            .child(format!(
-                                "{}│{}",
-                                &input.text[..input.selection.end],
-                                &input.text[input.selection.end..]
-                            ))
-                            .child({
-                                let focus = self.focus_handle.clone();
-                                let entity = cx.entity();
-                                gpui::canvas(
-                                    |_, _, _| (),
-                                    move |bounds, _, window, cx| {
-                                        window.handle_input(
-                                            &focus,
-                                            gpui::ElementInputHandler::new(bounds, entity.clone()),
-                                            cx,
-                                        );
-                                    },
-                                )
-                                .absolute()
-                                .inset_0()
-                            }),
-                    )
-                    .child("Type a name, then Enter. Ctrl+A selects all; Ctrl+V pastes.")
-                    .child(self.button(
-                        "save-rename",
-                        "Rename",
-                        Action::Command(Command::Rename(name.clone(), input.text.clone())),
-                        cx,
-                    ));
-            }
-            Menu::Delete(name) => {
-                body = body
-                    .child(format!("Delete “{name}”?"))
-                    .child(self.button(
-                        "confirm-delete",
-                        "Delete",
-                        Action::Command(Command::Delete(name.clone())),
-                        cx,
-                    ))
-                    .child(self.button("keep", "Keep", Action::Close, cx));
-            }
-        }
-        body = body.child(self.button("close-menu", "Close", Action::Close, cx));
+                ))
+                .child(self.button("keep", "Keep", Action::Close, cx)),
+        };
+        let close = if matches!(self.menu, Menu::Delete(_)) {
+            None
+        } else {
+            Some(self.button("close-menu", "Close", Action::Close, cx))
+        };
         div()
             .id("dashboard-menu")
             .absolute()
@@ -563,30 +633,127 @@ impl Dashboard {
             .justify_center()
             .items_center()
             .bg(gpui::rgba(0x00000099))
+            // Pressing the scrim closes, like the web dialog.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.menu = Menu::Closed;
+                    cx.notify();
+                }),
+            )
             .child(
                 div()
                     .id("menu-scroll")
                     .max_h_full()
                     .overflow_y_scroll()
-                    .child(body),
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(body.children(close)),
             )
             .into_any_element()
     }
+
+    /// The edit handles laid over one tile: grip, settings, remove and resize corner.
+    fn edit_handles(
+        &self,
+        tile: &Tile,
+        tiles: &[Tile],
+        geometry: GridGeometry,
+        cx: &Context<Self>,
+    ) -> [AnyElement; 3] {
+        let declaration = tile_catalog::declaration(&tile.kind);
+        let minimum = declaration.map_or((1, 1), |d| d.minimum);
+        let start = |gesture: Gesture| {
+            let id = tile.i.clone();
+            let tiles = tiles.to_vec();
+            cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                this.drag = Some(Drag {
+                    id: id.clone(),
+                    origin: (event.position.x.into(), event.position.y.into()),
+                    tiles: tiles.clone(),
+                    geometry,
+                    gesture,
+                    minimum,
+                });
+                cx.stop_propagation();
+                cx.notify();
+            })
+        };
+        let name = declaration.map_or(tile.kind.as_str(), |d| d.name);
+        let grip = div()
+            .id(SharedString::from(format!("grip-{}", tile.i)))
+            .role(gpui::Role::Button)
+            .aria_label(SharedString::from(format!("Move {name}")))
+            .absolute()
+            .top_0()
+            .left_0()
+            .w(px(EDIT_HANDLE))
+            .h(px(TILE_HEADER))
+            .cursor_move()
+            .bg(theme::meter_empty())
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_size(px(14.0))
+            .child("\u{2725}")
+            .on_mouse_down(MouseButton::Left, start(Gesture::Move))
+            .into_any_element();
+        let mut actions = div().absolute().top_0().right_0().flex().gap_1().p(px(2.0));
+        // Unknown types keep their data but have no settings.
+        if declaration.is_some() {
+            actions = actions.child(self.icon_button(
+                format!("settings-{}", tile.i),
+                "\u{2699}",
+                format!("Settings for {name}"),
+                Action::Open(Menu::Settings(tile.i.clone())),
+                cx,
+            ));
+        }
+        actions = actions.child(self.icon_button(
+            format!("remove-{}", tile.i),
+            "\u{D7}",
+            format!("Remove {name}"),
+            Action::Command(Command::RemoveTile(tile.i.clone())),
+            cx,
+        ));
+        let resize = div()
+            .id(SharedString::from(format!("resize-{}", tile.i)))
+            .absolute()
+            .bottom_0()
+            .right_0()
+            .w(px(24.0))
+            .h(px(24.0))
+            .text_size(px(18.0))
+            .cursor_nwse_resize()
+            .child("\u{25E2}")
+            .on_mouse_down(MouseButton::Left, start(Gesture::Resize))
+            .into_any_element();
+        [grip, actions.into_any_element(), resize]
+    }
 }
 
+/// Check for new data once per display frame. gpui keeps calling back while the window
+/// lives; nothing is rendered unless something moved.
 fn poll(view: WeakEntity<Dashboard>, window: &mut Window) {
     window.on_next_frame(move |window, cx| {
-        if view
+        let alive = view
             .update(cx, |this, cx| {
                 if this.changed() {
                     cx.notify();
                 }
             })
-            .is_ok()
-        {
+            .is_ok();
+        if alive {
             poll(view, window);
         }
     });
+}
+
+fn class_name(class: ScreenClass) -> &'static str {
+    match class {
+        ScreenClass::Wide => "wide",
+        ScreenClass::Tablet => "tablet",
+        ScreenClass::Phone => "phone",
+    }
 }
 
 impl Render for Dashboard {
@@ -597,114 +764,231 @@ impl Render for Dashboard {
         self.drawn = (
             fast.generation,
             snap.generation,
-            self.model.controller.version(),
+            self.window.controller().version(),
         );
         let viewport = window.viewport_size();
         let (width, height) = (f32::from(viewport.width), f32::from(viewport.height));
-        let editing = self.model.controller.is_editing();
+        let editing = self.window.controller().is_editing();
         let class = self
-            .model
-            .controller
+            .window
+            .controller()
             .edit()
             .map_or_else(|| screen::screen_class_of(width), |e| e.class);
-        let tiles = self.model.tiles(class);
+        let tiles = self.window.tiles(class);
+        let banner = match snap.lifecycle() {
+            Lifecycle::Waiting => Some("Waiting for the game"),
+            Lifecycle::Lost => Some("No data: game paused or closed"),
+            Lifecycle::Live | Lifecycle::Ended => None,
+        };
+        // Rows share the height left under the chrome outside edit mode (GRID-01); while
+        // editing they keep their height so tiles do not jump.
+        let shown = shown_tiles(&tiles, editing);
+        let grid_width = (width - 2.0 * PAGE_PADDING - screen::SCROLLBAR).max(1.0);
+        if !editing {
+            let chrome_height = self.chrome_estimate(banner.is_some());
+            let available =
+                (height - chrome_height - SHORT_LINE_HEIGHT - 2.0 * PAGE_PADDING).max(0.0);
+            self.row_height = screen::fit_row_height(
+                &shown.iter().map(|t| (t.y, t.h)).collect::<Vec<_>>(),
+                available,
+            );
+        }
+        let controller = self.window.controller();
         let participants = participants_of(&snap);
+        let choices = self.window.choices();
         let context = BindingContext {
             participants: &participants,
             player_car: snap.player_car_index(),
-            focus: self.model.preferences.focus.as_ref(),
+            focus: choices.focus.as_ref(),
         };
-        let focus = resolve_focus(&context);
-        let focused = focus
+        let focused = resolve_focus(&context)
             .index()
             .and_then(|i| participants.iter().find(|p| p.index == i))
             .map(car_label);
-        let focus_text = match (self.model.preferences.focus.is_some(), focused) {
+        let focus_text = match (choices.focus.is_some(), focused) {
             (false, Some(label)) => format!("Focus: player ({label})"),
             (false, None) => "Focus: player".into(),
             (true, Some(label)) => format!("Focus: {label}"),
             (true, None) => "Focus: car not in session".into(),
         };
-        let header_height = if width < 768.0 {
-            112.0
-        } else if width < 1280.0 {
-            76.0
+        let time_trial = snap
+            .session()
+            .value()
+            .is_some_and(|s| s.session_type == TIME_TRIAL);
+
+        // Chrome, top to bottom. The row height fills what is left (GRID-01).
+        let mut chrome = div().flex().flex_col().flex_shrink_0();
+        let layout_name = self.window.current_name().unwrap_or("No layout").to_owned();
+        let mut header = div()
+            .flex()
+            .flex_wrap()
+            .gap_2()
+            .items_center()
+            .px_2()
+            .py_1()
+            .text_size(px(13.0))
+            .child(div().font_weight(FontWeight::SEMIBOLD).child("pitwall"))
+            .child(div().text_color(theme::muted()).child(self.source.clone()));
+        if editing {
+            header = header
+                .child(div().child(layout_name))
+                .child(self.button("add-tile", "Add tile", Action::Open(Menu::Add), cx))
+                .child(self.button("done", "Done", Action::Command(Command::Done), cx))
+                .child(self.button("cancel", "Cancel", Action::Command(Command::Cancel), cx));
         } else {
-            44.0
-        };
-        let banner = match snap.lifecycle() {
-            Lifecycle::Waiting => Some("Waiting for the game"),
-            Lifecycle::Lost => Some("No data: game paused or closed"),
-            _ => None,
-        };
-        let banner_height = if banner.is_some() { 52.0 } else { 0.0 };
-        let notice_height = self.model.controller.notices().len() as f32 * 36.0
-            + if self.model.error.is_some() {
-                48.0
-            } else {
-                0.0
-            };
-        let edit_height = if editing { 68.0 } else { 0.0 };
-        let available = (height
-            - header_height
-            - banner_height
-            - notice_height
-            - edit_height
-            - 30.0
-            - 2.0 * PAGE_PADDING)
-            .max(0.0);
-        let last_row = tiles.iter().map(|t| t.y + t.h).max().unwrap_or(0);
-        let notice_only = tiles
-            .iter()
-            .filter(|t| t.y + t.h == last_row)
-            .all(|t| t.kind == "notice" && t.h == 1);
-        let visible: Vec<_> = tiles
-            .iter()
-            .filter(|t| {
-                editing
-                    || tiles.len() <= 1
-                    || !notice_only
-                    || t.kind != "notice"
-                    || t.y + t.h < last_row
-            })
-            .collect();
-        if !editing {
-            self.row_height = screen::fit_row_height(
-                &visible.iter().map(|t| (t.y, t.h)).collect::<Vec<_>>(),
-                available,
+            header = header
+                .child(self.button(
+                    "layout-picker",
+                    format!("Layout: {layout_name}"),
+                    Action::Open(Menu::Layouts),
+                    cx,
+                ))
+                .child(self.button("edit", "Edit", Action::Command(Command::Edit(class)), cx));
+        }
+        header = header
+            .child(self.button("focus-picker", focus_text, Action::Open(Menu::Focus), cx))
+            .child(self.button("display-menu", "Display", Action::Open(Menu::Display), cx));
+        chrome = chrome.child(header);
+        if let Some(banner) = banner {
+            chrome = chrome.child(
+                div()
+                    .px_2()
+                    .py_1()
+                    .text_size(px(13.0))
+                    .child(banner)
+                    .child(div().text_color(theme::muted()).child(UDP_HINT)),
             );
         }
-        let geometry = GridGeometry::new(
-            class,
-            (width - 2.0 * PAGE_PADDING - screen::SCROLLBAR).max(1.0),
-            self.row_height,
-        );
-        let grid_height = visible
-            .iter()
-            .map(|t| {
-                let (_, y, _, h) = geometry.rect(t);
-                y + h
-            })
-            .fold(0.0, f32::max);
-        let mut grid = div().relative().w(px(geometry.width)).h(px(grid_height));
-        for tile in visible {
-            let registration = registry::get(&tile.kind);
-            let name = registration
-                .map_or(tile.kind.as_str(), |r| r.name)
+        if let Some(edit) = controller.edit() {
+            let what = if edit.base_preset && edit.dirty {
+                format!(
+                    "Presets are read-only: Done saves your changes as \u{201C}{}\u{201D}.",
+                    edit.target_name
+                )
+            } else {
+                "Done saves; Cancel discards every change.".into()
+            };
+            chrome = chrome.child(
+                div()
+                    .px_2()
+                    .py_1()
+                    .text_size(px(13.0))
+                    .child(format!(
+                        "Editing the {} arrangement (windows {}). {what}",
+                        class_name(edit.class),
+                        match edit.class {
+                            ScreenClass::Wide => "1280 px and wider",
+                            ScreenClass::Tablet => "768\u{2013}1279 px",
+                            ScreenClass::Phone => "under 768 px",
+                        }
+                    ))
+                    .children(edit.error.as_ref().map(|e| {
+                        div()
+                            .text_color(theme::hot())
+                            .child(format!("Could not save: {e}"))
+                    })),
+            );
+        }
+        for notice in controller.notices() {
+            chrome = chrome.child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .items_center()
+                    .px_2()
+                    .py_1()
+                    .text_size(px(13.0))
+                    .child(notice.text.clone())
+                    .child(self.button(
+                        format!("dismiss-{}", notice.id),
+                        "Dismiss",
+                        Action::Command(Command::Dismiss(notice.id)),
+                        cx,
+                    )),
+            );
+        }
+        if let Some(error) = self.window.error() {
+            chrome = chrome.child(
+                div()
+                    .px_2()
+                    .py_1()
+                    .text_size(px(13.0))
+                    .text_color(theme::hot())
+                    .child(error.to_owned()),
+            );
+        }
+        if controller.status() == Status::Error {
+            chrome = chrome.child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .px_2()
+                    .py_1()
+                    .child("Could not load layouts.")
+                    .child(self.button(
+                        "retry-layouts",
+                        "Try again",
+                        Action::Command(Command::Retry),
+                        cx,
+                    )),
+            );
+        }
+
+        let geometry = GridGeometry::new(class, grid_width, self.row_height);
+        let mut grid = div()
+            .relative()
+            .w(px(grid_width))
+            .h(px(geometry.height(shown.iter().copied())));
+        for tile in shown.iter().copied() {
+            let declaration = tile_catalog::declaration(&tile.kind);
+            let renderer = registry::renderer(&tile.kind);
+            let name = renderer
+                .map(|r| r.name)
+                .or(declaration.map(|d| d.name))
+                .unwrap_or(tile.kind.as_str())
                 .to_owned();
             let (x, y, w, h) = geometry.rect(tile);
+            let follows = declaration.is_some_and(|d| d.follows_car());
             let binding = car_binding_of(&tile.settings);
             let resolved = resolve_binding(&binding, &context);
             let mut head = div()
                 .flex()
                 .justify_between()
                 .items_center()
+                .gap_2()
                 .h(px(TILE_HEADER))
                 .px_2()
+                .when(editing, |head| {
+                    head.pl(px(EDIT_HANDLE + 6.0)).pr(px(EDIT_ACTIONS))
+                })
+                .overflow_hidden()
+                .whitespace_nowrap()
                 .text_size(px(12.0))
                 .text_color(theme::muted())
                 .child(name.clone());
-            if registration.is_some_and(|r| r.follows_car)
+            if tile.kind == "lap-timing" {
+                let label = format!(
+                    "Compare: {}",
+                    lap_timing::LapReference::of(&tile.settings).label()
+                );
+                head = head.child(if editing {
+                    let mut next = tile.settings.clone();
+                    lap_timing::LapReference::cycle(&mut next, time_trial);
+                    self.button(
+                        format!("reference-{}", tile.i),
+                        label,
+                        Action::Command(Command::Setting(
+                            tile.i.clone(),
+                            "reference".into(),
+                            next["reference"].clone(),
+                        )),
+                        cx,
+                    )
+                } else {
+                    div().child(label).into_any_element()
+                });
+            }
+            if follows
                 && let Some(p) = resolved
                     .index()
                     .and_then(|i| participants.iter().find(|p| p.index == i))
@@ -713,42 +997,35 @@ impl Render for Dashboard {
                     "{}{}",
                     car_label(p),
                     if matches!(resolved, ResolvedCar::Retired(_)) {
-                        " · Retired"
+                        " \u{B7} Retired"
                     } else {
                         ""
                     }
                 ));
             }
-            let content = match registration.and_then(|r| r.render) {
-                None => div()
+            let message = |text: String| {
+                div()
                     .p_3()
                     .text_size(px(14.0))
                     .text_color(theme::muted())
-                    .child(format!(
-                        "{name}: {}. Saved settings are retained.",
-                        if registration.is_some() {
-                            "not yet ported"
-                        } else {
-                            "unknown tile type"
-                        }
-                    ))
-                    .into_any_element(),
-                Some(render) => {
-                    match registration
-                        .filter(|r| r.follows_car)
-                        .and_then(|_| missing_car_message(&binding, resolved))
-                    {
-                        Some(message) => div()
-                            .p_3()
-                            .text_color(theme::muted())
-                            .child(message)
-                            .into_any_element(),
-                        None => render(&registry::TileInputs {
+                    .child(text)
+                    .into_any_element()
+            };
+            let content = match (declaration, renderer) {
+                (None, _) => message(format!(
+                    "Unknown tile type \u{201C}{}\u{201D}. Its place and settings are kept.",
+                    tile.kind
+                )),
+                (Some(_), None) => message(format!("{name} is not yet drawn natively.")),
+                (Some(_), Some(renderer)) => {
+                    match missing_car_message(&binding, resolved).filter(|_| follows) {
+                        Some(text) => message(text.to_owned()),
+                        None => (renderer.render)(&registry::TileInputs {
                             tile,
                             snapshot: &snap,
                             fast: &fast,
                             car: resolved,
-                            units: self.model.preferences.units,
+                            units: choices.units,
                             size: (w, (h - TILE_HEADER).max(0.0)),
                         }),
                     }
@@ -769,119 +1046,12 @@ impl Render for Dashboard {
                 .child(head)
                 .child(div().flex_1().min_h_0().overflow_hidden().child(content));
             if editing {
-                let id = tile.i.clone();
-                let original = tiles.clone();
-                let minimum = registration.map_or((1, 1), |r| r.minimum);
-                let grip = div()
-                    .id(SharedString::from(format!("grip-{id}")))
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .right_0()
-                    .h(px(TILE_HEADER))
-                    .cursor_pointer()
-                    .bg(gpui::rgba(0x00000099))
-                    .px_2()
-                    .text_size(px(13.0))
-                    .child("↔ Drag")
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
-                            this.gesture = Some(Gesture {
-                                id: id.clone(),
-                                origin: (event.position.x.into(), event.position.y.into()),
-                                tiles: original.clone(),
-                                geometry,
-                                resize: false,
-                                minimum,
-                            });
-                            cx.stop_propagation();
-                            cx.notify();
-                        }),
-                    );
-                let mut actions = div().absolute().top_0().right_0().flex().gap_1();
-                if registration.is_some_and(|r| r.render.is_some()) {
-                    actions = actions.child(self.button(
-                        format!("settings-{}", tile.i),
-                        "Settings",
-                        Action::Menu(Menu::Settings(tile.i.clone())),
-                        cx,
-                    ));
-                }
-                actions = actions.child(self.button(
-                    format!("remove-{}", tile.i),
-                    "×",
-                    Action::Command(Command::RemoveTile(tile.i.clone())),
-                    cx,
-                ));
-                let id = tile.i.clone();
-                let original = tiles.clone();
-                let resize = div()
-                    .id(SharedString::from(format!("resize-{id}")))
-                    .absolute()
-                    .bottom_0()
-                    .right_0()
-                    .w(px(28.0))
-                    .h(px(28.0))
-                    .text_size(px(20.0))
-                    .cursor_pointer()
-                    .child("◢")
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
-                            this.gesture = Some(Gesture {
-                                id: id.clone(),
-                                origin: (event.position.x.into(), event.position.y.into()),
-                                tiles: original.clone(),
-                                geometry,
-                                resize: true,
-                                minimum,
-                            });
-                            cx.stop_propagation();
-                            cx.notify();
-                        }),
-                    );
-                cell = cell.child(grip).child(actions).child(resize);
+                cell = cell.children(self.edit_handles(tile, &tiles, geometry, cx));
             }
             grid = grid.child(cell);
         }
-        let layout_name = self
-            .model
-            .controller
-            .edit()
-            .map(|e| e.target_name.as_str())
-            .or_else(|| self.model.controller.current().map(|l| l.name.as_str()))
-            .unwrap_or("No layout");
-        let mut header = div()
-            .flex()
-            .flex_wrap()
-            .gap_2()
-            .items_center()
-            .h(px(header_height))
-            .px_2()
-            .flex_shrink_0()
-            .text_size(px(13.0))
-            .child("pitwall")
-            .child(self.source.clone())
-            .child(self.button("focus-picker", focus_text, Action::Menu(Menu::Focus), cx))
-            .child(self.button("display-menu", "Display", Action::Menu(Menu::Units), cx));
-        if editing {
-            header = header
-                .child(div().child(layout_name.to_owned()))
-                .child(self.button("add-tile", "Add tile", Action::Menu(Menu::Add), cx))
-                .child(self.button("done", "Done", Action::Command(Command::Done), cx))
-                .child(self.button("cancel", "Cancel", Action::Command(Command::Cancel), cx));
-        } else {
-            header = header
-                .child(self.button(
-                    "layout-picker",
-                    layout_name.to_owned(),
-                    Action::Menu(Menu::Layouts),
-                    cx,
-                ))
-                .child(self.button("edit", "Edit", Action::BeginEdit(class), cx));
-        }
-        let mut root = div()
+
+        div()
             .id("dashboard")
             .relative()
             .track_focus(&self.focus_handle)
@@ -891,144 +1061,85 @@ impl Render for Dashboard {
             .bg(theme::background())
             .text_color(theme::text())
             .font_family(theme::FONT)
-            .child(header);
-        if let Some(banner) = banner {
-            root = root.child(
+            .child(chrome)
+            .child(
                 div()
-                    .h(px(banner_height))
+                    .id("grid-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p(px(PAGE_PADDING))
+                    .child(grid),
+            )
+            .child(
+                div()
+                    .h(px(SHORT_LINE_HEIGHT))
                     .flex_shrink_0()
                     .px_2()
-                    .text_size(px(13.0))
-                    .child(banner)
-                    .child(div().text_color(theme::muted()).child(UDP_HINT)),
-            );
-        }
-        if let Some(edit) = self.model.controller.edit() {
-            root = root.child(
-                div()
-                    .h(px(edit_height))
-                    .flex_shrink_0()
-                    .px_2()
-                    .text_size(px(13.0))
-                    .child(format!(
-                        "Editing {class:?} arrangement. {}",
-                        if edit.base_preset {
-                            format!("Read-only preset. Done saves as “{}”.", edit.target_name)
-                        } else {
-                            "Done saves changes. Cancel discards them.".into()
-                        }
-                    ))
-                    .children(edit.error.as_ref().map(|e| {
-                        div()
-                            .text_color(theme::hot())
-                            .child(format!("Could not save: {e}"))
-                    })),
-            );
-        }
-        for notice in self.model.controller.notices() {
-            root = root.child(
-                div()
-                    .h(px(36.0))
-                    .flex_shrink_0()
-                    .flex()
-                    .gap_2()
-                    .px_2()
-                    .text_size(px(13.0))
-                    .child(notice.text.clone())
-                    .child(self.button(
-                        format!("dismiss-{}", notice.id),
-                        "Dismiss",
-                        Action::Command(Command::Dismiss(notice.id)),
-                        cx,
-                    )),
-            );
-        }
-        if let Some(error) = &self.model.error {
-            root = root.child(
-                div()
-                    .h(px(48.0))
-                    .flex_shrink_0()
-                    .text_size(px(13.0))
-                    .text_color(theme::hot())
-                    .child(error.clone())
-                    .child(self.button(
-                        "retry-preferences",
-                        "Retry",
-                        Action::Command(Command::Retry),
-                        cx,
-                    )),
-            );
-        }
-        if self.model.controller.status() == Status::Error {
-            root = root.child(div().child("Could not load layouts.").child(self.button(
-                "retry-layouts",
-                "Try again",
-                Action::Command(Command::Retry),
-                cx,
-            )));
-        }
-        root.child(
-            div()
-                .id("grid-scroll")
-                .flex_1()
-                .min_h_0()
-                .overflow_y_scroll()
-                .p(px(PAGE_PADDING))
-                .child(grid),
-        )
-        .child(
-            div()
-                .h(px(30.0))
-                .flex_shrink_0()
-                .px_2()
-                .text_size(px(11.0))
-                .text_color(theme::muted())
-                .child(SHORT_LINE),
-        )
-        .child(self.menu(cx))
-        .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
-            if let Some(gesture) = &this.gesture {
-                if !event.pressed_button.is_some_and(|b| b == MouseButton::Left) {
-                    this.gesture = None;
+                    .text_size(px(11.0))
+                    .text_color(theme::muted())
+                    .child(SHORT_LINE),
+            )
+            .child(self.menu(cx))
+            .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
+                let Some(drag) = &this.drag else { return };
+                if event.pressed_button != Some(MouseButton::Left) {
+                    this.drag = None;
                     return;
                 }
                 let delta = (
-                    f32::from(event.position.x) - gesture.origin.0,
-                    f32::from(event.position.y) - gesture.origin.1,
+                    f32::from(event.position.x) - drag.origin.0,
+                    f32::from(event.position.y) - drag.origin.1,
                 );
-                let items = gesture.geometry.change(
-                    &gesture.tiles,
-                    &gesture.id,
-                    delta,
-                    gesture.resize,
-                    gesture.minimum,
-                );
-                this.model.execute(Command::MoveResize(items));
+                let items =
+                    drag.geometry
+                        .drag(&drag.tiles, &drag.id, delta, drag.gesture, drag.minimum);
+                this.window.apply(Command::MoveResize(items));
                 cx.notify();
-            }
-        }))
-        .on_mouse_up(
-            MouseButton::Left,
-            cx.listener(|this, _, _, cx| {
-                this.gesture = None;
-                cx.notify();
-            }),
-        )
-        .on_mouse_up_out(
-            MouseButton::Left,
-            cx.listener(|this, _, _, cx| {
-                this.gesture = None;
-                cx.notify();
-            }),
-        )
-        .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
-            if event.keystroke.key == "escape" {
-                this.menu = Menu::Closed;
-                this.gesture = None;
-                cx.notify();
-                return;
-            }
-            this.handle_name_key(event, window, cx);
-        }))
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.drag = None;
+                    cx.notify();
+                }),
+            )
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.drag = None;
+                    cx.notify();
+                }),
+            )
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                if event.keystroke.key == "escape" {
+                    this.menu = Menu::Closed;
+                    this.drag = None;
+                    cx.notify();
+                    return;
+                }
+                this.handle_name_key(event, window, cx);
+            }))
+    }
+}
+
+impl Dashboard {
+    /// Height of the chrome above the grid, estimated from what it shows; rows only
+    /// need it to decide how much space to share.
+    fn chrome_estimate(&self, banner: bool) -> f32 {
+        const LINE: f32 = 30.0;
+        let controller = self.window.controller();
+        let mut lines = 1.0;
+        if banner {
+            lines += 2.0;
+        }
+        lines += controller.notices().len() as f32;
+        if self.window.error().is_some() {
+            lines += 1.0;
+        }
+        if controller.status() == Status::Error {
+            lines += 1.0;
+        }
+        lines * LINE + 8.0
     }
 }
