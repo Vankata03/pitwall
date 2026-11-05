@@ -274,7 +274,6 @@ pub fn run_at(
                     );
                     eprintln!("Config reload rejected; keeping active settings: {message}");
                     control.state.lock().unwrap().line = message.clone();
-                    #[cfg(any(windows, target_os = "macos"))]
                     if !cli.console {
                         let _ = notify_rust::Notification::new()
                             .summary("pitwall settings rejected")

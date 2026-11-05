@@ -39,20 +39,17 @@ yet. The dashboard test renders React locally and downloads no browser.
 
 ## Paths and platforms
 
-`AppPaths::resolve()` uses the OS per-user data directory:
-
-- Windows: `%APPDATA%\pitwall`
-- macOS: `~/Library/Application Support/pitwall`
+`AppPaths::resolve()` uses the per-user data directory `%APPDATA%\pitwall`.
 
 It resolves `config.toml`, `layouts.json`, `recordings/`, `tracks/`, `liveries/`
 and `logs/` under that root without creating them. `AppPaths::from_data_dir()`
 accepts an isolated data directory for callers and tests.
 
-Release targets are `x86_64-pc-windows-msvc` and `aarch64-apple-darwin`.
-CI runs tests and release builds on Windows for every pull request, and on
-macOS arm64 for pushes to `main`. Dependency fetching is a separate setup step;
-collector tests and builds use Cargo's offline mode. An arm64 Mac can verify
-its native target locally; Windows execution requires the Windows CI runner.
+pitwall supports Windows only (ADR 0005). The single release target is
+`x86_64-pc-windows-msvc`. CI runs `cargo test --workspace`, clippy and the
+release build on `windows-latest` for every pull request and every push to
+`main`. Dependency fetching is a separate setup step; collector tests and builds
+use Cargo's offline mode.
 
 ## Track maps
 

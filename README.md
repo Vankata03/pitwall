@@ -17,19 +17,17 @@ to any browser on your LAN. It is free and private, and you don't need to instal
 
 ## Install
 
-1. Download the portable build: `pitwall.exe` (Windows x64) or `pitwall` (macOS arm64).
+1. Download the portable Windows x64 build, `pitwall.exe`.
 2. Put it in a folder you control, together with `THIRD-PARTY-NOTICES.md`.
-3. Run it. A tray or menu-bar icon appears, and the dashboard opens in your browser on the
-   first run.
+3. Run it. A tray icon appears, and the dashboard opens in your browser on the first run.
 
-The binaries are unsigned, so the OS may warn you the first time. Only continue for a build
+The binary is unsigned, so Windows may warn you the first time. Only continue for a build
 you trust.
 
 | Platform | Prompt | What to do |
 | --- | --- | --- |
 | Windows | SmartScreen | **More info → Run anyway** |
 | Windows | Firewall | Allow access on **Private** networks (needed for other screens and game telemetry) |
-| macOS | Gatekeeper | **System Settings → Privacy & Security → Open Anyway** |
 
 ## Set up the game
 
@@ -46,7 +44,6 @@ In the game, open **Settings → Telemetry Settings** and set:
 | UDP Send Rate | 60 Hz |
 | UDP IP Address | `127.0.0.1` on the same PC, otherwise the collector PC's LAN IP |
 
-The macOS build needs the game on another machine for live data, or a recording to replay.
 If another app also needs the game's stream, use broadcast mode or pitwall's UDP
 forwarding.
 
@@ -126,13 +123,13 @@ output file must be new, and the source capture is left unchanged.
 **Settings** in the tray menu opens `/status`, where you can edit settings. UDP and forwarding
 changes apply live. Changing the HTTP address restarts the listener and disconnects screens.
 
-Data folder: `%APPDATA%\pitwall` on Windows, `~/Library/Application Support/pitwall` on macOS.
+Data folder: `%APPDATA%\pitwall`.
 
 | Path | Contents |
 | --- | --- |
 | `config.toml` | Settings (opened for editing if startup fails) |
 | `layouts.json` | Saved layouts |
-| `overlay.json` | In-game overlay on/off, position and size (Windows) |
+| `overlay.json` | In-game overlay on/off, position and size |
 | `webview/` | WebView2 data for the in-game overlay (Windows) |
 | `recordings/` | `.pitrec` sessions |
 | `liveries/` | Your livery images |

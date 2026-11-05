@@ -1,4 +1,4 @@
-#![cfg_attr(windows, windows_subsystem = "windows")]
+#![windows_subsystem = "windows"]
 use pitwall_collector::{
     assets::dashboard_asset,
     ingest::config::{Cli, HELP},
@@ -7,7 +7,6 @@ use pitwall_collector::{
 
 fn main() -> std::io::Result<()> {
     let cli = Cli::parse(std::env::args_os().skip(1)).map_err(std::io::Error::other)?;
-    #[cfg(windows)]
     if cli.console || cli.help {
         #[link(name = "kernel32")]
         unsafe extern "system" {
