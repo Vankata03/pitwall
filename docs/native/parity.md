@@ -387,7 +387,7 @@ library, and the gpui chrome and grid in `crates/app/src/dashboard.rs`. Tests:
 | TILE-01, BIND-01 | `window.rs`, `layout_edit.rs`, `binding.rs` (#67), `tile_catalog.rs` |
 
 A manual check on 2026-11-06 ran the debug build on a recording with an isolated data
-folder (`PITWALL_DATA_DIR`): Edit on Pitwall Classic, a grip move, a corner resize, Add
+folder: Edit on Pitwall Classic, a grip move, a corner resize, Add
 tile, the tile settings dialog (car target and reference lap with the Time Trial choices
 disabled), Done saving "Pitwall Classic copy" and remembering it, and a 900 px window
 drawing the tablet arrangement. Rename, delete, the Display and focus menus were not

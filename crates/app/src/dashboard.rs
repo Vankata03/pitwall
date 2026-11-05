@@ -28,7 +28,6 @@ use pitwall_core::{
         BindingContext, CarBinding, CarTarget, ResolvedCar, car_binding_of, car_label,
         missing_car_message, participants_of, resolve_binding, resolve_focus,
     },
-    data::DataFolder,
     feed::Reader,
     layout_edit::{
         ControllerOptions, Status,
@@ -43,6 +42,8 @@ use pitwall_core::{
     window::{Command, DashboardWindow, WindowChoices, WindowSetup, choices_path},
 };
 use serde_json::{Value, json};
+
+use pitwall_native::desktop;
 
 use crate::{theme, tiles::lap_timing};
 
@@ -115,65 +116,46 @@ pub struct Dashboard {
     stats: Arc<Stats>,
 }
 
-/// Open the data folder and the main window's choices. Unreadable files are kept as
-/// `.bad` by the core and reported here. `PITWALL_DATA_DIR` points a developer run at
-/// another data folder (`<dir>/pitwall`) instead of the user's.
-fn open_setup() -> std::io::Result<(WindowSetup, Option<String>)> {
-    let dir = std::env::var_os("PITWALL_DATA_DIR").map(std::path::PathBuf::from);
-    let paths = AppPaths::resolve_or(dir.as_deref())?;
-    let data = DataFolder::open(paths, &Default::default())?;
-    let path = choices_path(&data.paths.root, MAIN_WINDOW);
-    let (choices, bad) = WindowChoices::load(&path)?;
-    let note = bad.map(|kept| {
-        format!(
-            "This window's saved choices could not be read; kept as {} and started with the defaults.",
-            kept.display()
-        )
-    });
-    Ok((
-        WindowSetup {
-            library: data.layouts,
-            choices,
-            path: Some(path),
-            options: ControllerOptions::default(),
-        },
-        note,
-    ))
-}
-
 impl Dashboard {
-    /// Open the main window over the per-user data folder. When the folder cannot be
-    /// opened the window still works on an empty temporary library and says why.
+    /// Open the main dashboard window over the host's layout library (`DataFolder`'s,
+    /// shared by every window) with the choices saved under `paths.root`. An unreadable
+    /// choices file is kept as `.bad`, logged and shown; the window starts at defaults.
     pub fn new(
         reader: Reader,
         source: String,
         stats: Arc<Stats>,
+        library: LayoutLibrary,
+        paths: &AppPaths,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let (setup, note) = match open_setup() {
-            Ok(opened) => opened,
-            Err(error) => {
-                let path = std::env::temp_dir()
-                    .join(format!("pitwall-recovery-{}", std::process::id()))
-                    .join("layouts.json");
-                let library = LayoutLibrary::open(path).expect("a missing file opens empty");
-                (
-                    WindowSetup {
-                        library,
-                        choices: WindowChoices::default(),
-                        path: None,
-                        options: ControllerOptions::default(),
-                    },
-                    Some(format!(
-                        "Could not open the pitwall data folder ({error}). Layout changes are not saved this run."
-                    )),
-                )
-            }
+        let path = choices_path(&paths.root, MAIN_WINDOW);
+        let (choices, note) = match WindowChoices::load(&path) {
+            Ok((choices, bad)) => (
+                choices,
+                bad.map(|kept| {
+                    format!(
+                        "This window's saved choices could not be read; kept as {} and started with the defaults.",
+                        kept.display()
+                    )
+                }),
+            ),
+            Err(error) => (
+                WindowChoices::default(),
+                Some(format!(
+                    "Could not read this window's saved choices ({error}); started with the defaults."
+                )),
+            ),
         };
         if let Some(note) = &note {
-            eprintln!("pitwall-native: {note}");
+            desktop::log(paths, note);
         }
+        let setup = WindowSetup {
+            library,
+            choices,
+            path: Some(path),
+            options: ControllerOptions::default(),
+        };
         let mut this = Self::with_setup(reader, source, stats, setup, window, cx);
         if note.is_some() {
             this.window.set_error(note);
