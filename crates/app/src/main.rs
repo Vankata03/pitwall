@@ -21,7 +21,7 @@ use gpui::{App, AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use pitwall_core::{data::DataFolder, feed::Reader, paths::AppPaths};
 use pitwall_native::{
     desktop::{self, FirstRun, Instance, Launch},
-    host::{Command, Control, Runtime},
+    host::{Command, Control, Desktop, Runtime},
 };
 use std::{
     borrow::Cow,
@@ -115,10 +115,6 @@ fn main() -> ExitCode {
         }
         Err(error) => return fatal(Some(&paths), &format!("instance lock: {error}")),
     };
-    desktop::log(
-        &paths,
-        &format!("Starting native build {}", env!("CARGO_PKG_VERSION")),
-    );
     let mut folder = match DataFolder::open(paths.clone(), &args.cli) {
         Ok(folder) => folder,
         Err(error) => return fatal(Some(&paths), &format!("data folder: {error}")),
@@ -132,7 +128,7 @@ fn main() -> ExitCode {
         folder.obsolete.extend(args.obsolete.iter().cloned());
     }
     let overlay = folder.overlay;
-    let runtime = match Runtime::start(folder, args.cli.clone()) {
+    let runtime = match Runtime::start(folder, args.cli.clone(), Desktop::user()) {
         Ok(runtime) => runtime,
         Err(error) => return fatal(Some(&paths), &format!("host: {error}")),
     };

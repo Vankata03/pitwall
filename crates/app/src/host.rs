@@ -91,16 +91,33 @@ impl Control {
     }
 }
 
+/// Where the host touches the desktop: the Startup-folder entry and notifications.
+/// Tests point both away from the user's session.
+pub struct Desktop {
+    pub startup: desktop::Startup,
+    pub notifications: bool,
+}
+
+impl Desktop {
+    /// The current user's Startup folder, with notifications.
+    pub fn user() -> Self {
+        Self {
+            startup: desktop::Startup::user(),
+            notifications: true,
+        }
+    }
+}
+
 pub struct Runtime {
     pub control: Control,
     pub reader: Reader,
     worker: Option<JoinHandle<io::Result<()>>>,
 }
 impl Runtime {
-    pub fn start(folder: DataFolder, cli: Cli) -> io::Result<Self> {
+    pub fn start(folder: DataFolder, cli: Cli, desktop: Desktop) -> io::Result<Self> {
         let (publisher, reader) = feed::channel();
         let (sender, receiver) = mpsc::channel();
-        let host = Host::open(folder, cli, desktop::Startup::user())?;
+        let host = Host::open(folder, cli, desktop)?;
         let state = Arc::new(Mutex::new(host.status.clone()));
         let control = Control {
             sender,
@@ -259,6 +276,7 @@ pub struct Host {
     folder: DataFolder,
     cli: Cli,
     startup: desktop::Startup,
+    notifications: bool,
     status: Status,
     recorder: Arc<Mutex<Recorder>>,
     enabled: Arc<AtomicBool>,
@@ -273,7 +291,7 @@ pub struct Host {
     live_session: bool,
 }
 impl Host {
-    pub fn open(folder: DataFolder, cli: Cli, startup: desktop::Startup) -> io::Result<Self> {
+    pub fn open(folder: DataFolder, cli: Cli, desktop: Desktop) -> io::Result<Self> {
         fs::create_dir_all(&folder.paths.root)?;
         let recorder = Recorder::start(
             RecorderConfig::new(
@@ -319,7 +337,8 @@ impl Host {
         let mut host = Self {
             folder,
             cli,
-            startup,
+            startup: desktop.startup,
+            notifications: desktop.notifications,
             status,
             recorder: Arc::new(Mutex::new(recorder)),
             enabled,
@@ -578,10 +597,9 @@ impl Host {
         let text = error.to_string();
         if self.status.error.as_ref() != Some(&text) {
             desktop::log(&self.folder.paths, &text);
-            let _ = notify_rust::Notification::new()
-                .summary("pitwall needs attention")
-                .body(&text)
-                .show();
+            if self.notifications {
+                desktop::notify("pitwall needs attention", &text);
+            }
         }
         self.status.error = Some(text);
         self.status.revision += 1;

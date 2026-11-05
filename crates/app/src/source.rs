@@ -125,4 +125,35 @@ mod tests {
             assert!(Args::parse(input.into_iter().map(str::to_owned)).is_err());
         }
     }
+    #[test]
+    fn keeps_the_collector_flags_with_inline_values() {
+        let args = Args::parse(
+            [
+                "--console",
+                "--udp-port=20800",
+                "--config",
+                "C:/my config.toml",
+                "--data-dir",
+                "D:/data",
+                "-h",
+            ]
+            .map(str::to_owned),
+        )
+        .unwrap();
+        assert!(args.cli.console && args.cli.help);
+        assert_eq!(args.cli.udp_port, Some(20800));
+        assert_eq!(
+            args.cli.config_path,
+            Some(PathBuf::from("C:/my config.toml"))
+        );
+        assert_eq!(args.cli.data_dir, Some(PathBuf::from("D:/data")));
+        assert!(args.obsolete.is_empty());
+        for input in [
+            vec!["--udp-port"],
+            vec!["--data-dir"],
+            vec!["--udp-port=70000"],
+        ] {
+            assert!(Args::parse(input.into_iter().map(str::to_owned)).is_err());
+        }
+    }
 }

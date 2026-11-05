@@ -2,13 +2,21 @@
 use pitwall_core::{data::DataFolder, ingest::config::Cli, paths::AppPaths};
 use pitwall_native::{
     desktop::{Startup, startup_script},
-    host::{Command, Host},
+    host::{Command, Desktop, Host, Runtime},
 };
 use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicU32, Ordering},
     time::{Duration, Instant},
 };
+
+/// Start with Windows in the temp folder, no notifications.
+fn quiet(script: PathBuf) -> Desktop {
+    Desktop {
+        startup: Startup::at(script),
+        notifications: false,
+    }
+}
 
 const FIXTURE: &str = "2026-11-01_1338_Melbourne_Race";
 
@@ -53,7 +61,7 @@ impl Temp {
     }
     fn open_with(&self, cli: Cli) -> Host {
         let folder = DataFolder::open(self.paths(), &cli).unwrap();
-        Host::open(folder, cli, Startup::at(self.startup())).unwrap()
+        Host::open(folder, cli, quiet(self.startup())).unwrap()
     }
     fn open(&self) -> Host {
         self.open_with(self.cli())
@@ -108,7 +116,18 @@ fn stopped_load_never_selects_replay_and_settings_errors_keep_effective_values()
     let mut invalid = initial.clone();
     invalid.udp.port = 0;
     assert!(host.command(Command::Save(invalid)).is_err());
+    let mut invalid = initial.clone();
+    invalid.recording.size_cap_gb = 0;
+    assert!(host.command(Command::Save(invalid)).is_err());
+    let mut invalid = initial.clone();
+    invalid.forward.enabled = true;
+    invalid.forward.targets = vec!["not a target".into()];
+    assert!(host.command(Command::Save(invalid)).is_err());
     assert_eq!(host.status().config, initial);
+    assert!(
+        !temp.paths().config.exists(),
+        "rejected settings are not saved"
+    );
     assert!(
         host.command(Command::Start("../escape.pitrec".into()))
             .is_err()
@@ -361,4 +380,44 @@ fn command_line_replay_plays_an_outside_file_without_copying_it_into_the_library
     );
     assert!(host.status().recordings.is_empty(), "library untouched");
     assert_eq!(std::fs::read(&outside).unwrap(), before);
+}
+
+#[test]
+fn a_busy_udp_port_reports_keeps_running_and_retries_until_free() {
+    let temp = Temp::new();
+    let blocker = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    let port = blocker.local_addr().unwrap().port();
+    let cli = Cli {
+        udp_port: Some(port),
+        ..temp.cli()
+    };
+    let folder = DataFolder::open(temp.paths(), &cli).unwrap();
+    let runtime = Runtime::start(folder, cli, quiet(temp.startup())).unwrap();
+    let wait = |what: &str, done: &dyn Fn(&pitwall_native::host::Status) -> bool| {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let status = runtime.control.status();
+            if done(&status) {
+                return status;
+            }
+            assert!(Instant::now() < deadline, "{what}: {:?}", status.error);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    let failed = wait("port error", &|s| s.error.is_some());
+    let error = failed.error.unwrap();
+    assert!(error.contains(&format!("UDP port {port}")), "{error}");
+    assert!(!failed.ready);
+
+    drop(blocker);
+    let ready = wait("retry binds", &|s| s.ready && s.error.is_none());
+    assert_eq!(ready.line, "Waiting for game");
+    let sampled = wait("process sampled", &|s| {
+        s.cpu.is_some() && s.memory.is_some()
+    });
+    assert!(sampled.memory.unwrap() > 0);
+    runtime.shutdown().unwrap();
+    let log = std::fs::read_to_string(temp.paths().logs.join("collector.log")).unwrap();
+    assert!(log.contains(&format!("Listening: UDP {port}")), "{log}");
+    assert!(log.contains("Native host stopped"), "{log}");
 }
