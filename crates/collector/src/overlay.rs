@@ -3,8 +3,8 @@
 //! The window hosts the dashboard's `/overlay/throttle-brake` page in a WebView2 view. It only
 //! shows above the game in borderless or windowed display mode; exclusive fullscreen hides it.
 //! The game itself is never touched.
-use serde::{Deserialize, Serialize};
-use std::{fs, io, path::Path};
+pub use pitwall_core::overlay::OverlaySettings;
+use std::io;
 
 /// Dashboard path the overlay window loads.
 pub const THROTTLE_BRAKE_PATH: &str = "/overlay/throttle-brake";
@@ -12,17 +12,6 @@ pub const THROTTLE_BRAKE_PATH: &str = "/overlay/throttle-brake";
 pub const THROTTLE_BRAKE_SIZE: (f64, f64) = (360.0, 110.0);
 /// Smallest logical size the overlay can be resized to while it stays readable.
 pub const THROTTLE_BRAKE_MIN_SIZE: (f64, f64) = (180.0, 70.0);
-
-/// What the overlay remembers between runs, in `overlay.json` in the data folder.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OverlaySettings {
-    pub visible: bool,
-    /// Physical screen position of the window's top-left corner; `None` until first placed.
-    pub position: Option<(i32, i32)>,
-    /// Physical inner size; `None` until first resized.
-    #[serde(default)]
-    pub size: Option<(u32, u32)>,
-}
 
 /// The edge or corner of the overlay a move-mode resize starts from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,25 +60,6 @@ impl OverlayEvent {
             Some(("resize", edge)) => Edge::parse(edge).map(Self::Resize),
             _ => None,
         }
-    }
-}
-
-impl OverlaySettings {
-    /// Missing or unreadable settings start hidden at the default position.
-    pub fn load(path: &Path) -> Self {
-        fs::read_to_string(path)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
-    }
-
-    pub fn save(&self, path: &Path) -> io::Result<()> {
-        let tmp = path.with_extension("json.tmp");
-        fs::write(
-            &tmp,
-            serde_json::to_string_pretty(self).map_err(io::Error::other)?,
-        )?;
-        fs::rename(tmp, path)
     }
 }
 

@@ -1,0 +1,6 @@
+[udp]
+port = 20778
+
+[http]
+port = 0
+bind = "not an address"

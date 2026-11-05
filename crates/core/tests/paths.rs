@@ -10,6 +10,7 @@ fn all_persistent_files_share_the_per_user_pitwall_directory() {
     assert_eq!(paths.root, root);
     assert_eq!(paths.config, root.join("config.toml"));
     assert_eq!(paths.layouts, root.join("layouts.json"));
+    assert_eq!(paths.overlay, root.join("overlay.json"));
     assert_eq!(paths.recordings, root.join("recordings"));
     assert_eq!(paths.tracks, root.join("tracks"));
     assert_eq!(paths.liveries, root.join("liveries"));

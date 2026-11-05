@@ -5,6 +5,7 @@
 pub mod bands;
 pub mod banners;
 pub mod car_names;
+pub mod data;
 pub mod feed;
 pub mod field;
 pub mod gaps;
@@ -16,6 +17,7 @@ pub mod liveries;
 pub mod livery;
 pub mod model;
 pub mod names;
+pub mod overlay;
 pub mod paths;
 pub mod pitrec;
 pub mod race_status;

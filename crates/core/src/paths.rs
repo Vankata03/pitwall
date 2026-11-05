@@ -7,6 +7,8 @@ pub struct AppPaths {
     pub root: PathBuf,
     pub config: PathBuf,
     pub layouts: PathBuf,
+    /// `overlay.json`: the in-game overlay's visibility, position and size.
+    pub overlay: PathBuf,
     pub recordings: PathBuf,
     pub tracks: PathBuf,
     pub liveries: PathBuf,
@@ -32,6 +34,7 @@ impl AppPaths {
         Self {
             config: root.join("config.toml"),
             layouts: root.join("layouts.json"),
+            overlay: root.join("overlay.json"),
             recordings: root.join("recordings"),
             tracks: root.join("tracks"),
             liveries: root.join("liveries"),

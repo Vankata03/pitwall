@@ -1,0 +1,9 @@
+[udp]
+port = 20777
+
+[http]
+port = 8777
+bind = "0.0.0.0"
+
+[forward
+enabled = false
