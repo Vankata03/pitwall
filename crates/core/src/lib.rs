@@ -7,6 +7,7 @@ pub mod banners;
 pub mod car_names;
 pub mod feed;
 pub mod ingest;
+pub mod layout_edit;
 pub mod layouts;
 pub mod liveries;
 pub mod livery;

@@ -33,7 +33,7 @@ fn mirror_path(d: &str) -> String {
     let mut out = String::with_capacity(d.len());
     let mut is_x = true;
     let mut number = String::new();
-    let mut flush = |number: &mut String, out: &mut String, is_x: &mut bool| {
+    let flush = |number: &mut String, out: &mut String, is_x: &mut bool| {
         if number.is_empty() {
             return;
         }
