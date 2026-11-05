@@ -3,8 +3,8 @@
 
 use gpui::{Hsla, IntoElement, ParentElement, PathBuilder, Styled, canvas, div, point, px};
 use pitwall_core::{
-    feed::CarInputs,
-    model::{Lifecycle, Readout},
+    feed::{CarInputs, FastFrame},
+    model::{Lifecycle, Readout, SessionModel},
     readout::{ReadoutState, ReadoutView, readout_view, whole_tile_message},
     units::{self, Units},
 };
@@ -32,6 +32,32 @@ pub struct Inputs {
     pub lifecycle: Lifecycle,
     pub width: f32,
     pub height: f32,
+}
+
+impl Inputs {
+    /// Bind a fast frame to the matching model timeline before reading car values.
+    pub fn from_source(
+        frame: &FastFrame,
+        model: &SessionModel,
+        index: Option<usize>,
+        units: Units,
+        size: (f32, f32),
+    ) -> Self {
+        let index = index.filter(|i| frame.epoch == model.epoch() && model.car(*i).is_some());
+        Self {
+            car: index
+                .and_then(|i| frame.cars.get(i).copied())
+                .unwrap_or(Readout::Absent),
+            max_rpm: index
+                .and_then(|i| model.car(i))
+                .and_then(|c| c.status().value().map(|s| s.max_rpm))
+                .filter(|m| *m > 0),
+            units,
+            lifecycle: model.lifecycle(),
+            width: size.0,
+            height: size.1,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -374,6 +400,67 @@ mod tests {
             ..base(Readout::Absent)
         });
         assert!(missing.dial.unwrap().labels.is_none());
+    }
+
+    #[test]
+    fn source_to_tile_rejects_fast_values_from_another_timeline() {
+        use pitwall_core::{feed, model::SessionModel};
+        let (_publisher, reader) = feed::channel();
+        let mut model = SessionModel::default();
+        let output = std::process::Command::new("python")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../tools/telemetry/assumed_datagram.py"
+            ))
+            .args([
+                "2026",
+                "2",
+                "--set",
+                "header.session_uid=101",
+                "--set",
+                "lap_data.0.result_status=2",
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        model.apply(
+            std::time::Duration::ZERO,
+            &pitwall_core::telemetry::parse_datagram(&output.stdout).unwrap(),
+        );
+        let mut frame = reader.fast();
+        frame.cars[0] = Readout::Live(inputs(287, 11800, 7));
+        frame.epoch = model.epoch().wrapping_add(1);
+        let v = view(&Inputs::from_source(
+            &frame,
+            &model,
+            Some(0),
+            Units::DEFAULT,
+            (400.0, 400.0),
+        ));
+        assert_eq!(v.speed.state, ReadoutState::Absent);
+        assert_eq!(v.gear.state, ReadoutState::Absent);
+        assert!(v.dial.unwrap().fill.is_none());
+        frame.epoch = model.epoch();
+        let matched = view(&Inputs::from_source(
+            &frame,
+            &model,
+            Some(0),
+            Units {
+                speed: SpeedUnit::Mph,
+                ..Units::DEFAULT
+            },
+            (400.0, 400.0),
+        ));
+        assert_eq!(matched.speed.text, "178");
+        assert_eq!(matched.gear.text, "7");
+        let unbound = view(&Inputs::from_source(
+            &frame,
+            &model,
+            None,
+            Units::DEFAULT,
+            (400.0, 400.0),
+        ));
+        assert_eq!(unbound.speed.state, ReadoutState::Absent);
     }
 
     #[test]

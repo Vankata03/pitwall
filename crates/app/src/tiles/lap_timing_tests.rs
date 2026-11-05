@@ -112,6 +112,35 @@ fn sectors_rank_against_other_cars_and_prior_laps_with_glyphs() {
     let sectors = v.sectors.unwrap();
     assert_eq!(sectors[0].time.text, "27.102 \u{25c6}");
     assert_eq!(sectors[1].time.text, "28.500 \u{25cf}");
+    for (s1, expected) in [(27200, "27.200 \u{25cf}"), (27500, "27.500")] {
+        running(&mut model, s1, 28500);
+        let v = view(&Inputs::from_model(
+            &model,
+            Some(0),
+            LapReference::Best,
+            (500.0, 300.0),
+        ));
+        assert_eq!(v.sectors.unwrap()[0].time.text, expected);
+    }
+    let mut invalid = assumed(2);
+    let Packet::Lap(data) = &mut invalid.packet else {
+        unreachable!()
+    };
+    let lap = data.lap_data[0].as_mut().unwrap();
+    lap.result_status = 2;
+    lap.current_lap_num = 3;
+    lap.current_lap_time_in_ms = 40000;
+    lap.current_lap_invalid = 1;
+    lap.sector = 1;
+    lap.sector1_time_ms_part = 26000;
+    model.apply(Duration::ZERO, &invalid);
+    let v = view(&Inputs::from_model(
+        &model,
+        Some(0),
+        LapReference::Best,
+        (500.0, 300.0),
+    ));
+    assert_eq!(v.sectors.unwrap()[0].time.text, "26.000");
 }
 #[test]
 fn missing_time_trial_references_never_fall_back_to_best_or_zero() {

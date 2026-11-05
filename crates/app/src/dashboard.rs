@@ -17,7 +17,7 @@ use pitwall_core::{
         missing_car_message, participants_of, resolve_binding, resolve_focus,
     },
     feed::Reader,
-    model::{Lifecycle, Readout},
+    model::Lifecycle,
     units::Units,
 };
 use serde_json::{Value, json};
@@ -173,10 +173,9 @@ impl Render for Dashboard {
         let body = (tile_w, (tile_h - TILE_HEADER - 24.0).max(0.0));
 
         let mut row = div().flex().gap(px(GAP)).px(px(GAP)).flex_1();
-        for slot in &self.tiles {
+        for (slot_index, slot) in self.tiles.iter().enumerate() {
             let binding: CarBinding = car_binding_of(&slot.settings);
             let resolved = resolve_binding(&binding, &ctx);
-            let car = resolved.index().and_then(|i| snap.car(i));
             let name = match slot.kind {
                 TileKind::SpeedRpmGear => speed_rpm_gear::NAME,
                 TileKind::LapTiming => lap_timing::NAME,
@@ -198,6 +197,28 @@ impl Render for Dashboard {
                     label
                 });
             }
+            if matches!(slot.kind, TileKind::LapTiming) {
+                let time_trial = snap.session().value().is_some_and(|s| s.session_type == 18);
+                head = head.child(
+                    div()
+                        .id(("lap-reference", slot_index))
+                        .cursor_pointer()
+                        .child(format!(
+                            "Compare: {}",
+                            lap_timing::LapReference::of(&slot.settings).label()
+                        ))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _, _, cx| {
+                                lap_timing::LapReference::cycle(
+                                    &mut this.tiles[slot_index].settings,
+                                    time_trial,
+                                );
+                                cx.notify();
+                            }),
+                        ),
+                );
+            }
             let content = match missing_car_message(&binding, resolved) {
                 Some(message) => div()
                     .flex_1()
@@ -209,16 +230,13 @@ impl Render for Dashboard {
                     .into_any_element(),
                 None => match slot.kind {
                     TileKind::SpeedRpmGear => {
-                        let inputs = speed_rpm_gear::Inputs {
-                            car: resolved.index().map_or(Readout::Absent, |i| fast.cars[i]),
-                            max_rpm: car
-                                .and_then(|c| c.status().value().map(|s| s.max_rpm))
-                                .filter(|&m| m > 0),
-                            units: self.units,
-                            lifecycle,
-                            width: body.0,
-                            height: body.1,
-                        };
+                        let inputs = speed_rpm_gear::Inputs::from_source(
+                            &fast,
+                            &snap,
+                            resolved.index(),
+                            self.units,
+                            body,
+                        );
                         speed_rpm_gear::render(speed_rpm_gear::view(&inputs)).into_any_element()
                     }
                     TileKind::LapTiming => {

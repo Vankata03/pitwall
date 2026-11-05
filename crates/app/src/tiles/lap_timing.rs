@@ -44,7 +44,7 @@ impl LapReference {
             _ => Self::Best,
         }
     }
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::Best => "Best lap",
             Self::Previous => "Previous lap",
@@ -52,6 +52,19 @@ impl LapReference {
             Self::Rival => "Rival",
         }
     }
+    /// Cycle the reference control, keeping unrelated saved tile settings intact.
+    pub fn cycle(settings: &mut Value, time_trial: bool) {
+        let next = match Self::of(settings) {
+            Self::Best => "previous",
+            Self::Previous if time_trial => "personal-best",
+            Self::PersonalBest if time_trial => "rival",
+            _ => "best",
+        };
+        if let Some(settings) = settings.as_object_mut() {
+            settings.insert("reference".into(), Value::from(next));
+        }
+    }
+
     fn extra(self) -> bool {
         matches!(self, Self::PersonalBest | Self::Rival)
     }
@@ -589,6 +602,24 @@ mod tests {
             delta_ms: Some(-500),
             sectors_ms: [Some(29_800), Some(30_900), Some(28_800)],
             sector_deltas_ms: [Some(-200), Some(-100), Some(-200)],
+        }
+    }
+
+    #[test]
+    fn reference_control_cycles_available_choices_and_preserves_other_settings() {
+        let mut settings = json!({"other": 1, "car": {"target": "focus"}});
+        for (tt, expected) in [
+            (false, "previous"),
+            (false, "best"),
+            (true, "previous"),
+            (true, "personal-best"),
+            (true, "rival"),
+            (true, "best"),
+        ] {
+            LapReference::cycle(&mut settings, tt);
+            assert_eq!(settings["reference"], expected);
+            assert_eq!(settings["other"], 1);
+            assert_eq!(settings["car"]["target"], "focus");
         }
     }
 
