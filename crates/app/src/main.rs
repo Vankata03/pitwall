@@ -110,6 +110,7 @@ fn main() -> ExitCode {
         Ok(paths) => paths,
         Err(error) => return fatal(None, &error.to_string()),
     };
+    let _ = tiles::car_status::LIVERY_FOLDER.set(paths.liveries.clone());
     let instance = match Instance::acquire(&paths) {
         Ok(Launch::Primary(instance)) => instance,
         Ok(Launch::Existing) => {

@@ -4311,8 +4311,10 @@ version = "0.1.0"
 dependencies = [
  "gpui",
  "gpui_platform",
+ "image",
  "notify-rust",
  "pitwall-core",
+ "pitwall-livery-art",
  "pitwall-overlay",
  "serde_json",
  "sysinfo",

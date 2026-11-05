@@ -182,6 +182,15 @@ impl<'a> CarView<'a> {
     pub fn current_lap_trace(&self) -> Option<&'a Arc<LapTrace>> {
         self.car.delta.current.as_ref()
     }
+    /// A retained completed lap's trace by lap number. Retained are the last two
+    /// completed laps, the best lap and the best lap before it.
+    pub fn completed_lap_trace(&self, lap_number: u8) -> Option<&'a Arc<LapTrace>> {
+        self.car
+            .delta
+            .completed
+            .iter()
+            .find(|t| t.lap_number == lap_number)
+    }
     /// Signed milliseconds; negative means ahead. State follows Lap Data freshness.
     pub fn live_delta(&self, reference: Reference) -> Readout<f32> {
         if matches!(reference, Reference::PersonalBest | Reference::Rival) {

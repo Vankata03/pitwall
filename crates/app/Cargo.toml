@@ -11,6 +11,9 @@ path = "src/main.rs"
 
 [dependencies]
 pitwall-core = { path = "../core" }
+pitwall-livery-art = { path = "../livery-art" }
+# Only to hand decoded livery pixels to gpui, which takes `image` frames; the version gpui uses.
+image = { version = "0.25", default-features = false }
 serde_json = "1"
 pitwall-overlay = { path = "../overlay" }
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }

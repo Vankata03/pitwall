@@ -45,7 +45,11 @@ use serde_json::{Value, json};
 
 use pitwall_native::desktop;
 
-use crate::{theme, tiles::lap_timing};
+use crate::{
+    theme,
+    tiles::{lap_timing, memory::Memory},
+};
+use std::{cell::RefCell, collections::HashMap};
 
 /// Counters a measurement run reads from another thread.
 #[derive(Default)]
@@ -114,6 +118,8 @@ pub struct Dashboard {
     row_height: f32,
     drawn: (u64, u64, u64),
     stats: Arc<Stats>,
+    /// What each placed tile keeps between renders, by tile id.
+    memory: RefCell<HashMap<String, Memory>>,
 }
 
 impl Dashboard {
@@ -183,6 +189,7 @@ impl Dashboard {
             row_height: screen::ROW_HEIGHT,
             drawn: (u64::MAX, u64::MAX, u64::MAX),
             stats,
+            memory: RefCell::default(),
         }
     }
 
@@ -1002,14 +1009,18 @@ impl Render for Dashboard {
                 (Some(_), Some(renderer)) => {
                     match missing_car_message(&binding, resolved).filter(|_| follows) {
                         Some(text) => message(text.to_owned()),
-                        None => (renderer.render)(&registry::TileInputs {
-                            tile,
-                            snapshot: &snap,
-                            fast: &fast,
-                            car: resolved,
-                            units: choices.units,
-                            size: (w, (h - TILE_HEADER).max(0.0)),
-                        }),
+                        None => (renderer.render)(
+                            &registry::TileInputs {
+                                tile,
+                                snapshot: &snap,
+                                fast: &fast,
+                                reader: &self.reader,
+                                car: resolved,
+                                units: choices.units,
+                                size: (w, (h - TILE_HEADER).max(0.0)),
+                            },
+                            self.memory.borrow_mut().entry(tile.i.clone()).or_default(),
+                        ),
                     }
                 }
             };
