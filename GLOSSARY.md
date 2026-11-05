@@ -115,6 +115,10 @@ _Avoid_: Preferences page, user settings
 A screen showing a layout's tiles on a transparent page with no controls, for use as a broadcast source.
 _Avoid_: Stream mode, overlay
 
+**In-game overlay**:
+A small transparent window the collector floats above the game on the collector PC, such as the throttle/brake overlay. It ignores the mouse except in move mode and is not a layout or a tile.
+_Avoid_: HUD, stream view
+
 **Temperature band**:
 The cold, in-window and hot ranges pitwall ships for a tyre compound or for brakes.
 _Avoid_: Operating limits, thresholds

@@ -8,7 +8,12 @@ use tower::ServiceExt;
 #[tokio::test]
 async fn dashboard_and_status_page_serve_the_embedded_entry_point() {
     let router = HttpShell::new(TrustedHosts::new([])).into_router();
-    for path in ["/", "/status", "/?layout=Pitwall%20Classic&stream=1"] {
+    for path in [
+        "/",
+        "/status",
+        "/overlay/throttle-brake",
+        "/?layout=Pitwall%20Classic&stream=1",
+    ] {
         let response = router
             .clone()
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())

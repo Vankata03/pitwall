@@ -44,7 +44,8 @@ const controller = createLayoutController({
 });
 
 runtime.start();
-if (globalThis.location.pathname !== '/status') void controller.start();
+const path = globalThis.location.pathname;
+if (path !== '/status' && !path.startsWith('/overlay/')) void controller.start();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

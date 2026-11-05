@@ -1,6 +1,7 @@
 import type uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import type { Channel, Plot } from './plot';
+import { PEDAL_SMOOTH_SECONDS, smoothValues } from './smooth';
 
 /**
  * The one place uPlot is touched. Canvas 2D, no React: the tile hands it a `Plot` each time
@@ -27,6 +28,11 @@ function palette(host: HTMLElement) {
 }
 
 const SCALE: Record<Channel, 'pct' | 'spd'> = { throttle: 'pct', brake: 'pct', speed: 'spd' };
+/** Chart rows: pedal lines smoothed when the x axis is session time, the rest as they are. */
+const rowsOf = (plot: Plot) => [plot.x, ...plot.series.map((s) =>
+  plot.distanceUnit === 's' && s.channel !== 'speed' ? smoothValues(plot.x, s.values, PEDAL_SMOOTH_SECONDS) : s.values,
+)] as uPlot.AlignedData;
+
 const shapeOf = (plot: Plot) =>
   [plot.distanceUnit, plot.windowSeconds, plot.speedUnit, ...plot.series.map((s) => `${s.lap}:${s.channel}`)].join('|');
 
@@ -40,6 +46,8 @@ function loadedChart(host: HTMLElement, PlotConstructor: typeof uPlot): TraceCha
     const axis = { stroke: colour.muted, font, grid: { stroke: colour.line, width: 1 }, ticks: { stroke: colour.line, width: 1 } };
     const hasSpeed = plot.series.some((s) => s.channel === 'speed');
     const hasPct = plot.series.some((s) => SCALE[s.channel] === 'pct');
+    // Monotone splines round off 60 Hz sample steps without overshooting the data.
+    const smooth = PlotConstructor.paths.spline?.();
     const options: uPlot.Options = {
       ...size,
       legend: { show: false },
@@ -63,14 +71,15 @@ function loadedChart(host: HTMLElement, PlotConstructor: typeof uPlot): TraceCha
           scale: SCALE[s.channel],
           stroke: colour[s.channel],
           // Bright, heavier current traces sit over subdued solid reference traces.
-          width: s.lap === 'current' ? 2.5 : 1.5,
+          width: s.lap === 'current' ? 3.5 : 1.5,
           alpha: s.lap === 'current' ? 1 : 0.4,
           spanGaps: false,
           points: { show: false },
+          ...(smooth ? { paths: smooth } : {}),
         })),
       ],
     };
-    return new PlotConstructor(options, [plot.x, ...plot.series.map((s) => s.values)] as uPlot.AlignedData, host);
+    return new PlotConstructor(options, rowsOf(plot), host);
   }
 
   return {
@@ -86,7 +95,7 @@ function loadedChart(host: HTMLElement, PlotConstructor: typeof uPlot): TraceCha
         return;
       }
       if (chart.width !== size.width || chart.height !== size.height) chart.setSize(size);
-      chart.setData([plot.x, ...plot.series.map((s) => s.values)] as uPlot.AlignedData);
+      chart.setData(rowsOf(plot));
     },
     destroy() {
       chart?.destroy();

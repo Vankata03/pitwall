@@ -72,6 +72,21 @@ The tray menu shows the receive rate (or **Waiting for game**) and has **Open da
 **Show QR**, **Settings**, **Open log folder** and **Quit**. If you launch pitwall while it's
 already running, it opens the existing dashboard and exits.
 
+## In-game overlay
+
+On Windows, pitwall can float a throttle/brake overlay above the game: a bar for each pedal,
+and the last 5 seconds of inputs for the player car.
+
+1. In the tray menu, choose **Throttle/brake overlay**.
+2. To place it, choose **Move overlay**. Drag the panel to move it, or drag an edge or the
+   corner grip to resize it. Choose **Move overlay** again to lock it. Once locked, it passes
+   every click through to the game.
+
+Set the game's display mode to **Borderless** or **Windowed**. Exclusive fullscreen draws over
+every other window. The overlay is a separate window and never touches the game process. It
+needs the Microsoft Edge WebView2 Runtime, which Windows 11 already includes. pitwall
+remembers whether the overlay was on and where you put it.
+
 ## Liveries
 
 pitwall ships with a neutral fallback car tinted in team colours. To show real cars, put your
@@ -117,6 +132,8 @@ Data folder: `%APPDATA%\pitwall` on Windows, `~/Library/Application Support/pitw
 | --- | --- |
 | `config.toml` | Settings (opened for editing if startup fails) |
 | `layouts.json` | Saved layouts |
+| `overlay.json` | In-game overlay on/off, position and size (Windows) |
+| `webview/` | WebView2 data for the in-game overlay (Windows) |
 | `recordings/` | `.pitrec` sessions |
 | `liveries/` | Your livery images |
 | `tracks/` | Track maps |

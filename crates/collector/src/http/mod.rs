@@ -82,7 +82,7 @@ impl HttpShell {
 
 async fn embedded_asset(uri: Uri) -> Response {
     let path = match uri.path() {
-        "/" | "/status" => "index.html",
+        "/" | "/status" | "/overlay/throttle-brake" => "index.html",
         path => path.trim_start_matches('/'),
     };
     match dashboard_asset(path) {

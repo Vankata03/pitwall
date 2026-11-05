@@ -1,0 +1,137 @@
+/* The native overlay window is transparent: only the panel itself paints. */
+html[data-overlay='true'],
+html[data-overlay='true'] body,
+html[data-overlay='true'] #root {
+  background: transparent;
+  overflow: hidden;
+  height: 100%;
+  margin: 0;
+}
+
+.pw-ov {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  gap: 10px;
+  height: 100vh;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgb(10 14 16 / 0.62);
+  user-select: none;
+}
+
+.pw-ov-trace {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border-left: 1px solid rgb(255 255 255 / 0.12);
+  border-bottom: 1px solid rgb(255 255 255 / 0.12);
+}
+
+.pw-ov-bars {
+  display: flex;
+  gap: 6px;
+}
+
+.pw-ov-bar {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  justify-items: center;
+  gap: 3px;
+  width: 30px;
+}
+
+.pw-ov-value {
+  font-family: var(--pw-font);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--pw-text);
+}
+
+.pw-ov-label {
+  font-family: var(--pw-font-label);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--pw-text-muted);
+}
+
+.pw-ov-track {
+  position: relative;
+  width: 14px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.1);
+  overflow: hidden;
+}
+
+.pw-ov-track i {
+  position: absolute;
+  inset: auto 0 0;
+  height: 0;
+}
+
+.pw-ov-bar[data-channel='throttle'] i { background: var(--pw-energy); }
+.pw-ov-bar[data-channel='brake'] i { background: var(--pw-brake); }
+
+/* Move mode: the collector makes the window take the mouse and the page shows a handle. */
+.pw-ov-handle {
+  display: none;
+}
+
+html[data-overlay-move='true'] .pw-ov {
+  outline: 2px dashed var(--pw-energy);
+  outline-offset: -2px;
+  cursor: move;
+}
+
+html[data-overlay-move='true'] .pw-ov-handle {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 8px;
+  background: rgb(10 14 16 / 0.55);
+  color: var(--pw-text);
+  font-family: var(--pw-font-label);
+  font-size: 12px;
+}
+
+/* Move mode: invisible grips along each edge and corner start a native resize. */
+.pw-ov-grip {
+  display: none;
+  position: absolute;
+  z-index: 2;
+}
+
+html[data-overlay-move='true'] .pw-ov-grip { display: block; }
+
+.pw-ov-grip[data-edge='n'] { inset: 0 8px auto; height: 6px; cursor: ns-resize; }
+.pw-ov-grip[data-edge='s'] { inset: auto 8px 0; height: 6px; cursor: ns-resize; }
+.pw-ov-grip[data-edge='e'] { inset: 8px 0 8px auto; width: 6px; cursor: ew-resize; }
+.pw-ov-grip[data-edge='w'] { inset: 8px auto 8px 0; width: 6px; cursor: ew-resize; }
+.pw-ov-grip[data-edge='ne'] { top: 0; right: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.pw-ov-grip[data-edge='nw'] { top: 0; left: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+.pw-ov-grip[data-edge='sw'] { bottom: 0; left: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+
+/* The bottom-right corner shows a visible grip so resizing is discoverable. */
+.pw-ov-grip[data-edge='se'] {
+  bottom: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--pw-energy) 50%);
+  border-bottom-right-radius: 8px;
+}
+
+.pw-ov-legend {
+  position: absolute;
+  top: 6px;
+  left: 16px;
+  font-family: var(--pw-font-label);
+  font-size: 10px;
+  color: var(--pw-text-muted);
+  pointer-events: none;
+}
+
+.pw-ov-legend[hidden] { display: none; }

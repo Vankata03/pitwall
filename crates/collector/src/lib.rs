@@ -8,6 +8,7 @@ pub mod liveries;
 pub mod model;
 pub mod names;
 pub mod notice;
+pub mod overlay;
 pub mod paths;
 pub mod pitrec;
 pub mod recorder;

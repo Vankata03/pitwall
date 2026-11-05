@@ -1,13 +1,12 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ReadoutState } from '../../runtime/wire';
-import { useRuntime, useSlow } from '../../runtime/react';
 import { effectiveState, frameReadoutState, writeReadout } from '../../runtime/readout';
 import { defineTileModule, type TileProps, type TileSettingsProps } from '../contract';
 import '../frame-tiles.css';
 import { TileTitle } from '../frame-kit';
 import { useFrameTile } from '../use-frame-tile';
 import { buildWindowPlot, InputHistory } from '../traces/window-plot';
-import { lapTracesFor } from '../traces/lap-traces';
+import { useReferenceTrace } from '../traces/use-reference-trace';
 import { CHANNEL_ORDER, type Channel } from '../traces/plot';
 import { createTraceChart, type TraceChart } from '../traces/chart';
 
@@ -34,14 +33,9 @@ function options(settings: Record<string, unknown>) {
 }
 
 function Traces({ car, settings, width, height, units }: TileProps) {
-  const runtime = useRuntime();
-  const slow = useSlow((s) => s);
-  const traces = lapTracesFor(runtime);
-  const version = useSyncExternalStore(traces.subscribe, () => traces.version);
   const index = car && (car.status === 'ok' || car.status === 'retired') ? car.index : null;
-  const info = index === null ? null : slow.state?.cars?.[index];
   const { reference, channels } = options(settings);
-  const referenceLap = info?.[reference]?.lap_number;
+  const { slow, traces, version, referenceLap } = useReferenceTrace(index, reference);
   const host = useRef<HTMLDivElement>(null);
   const status = useRef<HTMLSpanElement>(null);
   const throttleFill = useRef<HTMLElement>(null);
@@ -56,27 +50,6 @@ function Traces({ car, settings, width, height, units }: TileProps) {
     chart.current = createTraceChart(host.current!);
     return () => { chart.current?.destroy(); chart.current = null; };
   }, []);
-
-  useEffect(() => {
-    if (index !== null && referenceLap !== undefined) traces.request(index, referenceLap);
-  }, [traces, index, referenceLap, slow.epoch, slow.connection]);
-
-  const history = useRef(slow.history);
-  useEffect(() => {
-    const changed = slow.history.filter((entry) => entry.kind === 'lap' && !history.current.includes(entry));
-    history.current = slow.history;
-    if (!changed.length || index === null) return;
-    traces.invalidate();
-    for (const entry of changed) {
-      if (entry.kind === 'lap' && entry.car === index) {
-        traces.invalidate(index, entry.body.lap_number);
-        traces.request(index, entry.body.lap_number);
-      }
-    }
-    for (const n of [info?.previous?.lap_number, info?.best?.lap_number]) {
-      if (n !== undefined) traces.request(index, n);
-    }
-  }, [slow.history, info, index, traces]);
 
   useFrameTile(tile.declaration, car, ({ frame, rings, car: carIndex, connected }) => {
     const state = carIndex === null ? 3 : effectiveState(frameReadoutState(frame, carIndex, 'throttle'), connected);

@@ -36,7 +36,7 @@ export class InputHistory {
 }
 
 /** Reference inputs at the same circuit position as the live sample. Never extrapolate. */
-function referenceValue(trace: Trace, distance: number, channel: Channel): number | null {
+export function referenceValue(trace: Trace, distance: number, channel: Channel): number | null {
   if (!Number.isFinite(distance)) return null;
   let lo = 0, hi = trace.distance.length;
   while (lo < hi) {
@@ -85,3 +85,4 @@ export function buildWindowPlot(rings: InputRings | null, reference: Trace | nul
   }
   return plot;
 }
+

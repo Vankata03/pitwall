@@ -31,6 +31,9 @@ tray-icon = "0.21"
 tao = "0.34"
 notify-rust = "4"
 
+[target.'cfg(windows)'.dependencies]
+wry = { version = "0.57", default-features = false }
+
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["test-util"] }

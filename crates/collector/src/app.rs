@@ -281,6 +281,10 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
         Icon, TrayIconBuilder,
         menu::{Menu, MenuEvent, MenuItem},
     };
+    #[cfg(windows)]
+    let mut event_loop =
+        EventLoopBuilder::<crate::overlay::OverlayEvent>::with_user_event().build();
+    #[cfg(not(windows))]
     let mut event_loop = EventLoopBuilder::new().build();
     #[cfg(target_os = "macos")]
     {
@@ -294,8 +298,11 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
     let settings = MenuItem::new("Settings", true, None);
     let logs = MenuItem::new("Open log folder", true, None);
     let quit = MenuItem::new("Quit", true, None);
-    menu.append_items(&[&state, &dashboard, &qr, &settings, &logs, &quit])
+    menu.append_items(&[&state, &dashboard, &qr, &settings, &logs])
         .map_err(io::Error::other)?;
+    #[cfg(windows)]
+    let mut overlay = OverlayMenu::new(&menu, paths, event_loop.create_proxy())?;
+    menu.append(&quit).map_err(io::Error::other)?;
     // Original geometric icon: two vertical timing bars, no third-party marks.
     let mut pixels = vec![0; 16 * 16 * 4];
     for y in 2..14 {
@@ -307,7 +314,9 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
     let icon = Icon::from_rgba(pixels, 16, 16).map_err(io::Error::other)?;
     let mut tray = None;
     let mut failure = None;
-    event_loop.run_return(|event, _, flow| {
+    event_loop.run_return(|event, _target, flow| {
+        #[cfg(windows)]
+        overlay.handle(&event);
         *flow = ControlFlow::WaitUntil(std::time::Instant::now() + Duration::from_millis(250));
         if matches!(event, Event::NewEvents(tao::event::StartCause::Init)) {
             match TrayIconBuilder::new()
@@ -331,12 +340,18 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
             }
             tick(control, instance, paths);
             let s = control.state.lock().unwrap();
+            #[cfg(windows)]
+            overlay.sync(_target, &s, paths);
             state.set_text(if s.line.is_empty() {
                 "Waiting for game"
             } else {
                 &s.line
             });
             while let Ok(event) = MenuEvent::receiver().try_recv() {
+                #[cfg(windows)]
+                if overlay.menu_event(&event.id, _target, &s, paths) {
+                    continue;
+                }
                 if event.id == quit.id() {
                     control.request_stop();
                     *flow = ControlFlow::Exit;
@@ -365,10 +380,153 @@ fn tray(control: &Control, instance: &mut Instance, paths: &AppPaths, cli: &Cli)
             }
         }
     });
+    #[cfg(windows)]
+    overlay.close(paths);
     drop(tray);
     if let Some(e) = failure {
         Err(e)
     } else {
         Ok(())
+    }
+}
+
+/// Tray entries and window of the in-game overlay. Windows only: WebView2 hosts the page.
+#[cfg(windows)]
+struct OverlayMenu {
+    show: tray_icon::menu::CheckMenuItem,
+    moving: tray_icon::menu::CheckMenuItem,
+    settings: crate::overlay::OverlaySettings,
+    window: Option<crate::overlay::Overlay>,
+    proxy: tao::event_loop::EventLoopProxy<crate::overlay::OverlayEvent>,
+    failed: bool,
+}
+
+#[cfg(windows)]
+impl OverlayMenu {
+    fn new(
+        menu: &tray_icon::menu::Menu,
+        paths: &AppPaths,
+        proxy: tao::event_loop::EventLoopProxy<crate::overlay::OverlayEvent>,
+    ) -> io::Result<Self> {
+        use tray_icon::menu::{CheckMenuItem, PredefinedMenuItem};
+        let settings = crate::overlay::OverlaySettings::load(&Self::file(paths));
+        let show = CheckMenuItem::new("Throttle/brake overlay", true, settings.visible, None);
+        let moving = CheckMenuItem::new("Move overlay", settings.visible, false, None);
+        menu.append_items(&[
+            &PredefinedMenuItem::separator(),
+            &show,
+            &moving,
+            &PredefinedMenuItem::separator(),
+        ])
+        .map_err(io::Error::other)?;
+        Ok(Self {
+            show,
+            moving,
+            settings,
+            window: None,
+            proxy,
+            failed: false,
+        })
+    }
+
+    fn file(paths: &AppPaths) -> std::path::PathBuf {
+        paths.root.join("overlay.json")
+    }
+
+    fn save(&mut self, paths: &AppPaths) {
+        if let Some(window) = &self.window {
+            self.settings.position = window.position().or(self.settings.position);
+            self.settings.size = Some(window.size());
+        }
+        if let Err(e) = self.settings.save(&Self::file(paths)) {
+            log(paths, &format!("Overlay settings: {e}"));
+        }
+    }
+
+    /// Open the window once the dashboard is being served, and follow address changes.
+    fn sync(
+        &mut self,
+        target: &tao::event_loop::EventLoopWindowTarget<crate::overlay::OverlayEvent>,
+        state: &DesktopState,
+        paths: &AppPaths,
+    ) {
+        if !self.settings.visible || !state.ready || state.url.is_empty() {
+            return;
+        }
+        if let Some(window) = &mut self.window {
+            if let Err(e) = window.set_base(&state.url) {
+                log(paths, &format!("Overlay: {e}"));
+            }
+            return;
+        }
+        if self.failed {
+            return;
+        }
+        match crate::overlay::Overlay::open(
+            target,
+            self.proxy.clone(),
+            &state.url,
+            self.settings,
+            paths.root.join("webview"),
+        ) {
+            Ok(window) => self.window = Some(window),
+            Err(e) => {
+                // Usually a missing WebView2 runtime. Say so once instead of retrying every tick.
+                self.failed = true;
+                log(paths, &format!("Overlay: {e}"));
+                let _ = notify_rust::Notification::new()
+                    .summary("pitwall overlay could not open")
+                    .body(&e.to_string())
+                    .show();
+            }
+        }
+    }
+
+    /// Handle a tray click on an overlay entry. Returns false for other entries.
+    fn menu_event(
+        &mut self,
+        id: &tray_icon::menu::MenuId,
+        target: &tao::event_loop::EventLoopWindowTarget<crate::overlay::OverlayEvent>,
+        state: &DesktopState,
+        paths: &AppPaths,
+    ) -> bool {
+        if id == self.show.id() {
+            let visible = self.show.is_checked();
+            if !visible {
+                self.save(paths);
+                self.window = None;
+                self.moving.set_checked(false);
+            }
+            self.settings.visible = visible;
+            self.failed = false;
+            self.moving.set_enabled(visible);
+            self.save(paths);
+            self.sync(target, state, paths);
+            true
+        } else if id == self.moving.id() {
+            let moving = self.moving.is_checked();
+            if let Some(Err(e)) = self.window.as_mut().map(|w| w.set_moving(moving)) {
+                log(paths, &format!("Overlay: {e}"));
+            }
+            if !moving {
+                self.save(paths);
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    fn handle(&self, event: &tao::event::Event<crate::overlay::OverlayEvent>) {
+        if let (tao::event::Event::UserEvent(event), Some(window)) = (event, &self.window) {
+            window.handle(*event);
+        }
+    }
+
+    fn close(&mut self, paths: &AppPaths) {
+        if self.window.is_some() {
+            self.save(paths);
+        }
+        self.window = None;
     }
 }
