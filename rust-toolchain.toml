@@ -1,0 +1,6 @@
+# Matches the Zed commit gpui is pinned to (crates/app). Move both together (ADR 0002).
+[toolchain]
+channel = "1.98.1"
+targets = ["x86_64-pc-windows-msvc"]
+components = ["clippy", "rustfmt"]
+profile = "minimal"

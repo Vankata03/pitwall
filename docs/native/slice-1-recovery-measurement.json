@@ -1,0 +1,22 @@
+{
+  "measuredAt": "2026-11-05T21:22:31.143061+02:00",
+  "executableSha256": "0EFE1EDA7BD6A3442AB3FC8C064D99F07F7398017CBFD408BFECFDCC056D24F6",
+  "recording": "2026-11-03_1633_Suzuka_Qualifying_3.pitrec",
+  "recordingSha256": "01E7ADA247D74F6F06A8401E9AC7157C09735AD3684F015E1E7DE1A0B7B79126",
+  "wallSeconds": 30.2628744,
+  "logicalProcessors": 16,
+  "cpuOneCorePercent": 0.8260946950895054,
+  "cpuMachinePercent": 0.05163091844309409,
+  "workingSetBytes": 68677632,
+  "peakWorkingSetBytes": 72384512,
+  "privateBytes": 68947968,
+  "gpuEngineSumAveragePercent": 0.7700782973709239,
+  "gpuEngineSumMaxPercent": 0.7945435337139541,
+  "gpuSamples": 10,
+  "gpuError": null,
+  "rendersPerSecond": 3.933333333333333,
+  "rendersPerSecondMin": 3.0,
+  "displayFramesPerSecond": 3.933333333333333,
+  "keepDisplayOn": true,
+  "focusAndDisplayPower": "Focus uncontrolled; inspect render counts before claiming 60 Hz."
+}

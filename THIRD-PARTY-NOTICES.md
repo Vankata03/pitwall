@@ -46,7 +46,9 @@ Last Updated July 2025
 ## Font: Oxanium
 
 The dashboard uses the Oxanium typeface, licensed under the SIL Open Font License, Version
-1.1. Its licence text follows unchanged.
+1.1. The native app (`crates/app`) embeds the Regular, SemiBold and Bold TTF files from
+https://github.com/sevmeyer/oxanium; a copy of the licence sits beside them in
+`crates/app/assets/fonts/OFL.txt`. Its licence text follows unchanged.
 
 ```text
 Copyright 2019 The Oxanium Project Authors (https://github.com/sevmeyer/oxanium)

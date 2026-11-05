@@ -4,6 +4,7 @@
 
 pub mod bands;
 pub mod banners;
+pub mod binding;
 pub mod car_names;
 pub mod data;
 pub mod feed;
@@ -21,9 +22,11 @@ pub mod overlay;
 pub mod paths;
 pub mod pitrec;
 pub mod race_status;
+pub mod readout;
 pub mod recorder;
 pub mod replay;
 pub mod screen;
 pub mod telemetry;
 pub mod tower;
 pub mod tracks;
+pub mod units;
