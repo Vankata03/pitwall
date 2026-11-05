@@ -26,4 +26,5 @@ pub mod replay;
 pub mod screen;
 pub mod telemetry;
 pub mod tower;
+pub mod traces;
 pub mod tracks;
