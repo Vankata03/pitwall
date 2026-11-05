@@ -24,7 +24,7 @@ use serde_json::{Value, json};
 
 use crate::{
     theme,
-    tiles::{lap_timing, speed_rpm_gear},
+    tiles::registry::{self, Kind},
 };
 
 /// Counters a measurement run reads from another thread.
@@ -41,17 +41,16 @@ const HEADER: f32 = 40.0;
 const TILE_HEADER: f32 = 26.0;
 const UDP_HINT: &str = "In the game, turn UDP telemetry on, set UDP Format to 2025 or 2026, port 20777, and send to broadcast or this computer\u{2019}s IP.";
 
-/// One placed tile: its type and saved settings (as the layout file stores them).
+/// One placed tile: its type and saved settings (as the layout file stores them), and
+/// what the tile keeps between renders.
 struct TileSlot {
-    kind: TileKind,
+    kind: Kind,
     settings: Value,
+    memory: registry::Memory,
 }
 
-#[derive(Clone, Copy)]
-enum TileKind {
-    SpeedRpmGear,
-    LapTiming,
-}
+/// The slice's two tiles, when no tile list is given.
+pub const DEFAULT_TILES: [Kind; 2] = [Kind::SpeedRpmGear, Kind::LapTiming];
 
 pub struct Dashboard {
     reader: Reader,
@@ -69,6 +68,7 @@ impl Dashboard {
         reader: Reader,
         source: String,
         stats: Arc<Stats>,
+        kinds: Vec<Kind>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -78,16 +78,17 @@ impl Dashboard {
             source: source.into(),
             units: Units::DEFAULT,
             focus: None,
-            tiles: vec![
-                TileSlot {
-                    kind: TileKind::SpeedRpmGear,
-                    settings: json!({}),
-                },
-                TileSlot {
-                    kind: TileKind::LapTiming,
-                    settings: json!({ "reference": "best" }),
-                },
-            ],
+            tiles: kinds
+                .into_iter()
+                .map(|kind| TileSlot {
+                    kind,
+                    settings: match kind {
+                        Kind::LapTiming => json!({ "reference": "best" }),
+                        _ => json!({}),
+                    },
+                    memory: registry::Memory::default(),
+                })
+                .collect(),
             drawn: (u64::MAX, u64::MAX),
             stats,
         }
@@ -167,19 +168,22 @@ impl Render for Dashboard {
             Lifecycle::Live | Lifecycle::Ended => None,
         };
         let banner_height = if banner.is_some() { 48.0 } else { 0.0 };
-        let count = self.tiles.len() as f32;
-        let tile_w = ((width - GAP * (count + 1.0)) / count).max(0.0);
-        let tile_h = (height - HEADER - banner_height - GAP * 2.0).max(0.0);
+        // Up to three tiles a row.
+        let count = self.tiles.len().max(1);
+        let columns = count.min(3) as f32;
+        let rows = count.div_ceil(3) as f32;
+        // One pixel of slack so rounding never wraps a full row.
+        let tile_w = ((width - 1.0 - GAP * (columns + 1.0)) / columns)
+            .floor()
+            .max(0.0);
+        let tile_h = ((height - HEADER - banner_height - GAP * (rows + 1.0)) / rows).max(0.0);
         let body = (tile_w, (tile_h - TILE_HEADER - 24.0).max(0.0));
 
-        let mut row = div().flex().gap(px(GAP)).px(px(GAP)).flex_1();
-        for (slot_index, slot) in self.tiles.iter().enumerate() {
+        let mut row = div().flex().flex_wrap().gap(px(GAP)).px(px(GAP)).flex_1();
+        for (slot_index, slot) in self.tiles.iter_mut().enumerate() {
             let binding: CarBinding = car_binding_of(&slot.settings);
             let resolved = resolve_binding(&binding, &ctx);
-            let name = match slot.kind {
-                TileKind::SpeedRpmGear => speed_rpm_gear::NAME,
-                TileKind::LapTiming => lap_timing::NAME,
-            };
+            let name = slot.kind.name();
             let mut head = div()
                 .flex()
                 .justify_between()
@@ -197,21 +201,20 @@ impl Render for Dashboard {
                     label
                 });
             }
-            if matches!(slot.kind, TileKind::LapTiming) {
+            if let Some(reference) = registry::reference_label(slot.kind, &slot.settings) {
                 let time_trial = snap.session().value().is_some_and(|s| s.session_type == 18);
                 head = head.child(
                     div()
                         .id(("lap-reference", slot_index))
                         .cursor_pointer()
-                        .child(format!(
-                            "Compare: {}",
-                            lap_timing::LapReference::of(&slot.settings).label()
-                        ))
+                        .child(format!("Compare: {reference}"))
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(move |this, _, _, cx| {
-                                lap_timing::LapReference::cycle(
-                                    &mut this.tiles[slot_index].settings,
+                                let slot = &mut this.tiles[slot_index];
+                                registry::cycle_reference(
+                                    slot.kind,
+                                    &mut slot.settings,
                                     time_trial,
                                 );
                                 cx.notify();
@@ -228,27 +231,20 @@ impl Render for Dashboard {
                     .text_color(theme::muted())
                     .child(message)
                     .into_any_element(),
-                None => match slot.kind {
-                    TileKind::SpeedRpmGear => {
-                        let inputs = speed_rpm_gear::Inputs::from_source(
-                            &fast,
-                            &snap,
-                            resolved.index(),
-                            self.units,
-                            body,
-                        );
-                        speed_rpm_gear::render(speed_rpm_gear::view(&inputs)).into_any_element()
-                    }
-                    TileKind::LapTiming => {
-                        let inputs = lap_timing::Inputs::from_model(
-                            &snap,
-                            resolved.index(),
-                            lap_timing::LapReference::of(&slot.settings),
-                            body,
-                        );
-                        lap_timing::render(lap_timing::view(&inputs)).into_any_element()
-                    }
-                },
+                None => registry::render(
+                    slot.kind,
+                    &registry::Context {
+                        reader: &self.reader,
+                        fast: &fast,
+                        model: &snap,
+                        index: resolved.index(),
+                        retired: matches!(resolved, ResolvedCar::Retired(_)),
+                        settings: &slot.settings,
+                        units: self.units,
+                        size: body,
+                    },
+                    &mut slot.memory,
+                ),
             };
             row = row.child(
                 div()

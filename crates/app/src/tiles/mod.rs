@@ -1,9 +1,19 @@
 //! Tiles. Each tile is two halves: a pure view model built from core data (tested
 //! without a window) and a gpui render of that view model.
 
+pub mod car_status;
+pub mod engine_temp;
+pub mod ers;
 pub mod format;
+pub mod fuel;
+pub mod g_force;
 pub mod lap_timing;
+pub mod live_delta;
+mod paint;
+pub mod registry;
+mod slow;
 pub mod speed_rpm_gear;
+pub mod throttle_brake_traces;
 mod widgets;
 
 /// How much a tile shows at its current pixel size.
@@ -54,3 +64,6 @@ mod tests {
 
 #[cfg(test)]
 mod lap_timing_tests;
+
+#[cfg(test)]
+mod live_delta_tests;

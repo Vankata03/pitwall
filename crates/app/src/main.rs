@@ -3,7 +3,9 @@
 //! timing tiles.
 //!
 //! Usage: `pitwall-native [--port N] [--replay FILE [--from SECONDS] [--loop]]
-//! [--size WxH] [--stats]`. Without `--replay` it listens for live UDP (default 20777).
+//! [--size WxH] [--stats] [--tiles TYPE,TYPE...] [--data-dir DIR]`. Without `--replay` it listens for live
+//! UDP (default 20777). `--tiles` takes saved tile types such as `g-force,ers`.
+//! `--data-dir` replaces the OS data folder (its `pitwall/liveries` holds the livery pack).
 
 mod dashboard;
 mod source;
@@ -30,6 +32,7 @@ struct Args {
     source: Source,
     size: (f32, f32),
     stats: bool,
+    tiles: Vec<tiles::registry::Kind>,
 }
 
 fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
@@ -39,6 +42,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut looped = false;
     let mut size = (900.0, 480.0);
     let mut stats = false;
+    let mut tiles = dashboard::DEFAULT_TILES.to_vec();
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} needs a value"));
         match arg.as_str() {
@@ -50,6 +54,15 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--loop" => looped = true,
             "--stats" => stats = true,
+            "--data-dir" => {
+                let _ = tiles::car_status::DATA_DIR.set(PathBuf::from(value()?));
+            }
+            "--tiles" => {
+                tiles = value()?
+                    .split(',')
+                    .map(|t| tiles::registry::Kind::of(t.trim()).ok_or(format!("unknown tile {t}")))
+                    .collect::<Result<_, _>>()?
+            }
             "--size" => {
                 let text = value()?;
                 let (w, h) = text.split_once('x').ok_or("--size takes WIDTHxHEIGHT")?;
@@ -68,6 +81,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         },
         size,
         stats,
+        tiles,
     })
 }
 
@@ -122,7 +136,9 @@ fn main() -> ExitCode {
                 thermal_frame_interval: None,
                 ..Default::default()
             },
-            |window, cx| cx.new(|cx| Dashboard::new(reader, label, stats, window, cx)),
+            |window, cx| {
+                cx.new(|cx| Dashboard::new(reader, label, stats, args.tiles.clone(), window, cx))
+            },
         );
         if let Err(error) = opened {
             eprintln!("pitwall-native: window: {error:#}");
