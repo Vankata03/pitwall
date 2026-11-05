@@ -222,10 +222,10 @@ impl Render for Dashboard {
                         speed_rpm_gear::render(speed_rpm_gear::view(&inputs)).into_any_element()
                     }
                     TileKind::LapTiming => {
-                        let inputs = lap_timing::Inputs::of(
-                            car,
+                        let inputs = lap_timing::Inputs::from_model(
+                            &snap,
+                            resolved.index(),
                             lap_timing::LapReference::of(&slot.settings),
-                            lifecycle,
                             body,
                         );
                         lap_timing::render(lap_timing::view(&inputs)).into_any_element()

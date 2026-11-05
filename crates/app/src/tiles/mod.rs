@@ -51,3 +51,6 @@ mod tests {
         assert_eq!(d.pick(330.0, 370.0), Density::Full);
     }
 }
+
+#[cfg(test)]
+mod lap_timing_tests;

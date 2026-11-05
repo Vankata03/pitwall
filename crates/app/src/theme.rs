@@ -33,3 +33,7 @@ pub fn personal_best() -> Hsla {
 pub fn slower() -> Hsla {
     colour(0xF2D14B)
 }
+
+pub fn session_best() -> Hsla {
+    colour(0xC58BFF)
+}

@@ -42,7 +42,7 @@ def js_package(name, parent):
 
 js_seen = set()
 def visit_js(manifest):
-    data = json.loads(manifest.read_text())
+    data = json.loads(manifest.read_text(encoding='utf-8'))
     key = (data['name'], data.get('version', 'workspace'))
     if key in js_seen:
         return
@@ -71,26 +71,33 @@ for (name, version), (_, directory) in sorted(packages.items()):
         # Some crates omit workspace-level licence files from their published archive.
         cache = ROOT / 'tools/notices/upstream' / f'{name}-{version}.txt'
         if not cache.is_file() and '--fetch-missing' in sys.argv:
-            data = json.loads((directory / '.cargo_vcs_info.json').read_text())
+            data = json.loads((directory / '.cargo_vcs_info.json').read_text(encoding='utf-8'))
             import tomllib
-            repository = tomllib.loads((directory / 'Cargo.toml').read_text())['package']['repository'].removesuffix('.git')
+            package = tomllib.loads((directory / 'Cargo.toml').read_text(encoding='utf-8'))['package']
+            repository = package.get('repository', package.get('homepage', '')).split('/tree/')[0].removesuffix('.git')
             revision = data['git']['sha1']
-            if not repository.startswith('https://github.com/'):
+            if repository.startswith('https://github.com/'):
+                raw = repository.replace('https://github.com/', 'https://raw.githubusercontent.com/') + '/' + revision
+            elif repository.startswith('https://gitlab.redox-os.org/'):
+                raw = repository + '/-/raw/' + revision
+            else:
                 raise RuntimeError(f'Unsupported upstream: {repository}')
             for filename in ('LICENSE-MIT.txt', 'LICENSE-MIT', 'LICENSE', 'LICENSE.txt', 'LICENSE.md', 'COPYING'):
-                url = repository.replace('https://github.com/', 'https://raw.githubusercontent.com/') + '/' + revision + '/' + filename
+                url = raw + '/' + filename
                 try:
                     text = urllib.request.urlopen(url).read().decode()
-                except urllib.error.HTTPError:
-                    continue
+                except urllib.error.HTTPError as error:
+                    if error.code == 404:
+                        continue
+                    raise
                 cache.parent.mkdir(parents=True, exist_ok=True)
-                cache.write_text(f'Source: {url}\n\n{text}')
+                cache.write_text(f'Source: {url}\n\n{text}', encoding='utf-8')
                 break
         if not cache.is_file():
             raise RuntimeError(f'No licence text found for {name} {version}; rerun with --fetch-missing')
         files = [cache]
     out += ['', f'### {name} {version}']
     for path in sorted(set(files)):
-        out += ['', f'`{path.name}`', '', '````text', path.read_text(errors='replace').rstrip(), '````']
+        out += ['', f'`{path.name}`', '', '````text', path.read_text(encoding='utf-8').rstrip(), '````']
 notice = ROOT / 'THIRD-PARTY-NOTICES.md'
-notice.write_text(notice.read_text().split('## Dependencies')[0] + '\n'.join(out) + '\n')
+notice.write_text(notice.read_text(encoding='utf-8').split('## Dependencies')[0] + '\n'.join(out) + '\n', encoding='utf-8')

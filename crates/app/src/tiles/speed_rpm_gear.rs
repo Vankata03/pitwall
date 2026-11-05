@@ -48,8 +48,8 @@ pub struct Dial {
     /// Share of the maximum RPM, clamped; `None` draws the empty track only.
     pub fill: Option<f32>,
     pub stale: bool,
-    /// For the thousands labels.
-    pub max_rpm: Option<u16>,
+    /// Quarter-sweep labels, in thousands of RPM.
+    pub labels: Option<[String; 5]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,7 +120,9 @@ pub fn view(inputs: &Inputs) -> View {
                 .zip(max_rpm)
                 .map(|(c, max)| (f32::from(c.engine_rpm) / f32::from(max)).clamp(0.0, 1.0)),
             stale: state == ReadoutState::Stale,
-            max_rpm,
+            labels: max_rpm.map(|max| {
+                std::array::from_fn(|i| format!("{}", (f32::from(max) * i as f32 / 4000.0).round()))
+            }),
         }),
         message: whole_tile_message([state], inputs.lifecycle, true),
     }
@@ -234,7 +236,9 @@ fn render_strip(strip: &Strip) -> impl IntoElement + use<> {
 /// The RPM dial: a 270° track with ticks outside it and a fill to the share of the
 /// maximum, coloured by the strip's zones. Steady, never animated.
 fn render_dial(dial: Dial) -> impl IntoElement {
-    canvas(
+    let labels = dial.labels.clone();
+    let size = dial.size;
+    let paint = canvas(
         |_, _, _| (),
         move |bounds, (), window, _| {
             let size = dial.size;
@@ -303,7 +307,29 @@ fn render_dial(dial: Dial) -> impl IntoElement {
             }
         },
     )
-    .size_full()
+    .size_full();
+    let mut result = div().relative().size_full().child(paint);
+    if let Some(labels) = labels {
+        let center = size / 2.0;
+        let radius = center - 6.0;
+        for (i, label) in labels.into_iter().enumerate() {
+            let angle = std::f32::consts::PI * (0.75 + 1.5 * i as f32 / 4.0);
+            result = result.child(
+                div()
+                    .absolute()
+                    .left(px(center + angle.cos() * radius - 12.0))
+                    .top(px(center + angle.sin() * radius - 7.0))
+                    .w(px(24.0))
+                    .h(px(14.0))
+                    .text_center()
+                    .text_size(px(11.0))
+                    .line_height(px(14.0))
+                    .text_color(theme::muted())
+                    .child(label),
+            );
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -334,6 +360,20 @@ mod tests {
             width: 400.0,
             height: 400.0,
         }
+    }
+
+    #[test]
+    fn dial_labels_show_quarters_of_maximum_rpm_in_rounded_thousands() {
+        let v = view(&Inputs {
+            max_rpm: Some(13000),
+            ..base(Readout::Live(inputs(200, 6500, 4)))
+        });
+        assert_eq!(v.dial.unwrap().labels.unwrap(), ["0", "3", "7", "10", "13"]);
+        let missing = view(&Inputs {
+            max_rpm: None,
+            ..base(Readout::Absent)
+        });
+        assert!(missing.dial.unwrap().labels.is_none());
     }
 
     #[test]
