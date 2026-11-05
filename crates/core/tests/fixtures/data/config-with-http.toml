@@ -1,0 +1,17 @@
+[udp]
+port = 20777
+
+[http]
+port = 8777
+bind = "0.0.0.0"
+
+[forward]
+enabled = false
+targets = []
+
+[recording]
+enabled = true
+size_cap_gb = 20
+
+[app]
+start_with_windows = false

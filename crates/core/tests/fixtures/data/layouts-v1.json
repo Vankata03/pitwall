@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "layouts": [
+    {
+      "schemaVersion": 1,
+      "name": "Race engineer",
+      "arrangements": {
+        "wide": [
+          {
+            "i": "lap-timing",
+            "type": "lap-timing",
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 4,
+            "settings": {
+              "car": {
+                "target": "pinned",
+                "pin": {
+                  "kind": "driver",
+                  "driverId": 7
+                }
+              },
+              "reference": "best"
+            }
+          },
+          {
+            "i": "track-map",
+            "type": "track-map",
+            "x": 6,
+            "y": 0,
+            "w": 8,
+            "h": 7,
+            "settings": {}
+          },
+          {
+            "i": "future-tile",
+            "type": "tile-from-a-newer-build",
+            "x": 14,
+            "y": 0,
+            "w": 4,
+            "h": 3,
+            "settings": {
+              "anything": [1, 2, 3]
+            },
+            "locked": true
+          }
+        ],
+        "tablet": [
+          {
+            "i": "lap-timing",
+            "type": "lap-timing",
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 4,
+            "settings": {}
+          }
+        ]
+      },
+      "note": "kept by builds that do not know it"
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Quali",
+      "arrangements": {
+        "wide": [
+          {
+            "i": "weather",
+            "type": "weather",
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 2,
+            "settings": {}
+          }
+        ],
+        "tablet": [],
+        "phone": [
+          {
+            "i": "weather",
+            "type": "weather",
+            "x": 0,
+            "y": 0,
+            "w": 4,
+            "h": 2,
+            "settings": {}
+          }
+        ]
+      }
+    }
+  ],
+  "lastSelected": "Race engineer"
+}

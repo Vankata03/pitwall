@@ -1,0 +1,13 @@
+[udp]
+port = 20777
+
+[forward]
+enabled = true
+targets = ["192.168.1.40:20777"]
+
+[recording]
+enabled = false
+size_cap_gb = 5
+
+[app]
+start_with_windows = true

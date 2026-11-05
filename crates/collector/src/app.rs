@@ -394,7 +394,7 @@ impl OverlayMenu {
     }
 
     fn file(paths: &AppPaths) -> std::path::PathBuf {
-        paths.root.join("overlay.json")
+        paths.overlay.clone()
     }
 
     fn save(&mut self, paths: &AppPaths) {
