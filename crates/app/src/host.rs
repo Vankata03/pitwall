@@ -9,7 +9,7 @@ use pitwall_core::{
         config::{Cli, Config},
         udp::{LiveStatus, LiveUdp, PreparedUpdate},
     },
-    model::{Readout, SessionModel},
+    model::{Lifecycle, Readout, SessionModel},
     recorder::{self, Listing, LoadedGuard, Recorder, RecorderConfig},
     replay::{Replay, ReplayState},
     tracks::{TrackKey, TrackStore},
@@ -18,6 +18,7 @@ use std::{
     fs::{self, File},
     io,
     net::{Ipv4Addr, SocketAddr},
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -34,6 +35,8 @@ pub enum Command {
     Pin(String, bool),
     Delete(String),
     Start(String),
+    /// A replay outside the library, from the command line. Never copied into it.
+    StartFile(PathBuf),
     Stop,
     Pause(bool),
     Seek(f64),
@@ -46,7 +49,7 @@ pub enum Command {
     Shutdown,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Status {
     pub config: Config,
     pub file_config: Config,
@@ -56,6 +59,8 @@ pub struct Status {
     pub error: Option<String>,
     pub feedback: String,
     pub notices: Vec<String>,
+    /// Unreadable data files kept aside as `*.bad` in the data folder, from any run.
+    pub bad_files: Vec<std::path::PathBuf>,
     pub recordings: Vec<Listing>,
     pub replay: Option<ReplayState>,
     pub replay_name: Option<String>,
@@ -95,7 +100,7 @@ impl Runtime {
     pub fn start(folder: DataFolder, cli: Cli) -> io::Result<Self> {
         let (publisher, reader) = feed::channel();
         let (sender, receiver) = mpsc::channel();
-        let host = Host::open(folder, cli)?;
+        let host = Host::open(folder, cli, desktop::Startup::user())?;
         let state = Arc::new(Mutex::new(host.status.clone()));
         let control = Control {
             sender,
@@ -249,23 +254,26 @@ fn receive(
     Ok(())
 }
 
-type LoadResult = (u64, String, io::Result<(Replay, LoadedGuard)>);
+type LoadResult = (u64, String, io::Result<(Replay, Option<LoadedGuard>)>);
 pub struct Host {
     folder: DataFolder,
     cli: Cli,
+    startup: desktop::Startup,
     status: Status,
     recorder: Arc<Mutex<Recorder>>,
     enabled: Arc<AtomicBool>,
     live: Option<ReceiverWorker>,
     tracks: TrackStore,
-    replay: Option<(Replay, LoadedGuard)>,
+    replay: Option<(Replay, Option<LoadedGuard>)>,
     load_generation: u64,
     loaded_tx: mpsc::Sender<LoadResult>,
     loaded_rx: mpsc::Receiver<LoadResult>,
     progress: Arc<Mutex<(u64, f64)>>,
+    /// The live model is in a session while a replay plays.
+    live_session: bool,
 }
 impl Host {
-    pub fn open(folder: DataFolder, cli: Cli) -> io::Result<Self> {
+    pub fn open(folder: DataFolder, cli: Cli, startup: desktop::Startup) -> io::Result<Self> {
         fs::create_dir_all(&folder.paths.root)?;
         let recorder = Recorder::start(
             RecorderConfig::new(
@@ -291,6 +299,7 @@ impl Host {
             error: None,
             feedback: String::new(),
             notices: folder.notices(),
+            bad_files: desktop::bad_files(&folder.paths.root),
             recordings: recorder::list(&folder.paths.recordings)?,
             replay: None,
             replay_name: None,
@@ -310,6 +319,7 @@ impl Host {
         let mut host = Self {
             folder,
             cli,
+            startup,
             status,
             recorder: Arc::new(Mutex::new(recorder)),
             enabled,
@@ -320,6 +330,7 @@ impl Host {
             loaded_tx,
             loaded_rx,
             progress: Arc::new(Mutex::new((0, 0.0))),
+            live_session: false,
         };
         host.load_file_settings()?;
         Ok(host)
@@ -328,12 +339,33 @@ impl Host {
         self.status.clone()
     }
     fn load_file_settings(&mut self) -> io::Result<()> {
-        if let Ok(text) = fs::read_to_string(&self.folder.config_path) {
-            let mut table: toml::Table = toml::from_str(&text).map_err(io::Error::other)?;
-            table.remove("http");
-            self.status.file_config = table.try_into().map_err(io::Error::other)?;
+        if let Some(config) = self.read_file_settings()? {
+            self.status.file_config = config;
         }
         Ok(())
+    }
+    /// The config file's values, without obsolete `[http]`; `None` when it is missing.
+    fn read_file_settings(&self) -> io::Result<Option<Config>> {
+        let text = match fs::read_to_string(&self.folder.config_path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        let mut table: toml::Table = toml::from_str(&text).map_err(io::Error::other)?;
+        table.remove("http");
+        Ok(Some(table.try_into().map_err(io::Error::other)?))
+    }
+    /// Apply external edits to the config file through the same validate/prepare/swap path
+    /// as a save. A rejected edit keeps the active settings and never rewrites the file.
+    pub fn reload_settings(&mut self) -> io::Result<()> {
+        match self.read_file_settings()? {
+            Some(next) if next != self.status.file_config => {
+                self.apply_settings(next, false)?;
+                desktop::log(&self.folder.paths, "Settings reloaded");
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
     fn effective(&self, config: &Config) -> Config {
         let mut config = config.clone();
@@ -362,11 +394,13 @@ impl Host {
         }
         let changed_startup = next.app != self.status.config.app;
         if changed_startup {
-            desktop::autostart(next.app.start_with_windows, &self.cli)?;
+            self.startup.set(next.app.start_with_windows, &self.cli)?;
         }
         if save && let Err(error) = self.folder.save_config(&config) {
             if changed_startup {
-                let _ = desktop::autostart(self.status.config.app.start_with_windows, &self.cli);
+                let _ = self
+                    .startup
+                    .set(self.status.config.app.start_with_windows, &self.cli);
             }
             return Err(error);
         }
@@ -390,6 +424,15 @@ impl Host {
         Ok(())
     }
     pub fn command(&mut self, command: Command) -> io::Result<()> {
+        let feedback = match &command {
+            Command::Save(_) => {
+                "Settings saved. Live reload applies valid changes; command-line overrides remain effective."
+            }
+            Command::Delete(_) => "Recording deleted.",
+            Command::Relearn => "Map relearning.",
+            _ => "Done.",
+        };
+        self.status.feedback.clear();
         match command {
             Command::Save(config) => self.apply_settings(config, true)?,
             Command::Rescan => {
@@ -408,30 +451,20 @@ impl Host {
                 .map_err(io::Error::other)??,
             Command::Start(name) => {
                 let path = recorder::recording_path(&self.folder.paths.recordings, &name)?;
-                self.load_generation += 1;
-                let generation = self.load_generation;
                 let guard = self.recorder.lock().unwrap().mark_loaded(&name);
-                let tx = self.loaded_tx.clone();
-                let progress = self.progress.clone();
-                let tracks = self.tracks.clone();
-                self.status.loading = Some(0.0);
-                self.status.replay_name = Some(name.clone());
-                self.replay = None;
-                thread::Builder::new()
-                    .name("pitwall-replay-load".into())
-                    .spawn(move || {
-                        let result = File::open(path)
-                            .and_then(|file| {
-                                Replay::load(file, |value| {
-                                    *progress.lock().unwrap() = (generation, value);
-                                })
-                            })
-                            .map(|replay| {
-                                tracks.observe(replay.model());
-                                (replay, guard)
-                            });
-                        let _ = tx.send((generation, name, result));
-                    })?;
+                self.load(path, name, Some(guard))?;
+            }
+            Command::StartFile(path) => {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .ok_or_else(|| io::Error::other("replay path names no file"))?;
+                let library = fs::canonicalize(&self.folder.paths.recordings).ok();
+                let parent = path.parent().and_then(|p| fs::canonicalize(p).ok());
+                if library.is_some() && library == parent {
+                    return self.command(Command::Start(name));
+                }
+                self.load(path, name, None)?;
             }
             Command::Stop => {
                 self.load_generation += 1;
@@ -468,9 +501,37 @@ impl Host {
             Command::Shutdown => {}
         }
         self.status.recordings = recorder::list(&self.folder.paths.recordings)?;
-        self.status.feedback = "Done".into();
+        self.status.feedback = feedback.into();
         self.status.error = None;
         self.status.revision += 1;
+        Ok(())
+    }
+    /// Load off the host thread; a later Start or Stop makes this load's result stale.
+    fn load(&mut self, path: PathBuf, name: String, guard: Option<LoadedGuard>) -> io::Result<()> {
+        self.load_generation += 1;
+        let generation = self.load_generation;
+        let tx = self.loaded_tx.clone();
+        let progress = self.progress.clone();
+        let tracks = self.tracks.clone();
+        self.status.loading = Some(0.0);
+        self.status.replay_name = Some(name.clone());
+        self.replay = None;
+        self.status.replay = None;
+        thread::Builder::new()
+            .name("pitwall-replay-load".into())
+            .spawn(move || {
+                let result = File::open(path)
+                    .and_then(|file| {
+                        Replay::load(file, |value| {
+                            *progress.lock().unwrap() = (generation, value);
+                        })
+                    })
+                    .map(|replay| {
+                        tracks.observe(replay.model());
+                        (replay, guard)
+                    });
+                let _ = tx.send((generation, name, result));
+            })?;
         Ok(())
     }
     fn active(&mut self) -> io::Result<&mut Replay> {
@@ -505,7 +566,11 @@ impl Host {
         if let Some((replay, _)) = &mut self.replay {
             replay.tick(elapsed)?;
             self.tracks.observe(replay.model());
-            self.status.replay = Some(replay.state(Some(self.status.line.clone())));
+            let background = self
+                .live_session
+                .then(|| "A live session is recording in the background".to_owned());
+            self.status.replay = Some(replay.state(background));
+            self.status.track = track_of(replay.model());
         }
         Ok(())
     }
@@ -531,7 +596,10 @@ impl Host {
             &self.folder.paths,
             &format!("Starting native build {}", env!("CARGO_PKG_VERSION")),
         );
-        if let Err(e) = desktop::autostart(self.status.config.app.start_with_windows, &self.cli) {
+        if let Err(e) = self
+            .startup
+            .set(self.status.config.app.start_with_windows, &self.cli)
+        {
             self.report(e);
         }
         let mut last = Instant::now();
@@ -595,20 +663,10 @@ impl Host {
                         }
                     }
                 }
-                // External edits use the same validation/prepare/swap path as UI saves.
-                let previous = self.status.file_config.clone();
-                let reload = self.load_file_settings().and_then(|()| {
-                    let next = self.status.file_config.clone();
-                    self.status.file_config = previous.clone();
-                    if next != previous {
-                        self.apply_settings(next, false)
-                    } else {
-                        Ok(())
-                    }
-                });
-                if let Err(e) = reload {
-                    self.status.file_config = previous;
-                    self.report(e);
+                if let Err(e) = self.reload_settings() {
+                    self.report(io::Error::other(format!(
+                        "Settings reload rejected; active settings retained: {e}"
+                    )));
                 }
                 if let Ok(list) = recorder::list(&self.folder.paths.recordings) {
                     self.status.recordings = list;
@@ -639,25 +697,12 @@ impl Host {
             if let Some(live) = &self.live {
                 let live = live.state.lock().unwrap();
                 self.status.live = live.status.clone();
-                self.status.line = self.status.live.as_ref().map_or_else(
-                    || "Waiting for game".into(),
-                    |s| {
-                        if s.ingest.packet_rate_hz < 1.0 {
-                            "Waiting for game".into()
-                        } else {
-                            format!("Receiving {:.0} Hz", s.ingest.packet_rate_hz)
-                        }
-                    },
-                );
+                self.status.line = crate::status_view::connection_line(&self.status);
+                self.live_session = matches!(live.model.lifecycle(), Lifecycle::Live);
                 let model = self.replay.as_ref().map_or(&live.model, |r| r.0.model());
-                self.status.track = match model.session() {
-                    Readout::Live(s) | Readout::Stale(s)
-                        if s.track_id >= 0 && s.track_length > 0 =>
-                    {
-                        Some(TrackKey::new(s.track_id, s.track_length))
-                    }
-                    _ => None,
-                };
+                if self.replay.is_none() {
+                    self.status.track = track_of(model);
+                }
                 let key = (
                     live.generation,
                     self.status.replay_name.clone(),
@@ -681,6 +726,16 @@ impl Host {
         Ok(())
     }
 }
+/// The current track's ID and length, for Relearn map.
+fn track_of(model: &SessionModel) -> Option<TrackKey> {
+    match model.session() {
+        Readout::Live(s) | Readout::Stale(s) if s.track_id >= 0 && s.track_length > 0 => {
+            Some(TrackKey::new(s.track_id, s.track_length))
+        }
+        _ => None,
+    }
+}
+
 fn address(config: &Config) -> SocketAddr {
     SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.udp.port))
 }

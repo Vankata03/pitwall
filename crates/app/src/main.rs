@@ -1,4 +1,9 @@
-//! Native pitwall application: in-process host, gpui windows and a Win32 overlay.
+//! pitwall-native: the native app. One process owns the data folder and runs the host
+//! (live UDP, recorder, replay) in-process; gpui windows show the dashboard and the
+//! status/settings page, the tray stays resident and a Win32 overlay draws in game.
+//!
+//! Startup goes through `pitwall_core::data::DataFolder`, so existing data folders load
+//! unchanged and obsolete `--http-port`/`--bind` flags never stop startup.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod dashboard;
 mod source;
@@ -13,9 +18,9 @@ use crate::{
     status::StatusWindow,
 };
 use gpui::{App, AppContext, Bounds, WindowBounds, WindowOptions, px, size};
-use pitwall_core::{data::DataFolder, paths::AppPaths};
+use pitwall_core::{data::DataFolder, feed::Reader, paths::AppPaths};
 use pitwall_native::{
-    desktop::{self, Instance},
+    desktop::{self, FirstRun, Instance, Launch},
     host::{Command, Control, Runtime},
 };
 use std::{
@@ -25,15 +30,16 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+
 const FONTS: [&[u8]; 3] = [
     include_bytes!("../assets/fonts/Oxanium-Regular.ttf"),
     include_bytes!("../assets/fonts/Oxanium-SemiBold.ttf"),
     include_bytes!("../assets/fonts/Oxanium-Bold.ttf"),
 ];
 
-fn dashboard(
+fn open_dashboard(
     cx: &mut App,
-    reader: pitwall_core::feed::Reader,
+    reader: Reader,
     stats: Arc<Stats>,
     dimensions: (f32, f32),
 ) -> Result<(), String> {
@@ -41,216 +47,222 @@ fn dashboard(
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
+            // A dashboard on a second screen is inactive while the game has focus:
+            // never throttle it.
             inactive_frame_interval: None,
             low_power_frame_interval: None,
             thermal_frame_interval: None,
             ..Default::default()
         },
-        |window, cx| {
-            cx.new(|cx| {
-                Dashboard::new(
-                    reader,
-                    "Native host (status and settings in tray)".into(),
-                    stats,
-                    window,
-                    cx,
-                )
-            })
-        },
+        |window, cx| cx.new(|cx| Dashboard::new(reader, "pitwall".into(), stats, window, cx)),
     )
     .map(|_| ())
-    .map_err(|e| format!("Dashboard: {e:#}"))
+    .map_err(|e| format!("Dashboard window: {e:#}"))
 }
-fn settings(cx: &mut App, control: Control, open_dashboard: Arc<dyn Fn(&mut App)>) {
-    let bounds = Bounds::centered(None, size(px(850.0), px(850.0)), cx);
+
+fn open_status(cx: &mut App, control: Control, dashboard: Arc<dyn Fn(&mut App)>) {
+    let bounds = Bounds::centered(None, size(px(860.0), px(860.0)), cx);
     if let Err(e) = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             ..Default::default()
         },
-        |window, cx| cx.new(|cx| StatusWindow::new(control, open_dashboard, window, cx)),
+        |window, cx| cx.new(|cx| StatusWindow::new(control, dashboard, window, cx)),
     ) {
-        eprintln!("Status window: {e:#}");
+        eprintln!("pitwall-native: status window: {e:#}");
     }
 }
+
+/// Report a failure that stops startup: stderr, the log and a notification, since a
+/// release build has no console.
+fn fatal(paths: Option<&AppPaths>, message: &str) -> ExitCode {
+    eprintln!("pitwall-native: {message}");
+    if let Some(paths) = paths {
+        desktop::log(paths, &format!("Startup failed: {message}"));
+    }
+    desktop::notify("pitwall could not start", message);
+    ExitCode::FAILURE
+}
+
 fn main() -> ExitCode {
     let args = match Args::parse(std::env::args().skip(1)) {
         Ok(args) => args,
-        Err(e) => {
-            eprintln!("pitwall-native: {e}");
+        Err(error) => {
+            desktop::attach_console();
+            eprintln!("pitwall-native: {error}");
             return ExitCode::from(2);
         }
     };
+    if args.cli.console || args.cli.help {
+        desktop::attach_console();
+    }
     if args.cli.help {
-        println!(
-            "pitwall-native [--console] [--udp-port PORT] [--config PATH] [--data-dir DIR] [--replay FILE] [--from SECONDS] [--loop] [--size WxH] [--stats]"
-        );
+        println!("{}", source::HELP);
         return ExitCode::SUCCESS;
     }
     let paths = match AppPaths::resolve_or(args.cli.data_dir.as_deref()) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::FAILURE;
-        }
+        Ok(paths) => paths,
+        Err(error) => return fatal(None, &error.to_string()),
     };
-    let _instance = match Instance::acquire(&paths) {
-        Ok(Some(instance)) => instance,
-        Ok(None) => return ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("{e}");
-            return if e.kind() == std::io::ErrorKind::AlreadyExists {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::FAILURE
-            };
+    let instance = match Instance::acquire(&paths) {
+        Ok(Launch::Primary(instance)) => instance,
+        Ok(Launch::Existing) => {
+            eprintln!(
+                "pitwall-native: pitwall is already running for {}; asked it to open its dashboard (it may still be starting)",
+                paths.root.display()
+            );
+            return ExitCode::SUCCESS;
         }
+        Err(error) => return fatal(Some(&paths), &format!("instance lock: {error}")),
     };
+    desktop::log(
+        &paths,
+        &format!("Starting native build {}", env!("CARGO_PKG_VERSION")),
+    );
     let mut folder = match DataFolder::open(paths.clone(), &args.cli) {
         Ok(folder) => folder,
-        Err(e) => {
-            eprintln!("Data folder: {e}");
-            desktop::log(&paths, &format!("Startup: {e}"));
-            return ExitCode::FAILURE;
-        }
+        Err(error) => return fatal(Some(&paths), &format!("data folder: {error}")),
     };
-    folder.obsolete.extend(args.obsolete);
-    for notice in folder.notices() {
-        desktop::log(&paths, &notice);
+    if !args.obsolete.is_empty() {
+        // DataFolder logged the file's obsolete keys; the native parser kept the flags.
+        desktop::log(
+            &paths,
+            &format!("Ignored obsolete flags: {}", args.obsolete.join(", ")),
+        );
+        folder.obsolete.extend(args.obsolete.iter().cloned());
     }
     let overlay = folder.overlay;
     let runtime = match Runtime::start(folder, args.cli.clone()) {
         Ok(runtime) => runtime,
-        Err(e) => {
-            eprintln!("Host: {e}");
-            return ExitCode::FAILURE;
-        }
+        Err(error) => return fatal(Some(&paths), &format!("host: {error}")),
     };
     let stats = Arc::new(Stats::default());
     if args.stats {
         print_stats(stats.clone());
     }
+    if let Some(path) = args.replay.clone() {
+        let _ = runtime.control.send(Command::StartFile(path));
+    }
+
     let reader = runtime.reader.clone();
     let control = runtime.control.clone();
     let app_paths = paths.clone();
-    let tray_reader = runtime.reader.clone();
     gpui_platform::application().run(move |cx: &mut App| {
-        if let Err(e) = cx
+        if let Err(error) = cx
             .text_system()
             .add_fonts(FONTS.iter().map(|f| Cow::Borrowed(*f)).collect())
         {
-            desktop::log(&app_paths, &format!("Fonts: {e:#}"));
+            desktop::log(&app_paths, &format!("Fonts: {error:#}"));
         }
-        let first_run = !app_paths.root.join("native-opened").exists();
-        let dashboard_paths = app_paths.clone();
-        let dashboard_control = control.clone();
-        let open_dashboard: Arc<dyn Fn(&mut App)> = Arc::new(move |cx| {
-            match dashboard(cx, reader.clone(), stats.clone(), args.size) {
-                Ok(()) => {
-                    let _ = std::fs::write(dashboard_paths.root.join("native-opened"), b"opened");
-                    cx.activate(true);
-                }
-                Err(e) => {
-                    desktop::log(&dashboard_paths, &e);
-                    let _ = notify_rust::Notification::new()
-                        .summary("pitwall window failed")
-                        .body(&e)
-                        .show();
-                }
-            }
-            let _ = &dashboard_control;
-        });
-        // First-run and debugging invocations open a dashboard; ordinary starts stay in the tray.
-        if first_run || args.cli.console || args.stats || args.replay.is_some() {
-            open_dashboard(cx);
+        let first_run = FirstRun::new(&app_paths);
+        let dashboard: Arc<dyn Fn(&mut App)> = {
+            let (reader, stats, paths, size) =
+                (reader.clone(), stats.clone(), app_paths.clone(), args.size);
+            let first_run = FirstRun::new(&app_paths);
+            Arc::new(
+                move |cx| match open_dashboard(cx, reader.clone(), stats.clone(), size) {
+                    Ok(()) => {
+                        if first_run.pending()
+                            && let Err(error) = first_run.opened()
+                        {
+                            desktop::log(&paths, &format!("First run: {error}"));
+                        }
+                        cx.activate(true);
+                    }
+                    Err(error) => {
+                        desktop::log(&paths, &error);
+                        desktop::notify("pitwall window failed", &error);
+                    }
+                },
+            )
+        };
+        // Only the first successful run and debugging starts open a window; ordinary
+        // starts stay in the tray.
+        let debugging = args.cli.console || args.stats || args.replay.is_some();
+        if first_run.pending() || debugging {
+            dashboard(cx);
         }
-        if first_run {
-            settings(cx, control.clone(), open_dashboard.clone());
-        }
-        let mut tray = match tray::Tray::new(tray_reader, app_paths.clone(), overlay) {
+        let mut tray = match tray::Tray::new(reader.clone(), app_paths.clone(), overlay) {
             Ok(tray) => Some(tray),
-            Err(e) => {
-                desktop::log(&app_paths, &format!("Tray: {e}"));
-                settings(cx, control.clone(), open_dashboard.clone());
+            Err(error) => {
+                // Without a tray the status window is the recovery path.
+                desktop::log(&app_paths, &format!("Tray: {error}"));
+                open_status(cx, control.clone(), dashboard.clone());
                 None
             }
         };
+        if tray.is_none() {
+            cx.on_window_closed(|cx, _| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+        }
         let executor = cx.background_executor().clone();
+        let control = control.clone();
+        let looped = args.looped.then_some(args.from);
+        let mut seek = (!args.from.is_zero()).then_some(args.from);
         cx.spawn(async move |cx| {
-            let mut initial_replay = args.replay;
-            let mut initial_seek = Some(args.from);
             loop {
                 executor.timer(Duration::from_millis(100)).await;
                 let state = control.status();
-                if let Some(path) = initial_replay.take() {
-                    // CLI replay may name an external recording. Copy it into this host's library;
-                    // never modify the supplied recording.
-                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
-                    if let Some(name) = name {
-                        let target = app_paths.recordings.join(&name);
-                        let copied = if path == target || target.exists() {
-                            Ok(())
-                        } else {
-                            std::fs::copy(&path, &target).map(|_| ())
-                        };
-                        if let Err(e) = copied {
-                            desktop::log(&app_paths, &format!("Replay: {e}"));
-                        } else {
-                            let _ = control.send(Command::Start(name));
-                        }
+                if let Some(replay) = &state.replay {
+                    if let Some(from) = seek.take() {
+                        let _ =
+                            control.send(Command::Seek(from.as_secs_f64().min(replay.duration)));
+                    } else if let Some(from) = looped
+                        && replay.position >= replay.duration
+                    {
+                        let _ =
+                            control.send(Command::Seek(from.as_secs_f64().min(replay.duration)));
+                        let _ = control.send(Command::Pause(false));
                     }
                 }
-                if state.replay.is_some()
-                    && let Some(from) = initial_seek.take()
-                {
-                    let _ = control.send(Command::Seek(from.as_secs_f64()));
-                }
-                if args.looped
-                    && state
-                        .replay
-                        .as_ref()
-                        .is_some_and(|r| r.position >= r.duration)
-                {
-                    let _ = control.send(Command::Restart);
-                }
-                let requested = app_paths.root.join("native-open");
-                let second_launch = requested.exists();
-                if second_launch {
-                    let _ = std::fs::remove_file(requested);
-                }
+                let second_launch = instance.take_open_request();
                 let actions = tray
                     .as_mut()
                     .map_or_else(Vec::new, |tray| tray.tick(&control));
+                let quit = actions.iter().any(|a| matches!(a, tray::Action::Quit));
+                if quit {
+                    // Dropping the tray closes the overlay and saves its geometry.
+                    drop(tray.take());
+                }
                 cx.update(|cx| {
                     if second_launch {
-                        open_dashboard(cx);
+                        dashboard(cx);
                     }
                     for action in actions {
                         match action {
-                            tray::Action::Dashboard => open_dashboard(cx),
+                            tray::Action::Dashboard => dashboard(cx),
                             tray::Action::Settings => {
-                                settings(cx, control.clone(), open_dashboard.clone())
+                                open_status(cx, control.clone(), dashboard.clone())
                             }
-                            tray::Action::Quit => {
-                                cx.quit();
-                            }
+                            tray::Action::Quit => cx.quit(),
                         }
                     }
                 });
+                if quit {
+                    break;
+                }
             }
         })
         .detach();
     });
     match runtime.shutdown() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            desktop::log(&paths, &format!("Shutdown: {e}"));
-            eprintln!("{e}");
+        Ok(()) => {
+            desktop::log(&paths, "Shut down");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            desktop::log(&paths, &format!("Shutdown: {error}"));
+            eprintln!("pitwall-native: {error}");
             ExitCode::FAILURE
         }
     }
 }
 
+/// One line per second: renders (frames with new content) and display frames checked.
 fn print_stats(stats: Arc<Stats>) {
     thread::spawn(move || {
         let start = Instant::now();

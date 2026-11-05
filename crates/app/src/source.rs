@@ -3,6 +3,21 @@
 use pitwall_core::ingest::config::Cli;
 use std::{path::PathBuf, time::Duration};
 
+pub const HELP: &str = "pitwall-native [OPTIONS]
+
+  --console           Attach a console for debugging output
+  --udp-port PORT     UDP telemetry port (overrides the saved setting)
+  --config PATH       Settings file (default: <data folder>/config.toml)
+  --data-dir DIR      Keep all data under DIR/pitwall instead of %APPDATA%/pitwall
+  --replay FILE       Play a .pitrec recording (it is not copied into the library)
+  --from SECONDS      Start the replay at this position
+  --loop              Restart the replay from --from when it ends
+  --size WxH          Dashboard window size
+  --stats             Print render statistics each second
+  -h, --help          Show this help
+
+Obsolete --http-port and --bind are accepted and ignored.";
+
 pub struct Args {
     pub cli: Cli,
     pub replay: Option<PathBuf>,

@@ -1,36 +1,80 @@
-//! Native status/settings window. All host commands cross the in-process queue.
+//! Native status and settings window. Content comes from `status_view`; every action
+//! crosses the host's in-process command queue, never a network connection.
 use crate::theme;
 use gpui::{
-    Context, FocusHandle, IntoElement, KeyDownEvent, MouseButton, Render, SharedString, Window,
-    div, prelude::*, px,
+    App, Context, FocusHandle, IntoElement, KeyDownEvent, MouseButton, Render, SharedString,
+    Window, div, prelude::*, px,
 };
-use pitwall_native::host::{Command, Control};
-use std::time::{Duration, Instant};
+use pitwall_core::ingest::config::Config;
+use pitwall_native::{
+    host::{Command, Control},
+    status_view::{FULL_NOTICE, MEASURE_NOTE, NO_RECORDINGS, SHORT_LINE, StatusView},
+};
+use std::{sync::Arc, time::Duration};
+
+/// Status refresh interval. The web page polled every two seconds; reading in-process
+/// state is cheap, so refresh faster.
+const REFRESH: Duration = Duration::from_millis(250);
+
+#[derive(Clone, Copy, PartialEq)]
+enum Field {
+    UdpPort,
+    Targets,
+    Cap,
+    Seek,
+    Lap,
+    Car,
+}
+const FIELDS: [Field; 6] = [
+    Field::UdpPort,
+    Field::Targets,
+    Field::Cap,
+    Field::Seek,
+    Field::Lap,
+    Field::Car,
+];
 
 pub struct StatusWindow {
     control: Control,
     focus: FocusHandle,
-    fields: Vec<String>,
+    text: [String; 6],
     selected: usize,
-    select_all: bool,
-    draft: pitwall_core::ingest::config::Config,
+    replace: bool,
+    draft: Config,
     error: Option<String>,
     confirm_delete: Option<String>,
     waiting: Option<u64>,
-    refreshed: Instant,
-    dashboard: std::sync::Arc<dyn Fn(&mut gpui::App)>,
+    dashboard: Arc<dyn Fn(&mut App)>,
 }
+
 impl StatusWindow {
     pub fn new(
         control: Control,
-        dashboard: std::sync::Arc<dyn Fn(&mut gpui::App)>,
-        window: &mut Window,
+        dashboard: Arc<dyn Fn(&mut App)>,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let draft = control.status().file_config;
-        poll(cx.entity().downgrade(), window);
+        let view = cx.entity().downgrade();
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |_, cx| {
+            loop {
+                executor.timer(REFRESH).await;
+                let alive = view.update(cx, |this, cx| {
+                    let status = this.control.status();
+                    if this.waiting.is_some_and(|r| r != status.revision) && !status.busy {
+                        this.waiting = None;
+                    }
+                    cx.notify();
+                });
+                if alive.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         Self {
-            fields: vec![
+            text: [
                 draft.udp.port.to_string(),
                 draft.forward.targets.join("\n"),
                 draft.recording.size_cap_gb.to_string(),
@@ -42,65 +86,75 @@ impl StatusWindow {
             control,
             focus: cx.focus_handle(),
             selected: 0,
-            select_all: false,
+            replace: false,
             error: None,
             confirm_delete: None,
             waiting: None,
-            refreshed: Instant::now(),
             dashboard,
         }
     }
+
+    fn busy(&self) -> bool {
+        self.waiting.is_some() || self.control.status().busy
+    }
+
+    /// Busy actions disable repeat submission until the host acknowledges.
     fn send(&mut self, command: Command) {
-        let status = self.control.status();
-        if status.busy || self.waiting.is_some() {
+        if self.busy() {
             return;
         }
+        let revision = self.control.status().revision;
         match self.control.send(command) {
             Ok(()) => {
-                self.waiting = Some(status.revision);
+                self.waiting = Some(revision);
                 self.error = None;
             }
-            Err(e) => self.error = Some(e.to_string()),
+            Err(error) => self.error = Some(error.to_string()),
         }
     }
+
     fn key(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
         let stroke = &event.keystroke;
-        let text = &mut self.fields[self.selected];
+        let multiline = FIELDS[self.selected] == Field::Targets;
+        let text = &mut self.text[self.selected];
         if stroke.modifiers.control && stroke.key == "a" {
-            self.select_all = true;
+            self.replace = true;
         } else if stroke.key == "tab" {
-            self.selected = (self.selected + 1) % self.fields.len();
-            self.select_all = true;
+            self.selected = (self.selected + 1) % FIELDS.len();
+            self.replace = true;
         } else if stroke.key == "backspace" {
-            if self.select_all {
+            if self.replace {
                 text.clear();
             } else {
                 text.pop();
             }
-            self.select_all = false;
+            self.replace = false;
         } else if stroke.modifiers.control && stroke.key == "v" {
             if let Some(value) = cx.read_from_clipboard().and_then(|v| v.text()) {
-                if self.select_all {
+                if self.replace {
                     text.clear();
                 }
                 text.push_str(&value);
-                self.select_all = false;
+                self.replace = false;
             }
-        } else if stroke.key == "enter" && self.selected == 1 {
+        } else if stroke.key == "enter" && multiline {
             text.push('\n');
         } else if !stroke.modifiers.control
             && !stroke.modifiers.alt
             && let Some(value) = &stroke.key_char
         {
-            if self.select_all {
+            if self.replace {
                 text.clear();
             }
             text.push_str(value);
-            self.select_all = false;
+            self.replace = false;
         }
         cx.notify();
     }
-    fn field(&self, index: usize, label: &str, cx: &mut Context<Self>) -> impl IntoElement {
+
+    fn field(&self, field: Field, label: &str, cx: &mut Context<Self>) -> impl IntoElement {
+        let index = FIELDS.iter().position(|f| *f == field).unwrap_or(0);
+        let selected = self.selected == index;
         div()
             .flex()
             .flex_col()
@@ -112,7 +166,7 @@ impl StatusWindow {
                     .p_2()
                     .bg(theme::meter_empty())
                     .border_1()
-                    .border_color(if self.selected == index {
+                    .border_color(if selected {
                         theme::text()
                     } else {
                         theme::muted()
@@ -120,29 +174,30 @@ impl StatusWindow {
                     .cursor_text()
                     .child(format!(
                         "{}{}",
-                        self.fields[index],
-                        if self.selected == index { " ▏" } else { "" }
+                        self.text[index],
+                        if selected { " ▏" } else { "" }
                     ))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, _, window, cx| {
                             this.selected = index;
-                            this.select_all = true;
+                            this.replace = true;
                             window.focus(&this.focus, cx);
                             cx.notify();
                         }),
                     ),
             )
     }
+
     fn button(
         &self,
         id: impl Into<SharedString>,
         label: impl Into<SharedString>,
-        command: Command,
         enabled: bool,
         cx: &mut Context<Self>,
+        action: impl Fn(&mut Self) + 'static,
     ) -> impl IntoElement {
-        let enabled = enabled && self.waiting.is_none() && !self.control.status().busy;
+        let enabled = enabled && !self.busy();
         div()
             .id(id.into())
             .px_3()
@@ -155,328 +210,291 @@ impl StatusWindow {
                 MouseButton::Left,
                 cx.listener(move |this, _, _, cx| {
                     if enabled {
-                        this.send(command.clone());
+                        action(this);
                         cx.notify();
                     }
                 }),
             )
     }
+
+    fn command(
+        &self,
+        id: impl Into<SharedString>,
+        label: impl Into<SharedString>,
+        command: Command,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        self.button(id, label, enabled, cx, move |this| {
+            this.send(command.clone())
+        })
+    }
+
     fn save(&mut self) {
-        let result = (|| -> Result<_, String> {
+        let parsed = (|| -> Result<Config, String> {
             let mut config = self.draft.clone();
-            config.udp.port = self.fields[0]
+            config.udp.port = self.text[0]
+                .trim()
                 .parse()
                 .map_err(|_| "UDP port must be 1–65535")?;
-            config.forward.targets = self.fields[1]
+            config.forward.targets = self.text[1]
                 .lines()
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(str::to_owned)
                 .collect();
-            config.recording.size_cap_gb = self.fields[2]
+            config.recording.size_cap_gb = self.text[2]
+                .trim()
                 .parse()
-                .map_err(|_| "Recording cap must be a positive integer")?;
+                .map_err(|_| "Recording size cap must be a whole number of GB")?;
             config.validate()?;
             Ok(config)
         })();
-        match result {
+        match parsed {
             Ok(config) => self.send(Command::Save(config)),
-            Err(e) => self.error = Some(e),
+            Err(error) => self.error = Some(format!("Settings rejected: {error}")),
         }
     }
 }
-fn poll(view: gpui::WeakEntity<StatusWindow>, window: &mut Window) {
-    window.on_next_frame(move |window, cx| {
-        if view
-            .update(cx, |this, cx| {
-                if this.refreshed.elapsed() >= Duration::from_millis(250) {
-                    if let Some(revision) = this.waiting
-                        && this.control.status().revision != revision
-                    {
-                        this.waiting = None;
-                    }
-                    this.refreshed = Instant::now();
-                    cx.notify();
-                }
-            })
-            .is_ok()
-        {
-            poll(view, window);
-        }
-    });
+
+fn heading(text: &'static str) -> impl IntoElement {
+    div().pt_2().text_size(px(20.0)).child(text)
 }
+
 impl Render for StatusWindow {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let status = self.control.status();
+        let view = StatusView::new(&status);
         let mut body = div()
-            .id("status-scroll")
+            .id("status")
             .size_full()
             .overflow_y_scroll()
             .p_5()
             .flex()
             .flex_col()
-            .gap_3()
+            .gap_2()
             .font_family(theme::FONT)
             .text_size(px(14.0))
             .bg(theme::background())
             .text_color(theme::text())
             .track_focus(&self.focus)
-            .on_key_down(cx.listener(Self::key));
+            .on_key_down(cx.listener(Self::key))
+            .child(div().text_size(px(24.0)).child("pitwall status"));
+        // The dashboard opener needs `App`, which a plain action does not get.
+        body = body.child(
+            div()
+                .id("open-dashboard")
+                .px_3()
+                .py_2()
+                .bg(theme::surface())
+                .child("Open dashboard")
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|this, _, _, cx| (this.dashboard)(cx)),
+                ),
+        );
+        if let Some(error) = &self.error {
+            body = body.child(div().text_color(theme::hot()).child(error.clone()));
+        }
+        for alert in &view.alerts {
+            body = body.child(div().text_color(theme::hot()).child(alert.clone()));
+        }
+        if self.busy() {
+            body = body.child("Working…");
+        } else if !status.feedback.is_empty() {
+            body = body.child(status.feedback.clone());
+        }
+
         body = body
-            .child(div().text_size(px(22.0)).child("Status and settings"))
+            .child(heading("Connection"))
+            .child(view.connection.clone());
+        if let Some(guidance) = &view.rate_guidance {
+            body = body.child(guidance.clone());
+        }
+        for (label, value) in view.counters.iter().chain(&view.measures) {
+            body = body.child(format!("{label}: {value}"));
+        }
+        body = body.child(div().text_color(theme::muted()).child(MEASURE_NOTE));
+
+        body = body.child(heading("Game setup checklist"));
+        for line in &view.checklist {
+            body = body.child(format!("• {line}"));
+        }
+        body = body.child(view.format.clone());
+        for line in &view.trust {
+            body = body.child(div().text_color(theme::muted()).child(*line));
+        }
+
+        body = body
+            .child(heading("Recordings and replay"))
+            .child(view.replay.clone())
             .child(
                 div()
-                    .id("dashboard")
-                    .p_2()
-                    .bg(theme::surface())
-                    .child("Open dashboard")
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this, _, _, cx| {
-                            (this.dashboard)(cx);
-                        }),
-                    ),
-            )
-            .child(status.error.clone().unwrap_or_else(|| status.line.clone()));
-        if let Some(error) = &self.error {
-            body = body.child(error.clone());
-        }
-        for notice in &status.notices {
-            body = body.child(notice.clone());
-        }
-        body = body.child(format!(
-            "{}{}",
-            if self.waiting.is_some() || status.busy {
-                "Working… "
-            } else {
-                ""
-            },
-            status.feedback
-        ));
-        if let Some(live) = &status.live {
-            let s = &live.ingest;
-            body = body.child(format!("Rate {:.0} Hz | dropped frames {} | recorder drops {} | parse errors {} | UID 0 {} | closed UID {} | forwarding errors {}", s.packet_rate_hz, s.dropped_frames, status.recorder_dropped, s.parse_errors, s.uid_zero, s.closed_uid, live.forwarding_errors));
-            if s.packet_rate_hz > 0.0 && s.packet_rate_hz < 60.0 {
-                body = body.child(
-                    "Below 60 Hz. Set the game's UDP send rate to 60 Hz; 20–60 Hz is supported.",
-                );
-            }
-            if let Some(format) = s.last_format.filter(|f| !matches!(f, 2025 | 2026)) {
-                body = body.child(format!("Unsupported telemetry format {format}. These packets are not parsed or recorded. Select 2025 or 2026 in the game."));
-            }
-        }
-        let number = |v: Option<f64>| v.map_or_else(|| "Unavailable".into(), |v| format!("{v:.2}"));
-        body = body.child(format!("One-core CPU {} % | resident memory {} MiB | processing p95 {} ms / p99 {} ms", number(status.cpu.map(f64::from)), number(status.memory.map(|v| v as f64 / 1_048_576.0)), number(status.p95), number(status.p99)))
-            .child("Processing measures one receive batch. Datagram-to-draw latency remains unmeasured.")
-            .child(format!("Game setup: enable UDP telemetry; Format 2025 or 2026; port {}; target 127.0.0.1 on this PC, or broadcast / this PC's IP from another device; send at 60 Hz (20–60 Hz supported). Allow inbound UDP in Windows Firewall. This portable build is unsigned: run it only if you trust its source. Start pitwall before the game.", status.config.udp.port))
-            .child(div().text_size(px(20.0)).child("Recordings"))
-            .child(div().flex().gap_2().child(self.button("rescan", "Rescan", Command::Rescan, true, cx)).child(self.button("folder", "Open recordings folder", Command::OpenRecordings, true, cx)));
-        if status.recordings.is_empty() {
-            body = body.child("No recordings");
-        }
-        for item in &status.recordings {
-            let name = item.file_name.clone();
-            body = body.child(
-                div()
                     .flex()
-                    .flex_col()
                     .gap_2()
-                    .p_3()
-                    .bg(theme::surface())
-                    .child(format!(
-                        "{} | {} | {:.1} s | {} laps | {:.2} MiB | {}",
-                        name,
-                        item.sidecar.track.as_deref().unwrap_or("Unknown track"),
-                        item.sidecar.duration_us as f64 / 1_000_000.0,
-                        item.sidecar.laps,
-                        item.size as f64 / 1_048_576.0,
-                        if item.sidecar.pinned {
-                            "Pinned"
-                        } else {
-                            "Unpinned"
-                        }
+                    .child(self.command("rescan", "Rescan recordings", Command::Rescan, true, cx))
+                    .child(self.command(
+                        "folder",
+                        "Open recordings folder",
+                        Command::OpenRecordings,
+                        true,
+                        cx,
                     ))
-                    .child(
-                        div()
-                            .flex()
-                            .gap_2()
-                            .child(self.button(
-                                format!("play-{name}"),
-                                "Start replay",
-                                Command::Start(name.clone()),
-                                status.loading.is_none(),
-                                cx,
-                            ))
-                            .child(self.button(
-                                format!("pin-{name}"),
-                                if item.sidecar.pinned { "Unpin" } else { "Pin" },
-                                Command::Pin(name.clone(), !item.sidecar.pinned),
-                                true,
-                                cx,
-                            ))
-                            .child(
-                                div()
-                                    .id(SharedString::from(format!("delete-{name}")))
-                                    .p_2()
-                                    .bg(theme::meter_empty())
-                                    .child("Delete…")
-                                    .on_mouse_down(
-                                        MouseButton::Left,
-                                        cx.listener(move |this, _, _, cx| {
-                                            this.confirm_delete = Some(name.clone());
-                                            cx.notify();
-                                        }),
-                                    ),
-                            ),
-                    ),
+                    .child(self.command(
+                        "stop",
+                        "Stop replay",
+                        Command::Stop,
+                        status.replay.is_some() || status.loading.is_some(),
+                        cx,
+                    )),
             );
-        }
-        if let Some(name) = &self.confirm_delete {
-            body = body
-                .child(format!("Permanently delete {name} and its metadata?"))
-                .child(self.button(
-                    "confirm-delete",
-                    "Confirm delete",
-                    Command::Delete(name.clone()),
-                    true,
-                    cx,
-                ))
-                .child(
-                    div()
-                        .id("cancel-delete")
-                        .p_2()
-                        .child("Cancel / dismiss")
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, _, cx| {
-                                this.confirm_delete = None;
-                                cx.notify();
-                            }),
-                        ),
-                );
-        }
-        if let Some(progress) = status.loading {
-            body = body.child(format!("Loading replay {:.0}%", progress * 100.0));
-        }
-        if status.replay_name.is_some() || status.replay.is_some() || status.loading.is_some() {
-            body = body
-                .child(format!(
-                    "Source: {}",
-                    status.replay_name.as_deref().unwrap_or("Replay")
-                ))
-                .child(self.button("stop", "Stop replay / return live", Command::Stop, true, cx));
-        }
-        if let Some(replay) = status.replay {
-            body = body
-                .child(format!(
-                    "{} | {:.1} / {:.1} s | {} | {}x | {}",
-                    replay.banner,
-                    replay.position,
-                    replay.duration,
-                    if replay.paused { "Paused" } else { "Playing" },
-                    replay.speed,
-                    replay.background_live.unwrap_or_default()
-                ))
-                .child(
-                    div()
-                        .flex()
-                        .gap_2()
-                        .child(self.button(
-                            "pause",
-                            if replay.paused { "Resume" } else { "Pause" },
-                            Command::Pause(!replay.paused),
-                            true,
-                            cx,
-                        ))
-                        .child(self.button("restart", "Restart", Command::Restart, true, cx)),
-                );
+        if let Some(replay) = &status.replay {
+            let mut transport = div().flex().flex_wrap().gap_2().child(self.command(
+                "pause",
+                if replay.paused { "Resume" } else { "Pause" },
+                Command::Pause(!replay.paused),
+                true,
+                cx,
+            ));
+            transport =
+                transport.child(self.command("restart", "Restart", Command::Restart, true, cx));
             for speed in [0.5, 1.0, 2.0, 4.0] {
-                body = body.child(self.button(
+                transport = transport.child(self.command(
                     format!("speed-{speed}"),
                     format!("{speed}x"),
                     Command::Speed(speed),
-                    true,
+                    replay.speed != speed,
                     cx,
                 ));
             }
             body = body
-                .child(self.field(3, "Seek position (seconds)", cx))
-                .child(
-                    div()
-                        .id("seek")
-                        .p_2()
-                        .bg(theme::meter_empty())
-                        .child("Seek")
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, _, cx| {
-                                match this.fields[3].parse() {
-                                    Ok(v) => this.send(Command::Seek(v)),
-                                    Err(_) => {
-                                        this.error = Some("Enter a valid seek position".into())
-                                    }
-                                }
-                                cx.notify();
-                            }),
-                        ),
-                )
-                .child(self.field(4, "Jump to lap", cx))
-                .child(self.field(5, "Car slot (0–23)", cx))
-                .child(
-                    div()
-                        .id("jump")
-                        .p_2()
-                        .bg(theme::meter_empty())
-                        .child("Jump to lap")
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, _, cx| {
-                                match (this.fields[5].parse(), this.fields[4].parse()) {
-                                    (Ok(car), Ok(lap)) => this.send(Command::JumpLap(car, lap)),
-                                    _ => {
-                                        this.error = Some("Enter a car slot and lap number".into())
-                                    }
-                                }
-                                cx.notify();
-                            }),
-                        ),
-                );
+                .child(transport)
+                .child(self.field(Field::Seek, "Seek position (seconds)", cx))
+                .child(self.button("seek", "Seek", true, cx, |this| {
+                    match this.text[3].trim().parse::<f64>() {
+                        Ok(seconds) => this.send(Command::Seek(seconds)),
+                        Err(_) => this.error = Some("Enter a seek position in seconds".into()),
+                    }
+                }))
+                .child(self.field(Field::Lap, "Lap", cx))
+                .child(self.field(Field::Car, "Car slot (0–23)", cx))
+                .child(self.button("jump", "Jump to lap", true, cx, |this| {
+                    match (this.text[5].trim().parse(), this.text[4].trim().parse()) {
+                        (Ok(car), Ok(lap)) => this.send(Command::JumpLap(car, lap)),
+                        _ => this.error = Some("Enter a car slot and a lap number".into()),
+                    }
+                }));
         }
-        body = body.child(div().text_size(px(20.0)).child("Host settings"))
-            .child(format!("Effective UDP port {}. CLI overrides remain effective after saving. Click a field, type or paste; Ctrl+A replaces text; Tab selects next field; Enter adds a forwarding target line.", status.config.udp.port))
-            .child(self.field(0, "UDP port", cx)).child(self.field(1, "Forwarding targets (one host:port per line)", cx)).child(self.field(2, "Recording cap (decimal GB)", cx));
-        for (index, label, enabled) in [
-            (0usize, "Raw forwarding", self.draft.forward.enabled),
-            (1, "Auto recording", self.draft.recording.enabled),
-            (2, "Start with Windows", self.draft.app.start_with_windows),
-        ] {
+        if view.recordings.is_empty() {
+            body = body.child(NO_RECORDINGS);
+        }
+        let loading = status.loading.is_some();
+        for row in &view.recordings {
+            let name = row.name.clone();
+            let confirm = name.clone();
             body = body.child(
                 div()
-                    .id(("toggle", index))
-                    .p_2()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .p_3()
                     .bg(theme::surface())
-                    .child(format!("[{}] {label}", if enabled { "x" } else { " " }))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, _, _, cx| {
-                            match index {
-                                0 => this.draft.forward.enabled = !this.draft.forward.enabled,
-                                1 => this.draft.recording.enabled = !this.draft.recording.enabled,
-                                _ => {
-                                    this.draft.app.start_with_windows =
-                                        !this.draft.app.start_with_windows
-                                }
-                            }
-                            cx.notify();
-                        }),
+                    .child(name.clone())
+                    .child(div().text_color(theme::muted()).child(row.summary.clone()))
+                    .child(
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(self.command(
+                                format!("play-{name}"),
+                                "Start replay",
+                                Command::Start(name.clone()),
+                                !loading,
+                                cx,
+                            ))
+                            .child(self.command(
+                                format!("pin-{name}"),
+                                if row.pinned { "Unpin" } else { "Pin" },
+                                Command::Pin(name.clone(), !row.pinned),
+                                true,
+                                cx,
+                            ))
+                            .child(self.button(
+                                format!("delete-{name}"),
+                                "Delete…",
+                                true,
+                                cx,
+                                move |this| {
+                                    this.confirm_delete = Some(confirm.clone());
+                                },
+                            )),
                     ),
             );
         }
-        body.child(div().id("save").p_2().bg(theme::meter_empty()).child("Save settings").on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.save(); cx.notify(); })))
-            .child(self.button("relearn", "Relearn current map", Command::Relearn, status.track.is_some(), cx))
-            .child("Unofficial. Not associated with the Formula 1 companies or EA.")
-            .child("pitwall is unofficial and is not associated in any way with the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.")
-            .child("This project is not endorsed by or affiliated with EA or its licensors.")
-            .child("Team names, driver names and other third-party names and marks belong to their respective owners and are used only to identify them.")
+        if let Some(name) = self.confirm_delete.clone() {
+            body = body
+                .child(format!("Delete {name}? This cannot be undone."))
+                .child(
+                    div()
+                        .flex()
+                        .gap_2()
+                        .child(
+                            self.button("confirm-delete", "Delete", true, cx, move |this| {
+                                this.confirm_delete = None;
+                                this.send(Command::Delete(name.clone()));
+                            }),
+                        )
+                        .child(self.button("cancel-delete", "Cancel", true, cx, |this| {
+                            this.confirm_delete = None;
+                        })),
+                );
+        }
+
+        body = body
+            .child(heading("Host settings"))
+            .child(self.field(Field::UdpPort, "UDP port", cx))
+            .child(self.field(
+                Field::Targets,
+                "Forward targets (one host:port per line; Enter adds a line)",
+                cx,
+            ))
+            .child(self.field(Field::Cap, "Recording size cap (GB)", cx));
+        let toggles = [
+            ("Forward live telemetry", self.draft.forward.enabled),
+            ("Record live telemetry", self.draft.recording.enabled),
+            ("Start with Windows", self.draft.app.start_with_windows),
+        ];
+        for (index, (label, on)) in toggles.into_iter().enumerate() {
+            body = body.child(self.button(
+                SharedString::from(format!("toggle-{index}")),
+                format!("[{}] {label}", if on { "x" } else { " " }),
+                true,
+                cx,
+                move |this| match index {
+                    0 => this.draft.forward.enabled = !this.draft.forward.enabled,
+                    1 => this.draft.recording.enabled = !this.draft.recording.enabled,
+                    _ => this.draft.app.start_with_windows = !this.draft.app.start_with_windows,
+                },
+            ));
+        }
+        body = body
+            .child(div().text_color(theme::muted()).child(format!(
+                "Settings persist in config.toml. Command-line flags override saved values (--udp-port, --config, --data-dir); the effective UDP port is {}.",
+                status.config.udp.port
+            )))
+            .child(self.button("save", "Save settings", true, cx, Self::save))
+            .child(self.command(
+                "relearn",
+                "Relearn map",
+                Command::Relearn,
+                view.relearn,
+                cx,
+            ));
+
+        body = body.child(heading("Notice")).child(SHORT_LINE);
+        for paragraph in FULL_NOTICE {
+            body = body.child(div().text_color(theme::muted()).child(paragraph));
+        }
+        body
     }
 }
