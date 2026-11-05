@@ -6,6 +6,7 @@
 //! settings and fields ride along unchanged.
 
 mod controller;
+pub mod grid;
 
 pub use controller::{
     ControllerOptions, DEFAULT_LAYOUT, EditState, GridItem, LayoutController, LayoutStore,
@@ -98,4 +99,12 @@ pub fn set_tile_settings(tiles: &[Tile], id: &str, settings: Value) -> Vec<Tile>
             }
         })
         .collect()
+}
+
+/// Settings with `key` set to `value` and every other key kept. Settings that are not an
+/// object read as empty.
+pub fn with_setting(settings: &Value, key: &str, value: Value) -> Value {
+    let mut next = settings.as_object().cloned().unwrap_or_default();
+    next.insert(key.to_string(), value);
+    Value::Object(next)
 }

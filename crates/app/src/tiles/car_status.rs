@@ -288,9 +288,9 @@ pub fn view(inputs: &Inputs) -> View {
     }
 }
 
-/// The data folder given on the command line (`--data-dir`), else the OS one. The livery
-/// pack is its `pitwall/liveries` folder.
-pub static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+/// The livery pack folder (`pitwall/liveries` in the data folder). The host sets it at
+/// startup from its resolved data folder; unset, the OS data folder's is used.
+pub static LIVERY_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 
 /// What the tile keeps between renders: the livery pack listing (read when the tile is
 /// first drawn, as the web build lists it on mount) and the last car picture uploaded.
@@ -306,10 +306,11 @@ impl Memory {
         let images = self
             .images
             .get_or_insert_with(|| {
-                let folder =
-                    pitwall_core::paths::AppPaths::resolve_or(DATA_DIR.get().map(PathBuf::as_path))
+                let folder = LIVERY_FOLDER.get().cloned().unwrap_or_else(|| {
+                    pitwall_core::paths::AppPaths::resolve()
                         .map(|p| p.liveries)
-                        .unwrap_or_default();
+                        .unwrap_or_default()
+                });
                 Arc::new(LiveryImages::new(folder))
             })
             .clone();

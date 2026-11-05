@@ -12,17 +12,16 @@ the timing tower (TOWER-01), so it belongs with the tower port, not here.
 
 ## Shared pieces
 
-- `tiles/registry.rs` maps each saved tile type (`g-force`, `live-delta` and so on) to its
-  display name and a single `render(kind, &Context, &mut Memory)`. A layout host resolves
-  the car binding, then calls `render` with the bound car's index. `Memory` holds what a
-  tile keeps between renders: the inputs history for Throttle/brake traces and the livery
-  pictures for Car status.
+- Each tile has an entry in `dashboard/registry.rs` (#70), which pairs the saved type with
+  its render function and the settings its dialog offers. Live delta and Throttle/brake
+  traces offer the best or previous reference lap there. Render functions now also take
+  a `tiles::memory::Memory`, which the dashboard keeps per placed tile, by tile id. It holds
+  the inputs history for Throttle/brake traces and the livery pictures for Car status.
+  `TileInputs` gained the feed `reader`, so a tile can catch up on every fast frame.
 - `tiles/slow.rs` is the slow-tile row helper (label over value, tone, whole-tile message).
 - `tiles/paint.rs` draws the discs, arcs, polylines and filled polygons that gpui paths
   lack as primitives.
-- `pitwall-native --tiles g-force,ers,...` picks the tiles the slice window shows, and
-  `--data-dir DIR` replaces the OS data folder, which holds the livery pack. The window
-  wraps tiles three to a row. Layouts (#70) will replace this.
+- Car status reads the livery pack from the host's data folder (`--data-dir` applies).
 
 ## Differences from the web build
 
@@ -40,17 +39,18 @@ the timing tower (TOWER-01), so it belongs with the tower port, not here.
   no native counterpart, so INPUT-03 stays open.
 - **Engine temp gauge.** The web gauge fills with a horizontal gradient; the native gauge
   fills in four solid steps of the same colours.
-- **Settings.** The tile header's "Compare" control cycles best and previous for Live delta
-  and Throttle/brake traces, as it does for Lap timing. The channel setting is read and its
-  rules are tested (`toggle_channel`), but there is no settings panel until layout editing
-  lands, so INPUT-01 stays open.
+- **Settings.** The channel setting of Throttle/brake traces is read and its rules are
+  tested (`toggle_channel`), but the layout settings dialog offers single choices only, so
+  there is no way to pick channels yet and INPUT-01 stays open.
 - **Accessibility.** gpui offers no accessible name for a drawn element, so the G-force
   circle has no screen-reader summary and GFORCE-01 stays open.
 
 ## Visual check
 
-Screenshots in [tiles/](tiles/) come from real recordings replayed with `--data-dir` set to
-an empty folder, so Car status draws the fallback car rather than pack art:
+Screenshots in [tiles/](tiles/) come from real recordings, replayed before the merge with
+#70 in the slice window, which took a tile list on the command line. The data folder was
+empty, so Car status draws the fallback car rather than pack art. After the merge, the
+Car status was checked again inside the Pitwall Classic layout.
 
 - `frame-tiles-time-trial.png`: Melbourne Time Trial, lap 4 against best lap 3, with a live
   delta graph and the dim reference traces.

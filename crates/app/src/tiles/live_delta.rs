@@ -56,20 +56,6 @@ impl Reference {
     }
 }
 
-/// The settings with `reference` chosen, unrelated keys kept.
-pub fn with_reference(settings: &Value, reference: Reference) -> Value {
-    let mut next = if settings.is_object() {
-        settings.clone()
-    } else {
-        Value::Object(Default::default())
-    };
-    next["reference"] = Value::from(match reference {
-        Reference::Best => "best",
-        Reference::Previous => "previous",
-    });
-    next
-}
-
 /// Delta in seconds at a lap distance in metres. A NaN delta or distance is a break.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {

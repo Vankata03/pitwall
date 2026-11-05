@@ -9,8 +9,8 @@
 
 use gpui::{Hsla, IntoElement, ParentElement, Styled, canvas, div, px, relative};
 use pitwall_core::{
-    feed::FastFrame,
-    model::{self, LapSample},
+    feed::{FastFrame, Reader},
+    model::{self, LapSample, SessionModel},
     readout::{ReadoutState, ReadoutView, readout_view},
     traces::{
         CHANNEL_ORDER, Channel, INPUT_WINDOW_SECONDS, InputHistory, InputSample, Lap,
@@ -20,7 +20,7 @@ use pitwall_core::{
 };
 use serde_json::{Value, json};
 
-use super::{Densities, Density, paint, registry::Context, widgets};
+use super::{Densities, Density, paint, widgets};
 use crate::theme;
 
 pub const TYPE: &str = "throttle-brake-traces";
@@ -88,22 +88,9 @@ pub fn settings_of(settings: &Value) -> Settings {
     }
 }
 
-/// The settings with `reference` chosen, unrelated keys kept.
-pub fn with_reference(settings: &Value, reference: Reference) -> Value {
-    let mut next = settings.clone();
-    if !next.is_object() {
-        next = json!({});
-    }
-    next["reference"] = json!(match reference {
-        Reference::Best => "best",
-        Reference::Previous => "previous",
-    });
-    next
-}
-
 /// The settings with `channel` toggled, in canonical order; `None` when it is the last
-/// channel, which cannot be deselected. For the tile settings panel, which arrives with
-/// layout editing.
+/// channel, which cannot be deselected. For a settings dialog with list settings; the
+/// layout dialog offers single choices only so far.
 #[cfg_attr(not(test), expect(dead_code))]
 pub fn toggle_channel(settings: &Value, channel: Channel) -> Option<Value> {
     let selected = settings_of(settings).channels;
@@ -166,29 +153,38 @@ impl Memory {
         &self.history
     }
 
-    /// Catch up on every fast frame since the last render, then build the tile's inputs.
-    /// A late joiner starts from the newest frame only.
-    pub fn inputs<'a>(&'a mut self, ctx: &Context<'a>) -> Inputs<'a> {
+    /// Catch up on every fast frame since the last render, then build the tile's inputs
+    /// for the car at `index`. A late joiner starts from the newest frame only.
+    #[allow(clippy::too_many_arguments)]
+    pub fn inputs<'a>(
+        &'a mut self,
+        reader: &Reader,
+        fast: &FastFrame,
+        model: &'a SessionModel,
+        index: Option<usize>,
+        settings: &Value,
+        units: Units,
+        size: (f32, f32),
+    ) -> Inputs<'a> {
         let frames = match self.seen {
-            None => vec![*ctx.fast],
-            Some(seen) => ctx.reader.fast_since(seen).frames,
+            None => vec![*fast],
+            Some(seen) => reader.fast_since(seen).frames,
         };
         if let Some(last) = frames.last() {
             self.seen = Some(last.generation);
         }
-        self.record(&frames, ctx.index);
-        let settings = settings_of(ctx.settings);
-        let car = ctx.index.and_then(|i| ctx.model.car(i));
+        self.record(&frames, index);
+        let settings = settings_of(settings);
+        let car = index.and_then(|i| model.car(i));
         let reference = car.and_then(|c| {
             c.lap_trace(match settings.reference {
                 Reference::Best => model::Reference::Best,
                 Reference::Previous => model::Reference::Previous,
             })
         });
-        let inputs = ctx
-            .index
-            .filter(|_| ctx.fast.epoch == ctx.model.epoch())
-            .and_then(|i| ctx.fast.cars.get(i).copied());
+        let inputs = index
+            .filter(|_| fast.epoch == model.epoch())
+            .and_then(|i| fast.cars.get(i).copied());
         Inputs {
             history: &self.history,
             reference: reference.map(|t| t.samples.as_slice()),
@@ -197,9 +193,9 @@ impl Memory {
                 .and_then(|c| c.value().copied())
                 .map(|c| (c.throttle, c.brake)),
             settings,
-            units: ctx.units,
-            width: ctx.size.0,
-            height: ctx.size.1,
+            units,
+            width: size.0,
+            height: size.1,
         }
     }
 }
@@ -778,11 +774,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_choose_reference_and_channels_and_leave_unknown_keys_alone() {
-        assert_eq!(
-            with_reference(&json!({"other": 1}), Reference::Previous),
-            json!({"other": 1, "reference": "previous"})
-        );
+    fn the_channel_setting_toggles_in_order_keeps_unknown_keys_and_keeps_the_last_channel() {
         assert_eq!(
             toggle_channel(&json!({"other": 1}), Channel::Speed),
             Some(json!({"other": 1, "channels": ["throttle", "brake", "speed"]}))

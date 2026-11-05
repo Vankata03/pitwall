@@ -4312,9 +4312,14 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "image",
+ "notify-rust",
  "pitwall-core",
  "pitwall-livery-art",
+ "pitwall-overlay",
  "serde_json",
+ "sysinfo",
+ "toml 1.1.8+spec-1.1.0",
+ "tray-icon",
 ]
 
 [[package]]
