@@ -35,6 +35,7 @@ const FIELDS: [Field; 6] = [
 ];
 
 pub struct StatusWindow {
+    scroll: gpui::ScrollHandle,
     control: Control,
     focus: FocusHandle,
     text: [String; 6],
@@ -48,6 +49,10 @@ pub struct StatusWindow {
 }
 
 impl StatusWindow {
+    /// The full notice is the last section of the existing status surface.
+    pub fn show_notice(&mut self) {
+        self.scroll.scroll_to_bottom();
+    }
     pub fn new(
         control: Control,
         dashboard: Arc<dyn Fn(&mut App)>,
@@ -74,6 +79,7 @@ impl StatusWindow {
         })
         .detach();
         Self {
+            scroll: gpui::ScrollHandle::new(),
             text: [
                 draft.udp.port.to_string(),
                 draft.forward.targets.join("\n"),
@@ -269,6 +275,7 @@ impl Render for StatusWindow {
             .id("status")
             .size_full()
             .overflow_y_scroll()
+            .track_scroll(&self.scroll)
             .p_5()
             .flex()
             .flex_col()

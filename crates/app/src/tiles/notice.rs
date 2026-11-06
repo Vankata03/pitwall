@@ -15,6 +15,16 @@ pub const DENSITIES: Densities = Densities {
     full: None,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Destination {
+    FullNotice,
+}
+
+/// Stream output has no controls; edit mode reserves the tile for layout controls.
+pub fn destination(stream: bool, editing: bool) -> Option<Destination> {
+    (!stream && !editing).then_some(Destination::FullNotice)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct View {
     pub density: Density,
@@ -66,5 +76,13 @@ mod tests {
                 "Unofficial. Not associated with the Formula 1 companies or EA."
             );
         }
+    }
+
+    #[test]
+    fn full_notice_is_available_in_ordinary_view_but_not_stream_or_edit_mode() {
+        assert_eq!(destination(false, false), Some(Destination::FullNotice));
+        assert_eq!(destination(true, false), None);
+        assert_eq!(destination(false, true), None);
+        assert_eq!(destination(true, true), None);
     }
 }

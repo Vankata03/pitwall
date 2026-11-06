@@ -35,13 +35,25 @@ const FONTS: [&[u8]; 3] = [
 ];
 
 fn open_status(cx: &mut App, control: Control, dashboard: Arc<dyn Fn(&mut App)>) {
+    open_status_at(cx, control, dashboard, false);
+}
+
+fn open_status_at(cx: &mut App, control: Control, dashboard: Arc<dyn Fn(&mut App)>, notice: bool) {
     let bounds = Bounds::centered(None, size(px(860.0), px(860.0)), cx);
     if let Err(e) = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             ..Default::default()
         },
-        |window, cx| cx.new(|cx| StatusWindow::new(control, dashboard, window, cx)),
+        |window, cx| {
+            cx.new(|cx| {
+                let mut status = StatusWindow::new(control, dashboard, window, cx);
+                if notice {
+                    status.show_notice();
+                }
+                status
+            })
+        },
     ) {
         eprintln!("pitwall-native: status window: {e:#}");
     }

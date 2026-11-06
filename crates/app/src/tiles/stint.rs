@@ -2,7 +2,11 @@
 //! first, then the completed sets newest first (each expands to its detail), then the pit
 //! stops. Port of `dashboard/src/tiles/types/stint.tsx`.
 
-use std::{cell::RefCell, collections::HashSet, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use gpui::{
     AnyElement, Div, FontWeight, Hsla, InteractiveElement, ParentElement, SharedString,
@@ -420,9 +424,24 @@ fn dim_state(state: ReadoutState, stale: bool) -> ReadoutState {
 #[derive(Default)]
 pub struct Memory {
     open: Rc<RefCell<HashSet<u64>>>,
+    focus: HashMap<u64, gpui::FocusHandle>,
+    focused: Option<u64>,
+    scroll: gpui::ScrollHandle,
+}
+
+/// The expansion control's accessible content, independent of the renderer.
+pub struct SetControl {
+    pub label: String,
+    pub expanded: bool,
 }
 
 impl Memory {
+    pub fn control(&self, past: &Past) -> SetControl {
+        SetControl {
+            label: format!("{}, {}", past.name, past.range),
+            expanded: self.is_open(past.id),
+        }
+    }
     /// Expand a collapsed set, collapse an expanded one.
     pub fn toggle(&self, id: u64) {
         let mut open = self.open.borrow_mut();
@@ -438,6 +457,7 @@ impl Memory {
     fn handle(&self) -> Self {
         Self {
             open: self.open.clone(),
+            ..Default::default()
         }
     }
 }
@@ -505,7 +525,12 @@ fn line_top(body: Div) -> Div {
     body.border_t_1().border_color(theme::line()).py_1()
 }
 
-pub fn render(view: View, memory: &mut Memory) -> AnyElement {
+pub fn render(
+    view: View,
+    memory: &mut Memory,
+    window: &mut gpui::Window,
+    cx: &mut gpui::App,
+) -> AnyElement {
     if let Some(message) = view.message {
         return widgets::tile_shell(div(), Some(message));
     }
@@ -602,19 +627,43 @@ pub fn render(view: View, memory: &mut Memory) -> AnyElement {
         .flex_col()
         .flex_1()
         .min_h_0()
-        .overflow_y_scroll();
-    for past in &view.past {
+        .overflow_y_scroll()
+        .track_scroll(&memory.scroll);
+    memory
+        .focus
+        .retain(|id, _| view.past.iter().any(|past| past.id == *id));
+    let mut focused = None;
+    for (index, past) in view.past.iter().enumerate() {
+        let focus = memory
+            .focus
+            .entry(past.id)
+            .or_insert_with(|| cx.focus_handle().tab_stop(true))
+            .clone();
+        if focus.is_focused(window) {
+            focused = Some(past.id);
+            if memory.focused != focused {
+                memory.scroll.scroll_to_item(index);
+            }
+        }
         let colour = family_colour(past.family);
-        let expanded = memory.is_open(past.id);
+        let control = memory.control(past);
+        let expanded = control.expanded;
         let toggle = memory.handle();
         let id = past.id;
         let mut item = line_top(div().flex().flex_col()).child(
             div()
                 .id(("stint-past", past.id))
+                .role(gpui::Role::Button)
+                .aria_label(control.label)
+                .aria_expanded(expanded)
+                .track_focus(&focus)
+                .border_2()
+                .border_color(gpui::transparent_black())
+                .focus_visible(|style| style.border_color(theme::hot()))
                 .flex()
                 .items_center()
                 .gap(px(10.0))
-                .min_h(px(if compact { 26.0 } else { 28.0 }))
+                .min_h(px(44.0))
                 .cursor_pointer()
                 .on_click(move |_, window, _| {
                     toggle.toggle(id);
@@ -666,6 +715,7 @@ pub fn render(view: View, memory: &mut Memory) -> AnyElement {
         }
         detail = detail.child(item);
     }
+    memory.focused = focused;
     if let Some(note) = view.history_note {
         detail = detail.child(widgets::label(note).my_1());
     }
@@ -939,6 +989,31 @@ mod tests {
         let wheels = past.wheels.as_ref().unwrap();
         assert_eq!(wheels.len(), 4);
         assert_eq!(wheels[0].wheel, "FL");
+    }
+
+    #[test]
+    fn completed_set_control_names_the_set_and_reports_its_expansion() {
+        let memory = Memory::default();
+        let past = Past {
+            id: 42,
+            family: Family::Soft,
+            symbol: "S",
+            name: "Soft tyres".into(),
+            range: "Laps 1–10 · 10 laps".into(),
+            max_wear: readout_view(ReadoutState::Live, "50% max wear"),
+            set_label: "New set".into(),
+            final_age: "Final tyre age 10".into(),
+            wheels: None,
+        };
+        let control = memory.control(&past);
+        assert_eq!(control.label, "Soft tyres, Laps 1–10 · 10 laps");
+        assert!(!control.expanded);
+        memory.toggle(42);
+        assert!(memory.control(&past).expanded);
+        memory.toggle(7);
+        assert!(memory.control(&past).expanded);
+        memory.toggle(42);
+        assert!(!memory.control(&past).expanded);
     }
 
     #[test]

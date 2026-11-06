@@ -10,7 +10,8 @@
 use std::sync::OnceLock;
 
 use gpui::{
-    AnyElement, Hsla, IntoElement, ParentElement, SharedString, Styled, canvas, div, px, rgb,
+    AnyElement, Hsla, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, canvas, div, px, rgb,
 };
 use pitwall_core::{
     binding::{car_label, participants_of},
@@ -254,6 +255,13 @@ pub struct View {
     pub track_name: String,
     pub length: Option<String>,
     pub summary: String,
+}
+
+impl View {
+    /// A non-live chart summary; driver labels remain subject to the binding privacy rules.
+    pub fn accessible_name(&self) -> String {
+        format!("Track map, {}: {}", self.track_name, self.summary)
+    }
 }
 
 fn finite(x: f32, z: f32) -> bool {
@@ -618,6 +626,9 @@ pub fn render(view: View) -> impl IntoElement {
     .size_full();
 
     let mut map = div()
+        .id("track-map-image")
+        .role(gpui::Role::Image)
+        .aria_label(view.accessible_name())
         .relative()
         .w(px(w))
         .h(px(h))
@@ -759,6 +770,22 @@ mod tests {
         );
         assert_eq!(DENSITIES.pick(239.0, 160.0), Density::Compact);
         assert_eq!(DENSITIES.pick(240.0, 160.0), Density::Regular);
+    }
+
+    #[test]
+    fn map_accessible_name_keeps_car_state_without_exposing_driver_names() {
+        let mut inputs = base(Lookup::NotFound, vec![car(0, 20.0)]);
+        inputs.focus_name = Some("Private Driver".into());
+        let v = view(&inputs, &mut Fit::default());
+        assert!(v.accessible_name().ends_with(": 1 car"));
+        assert!(!v.accessible_name().contains("Private Driver"));
+        inputs.cars.clear();
+        inputs.restricted = 1;
+        assert!(
+            view(&inputs, &mut Fit::default())
+                .accessible_name()
+                .ends_with(": Restricted")
+        );
     }
 
     #[test]

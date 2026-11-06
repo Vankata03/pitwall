@@ -13,8 +13,9 @@ baseline (DEC-01). Team colours appear as the Track map's dot colours, through
 
 ## Shared pieces
 
-- Each tile has an entry in `dashboard/registry.rs`. None offers a setting in the layout
-  dialog: the feed's `entryTypes` is a list, and the dialog offers single choices only.
+- Each tile has an entry in `dashboard/registry.rs`. The feed's `entryTypes` now has
+  independent checkboxes in the layout dialog. Empty selections and unknown saved types
+  survive edits; Cancel discards the draft and Done saves it with the other settings.
 - The Track map reads maps from the host's track store in-process. `host::Runtime` now
   exposes the store (`tracks`), and `main` hands it to the tile through
   `track_map::TRACKS`. The tile asks the store again only when the track or the store's
@@ -34,10 +35,14 @@ baseline (DEC-01). Team colours appear as the Track map's dot colours, through
   held when a replay pauses shows on the next redraw, not exactly three seconds later.
 - **Weather icon.** The sky glyphs are drawn with canvas strokes in the same shapes as the
   web SVG, slightly simplified.
-- **Notice link.** The web Notice links to the full notice on the status page. The native
-  line is not linked yet, and neither is the dashboard's own short line.
-- **Accessibility.** gpui offers no accessible name for a drawn element, so the map's car
-  summary is visible text only.
+- **Notice link.** In an ordinary dashboard, the exact short line in the Notice tile
+  opens the existing status surface scrolled to its full notice. It is keyboard
+  focusable. In stream output and edit mode it remains text without an activation
+  control. The dashboard's independent short line remains visible.
+- **Accessibility.** The pinned gpui supports accessible names and Windows AccessKit.
+  The map now exposes its track name and car-state summary as an image name, without a
+  live region. Screen-reader behavior remains unverified. Source evidence and tests
+  are recorded in [tile-interactions.md](tile-interactions.md).
 
 ## Visual check
 
