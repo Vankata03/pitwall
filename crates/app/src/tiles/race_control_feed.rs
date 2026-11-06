@@ -816,13 +816,9 @@ pub fn render(view: View) -> impl IntoElement {
                 .text_size(px(14.0))
                 .font_weight(FontWeight::BOLD)
                 .child(status.0.to_uppercase());
-            let mut ticker = div()
-                .flex()
-                .flex_1()
-                .min_w_0()
-                .items_center()
-                .overflow_hidden()
-                .h(px(28.0));
+            // Entries that do not fit wrap onto a hidden second line, so only whole
+            // entries show.
+            let mut ticker = div().flex().flex_wrap().w_full();
             for (i, e) in entries.iter().enumerate() {
                 let mut item = div()
                     .flex()
@@ -839,13 +835,11 @@ pub fn render(view: View) -> impl IntoElement {
                             .child(e.headline.title.to_uppercase()),
                     );
                 if i == 0 {
-                    item = item.pl_0().flex_shrink(1.0).min_w_0().overflow_hidden();
+                    item = item.pl_0();
                     if !e.headline.detail.is_empty() {
                         item = item.child(
                             div()
-                                .min_w_0()
-                                .overflow_hidden()
-                                .text_ellipsis()
+                                .flex_none()
                                 .text_color(theme::window())
                                 .child(SharedString::from(e.headline.detail.clone())),
                         );
@@ -879,7 +873,14 @@ pub fn render(view: View) -> impl IntoElement {
                 .text_color(theme::text())
                 .child(head)
                 .child(chip)
-                .child(ticker);
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h(px(28.0))
+                        .overflow_hidden()
+                        .child(ticker),
+                );
             if let Some(empty) = empty {
                 strip = strip.child(widgets::label(empty));
             }

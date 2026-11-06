@@ -169,6 +169,7 @@ fn cell(r: &Row, size: f32, colour: Option<Hsla>) -> Div {
         .gap_1()
         .min_w_0()
         .overflow_hidden()
+        .whitespace_nowrap()
         .child(widgets::label(r.label))
         .child(widgets::readout_coloured(
             &r.value,
@@ -220,7 +221,7 @@ pub fn render(view: View) -> impl IntoElement {
             );
     }
     let mut first = div().flex().items_center().gap(px(6.0)).w_full();
-    for (i, (r, grow)) in rows.iter().zip([1.0, 1.0, 0.8]).enumerate() {
+    for (i, (r, grow)) in rows.iter().zip([1.0, 1.0, 1.1]).enumerate() {
         let size = if i == 2 { rain } else { numerals };
         let colour = (i == 2).then(theme::cold);
         first = first.child(
@@ -229,7 +230,7 @@ pub fn render(view: View) -> impl IntoElement {
                 .flex_grow(grow),
         );
     }
-    first = first.child(sky.flex_basis(relative(0.0)).flex_grow(1.6));
+    first = first.child(sky.flex_basis(relative(0.0)).flex_grow(1.4));
     let mut body = div()
         .flex()
         .flex_col()
