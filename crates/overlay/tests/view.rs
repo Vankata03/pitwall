@@ -81,6 +81,8 @@ fn frame(time: f32, car: Readout<CarInputs>, distance: f32) -> FastFrame {
         player_car_index: Some(1),
         cars,
         lap_distances,
+        delta_best: [Readout::Absent; MAX_CARS],
+        delta_previous: [Readout::Absent; MAX_CARS],
     }
 }
 

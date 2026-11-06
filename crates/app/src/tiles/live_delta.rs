@@ -1,16 +1,14 @@
 //! Live delta (parity DELTA-01..03): a frame-rate tile following one car.
 //! Port of `dashboard/src/tiles/types/live-delta.tsx` and `live-delta/{geometry,lap,chart}.ts`.
 //!
-//! The web tile rebuilds the lap's graph from frame rings it samples while open. Natively
-//! the core already keeps the lap's 5 m distance trace, so the graph is derived from it:
-//! each sample's lap time against the reference lap's time at the same distance. The whole
-//! lap shows even when the window opens mid-lap, and no sample can be skipped by the paint
-//! cadence. The headline is the core's live delta, which at the line is the official lap
-//! figure; the official figure is never plotted.
+//! The headline comes from the model; graph vertices come from accepted fast-feed
+//! publications. A placed tile keeps the observed lap beyond feed rollover. Opening a
+//! tile consumes only the retained feed tail, as the web tile consumes its frame ring.
 
 use gpui::{Hsla, IntoElement, ParentElement, Styled, canvas, div, px};
 use pitwall_core::{
-    model::{LapSample, Lifecycle, Readout, SessionModel},
+    feed::{FAST_HISTORY_SECONDS, Reader},
+    model::{Lifecycle, Readout, SessionModel},
     readout::{ReadoutState, ReadoutView, readout_view, whole_tile_message},
 };
 
@@ -35,30 +33,171 @@ pub struct Point {
     pub delta: f32,
 }
 
-/// Lap time (ms) of `trace` at `distance`, interpolated between samples at most 100 m
-/// apart; never extrapolated.
-fn time_at(trace: &[LapSample], distance: f32) -> Option<f32> {
-    let index = trace.partition_point(|p| p.distance_m < distance);
-    let right = trace.get(index)?;
-    if right.distance_m == distance {
-        return Some(right.time_ms);
-    }
-    let left = trace.get(index.checked_sub(1)?)?;
-    (right.distance_m - left.distance_m <= MAX_JOIN_M).then(|| {
-        let f = (distance - left.distance_m) / (right.distance_m - left.distance_m);
-        left.time_ms + f * (right.time_ms - left.time_ms)
-    })
+/// Per-placed-tile observation of one car and named reference. This is presentation
+/// history, not a reference-lap cache: authoritative references remain in the model.
+pub struct Memory {
+    identity: Option<(usize, Reference)>,
+    epoch: Option<u64>,
+    seen: u64,
+    current: Vec<Point>,
+    previous: Vec<Point>,
+    last_time: f32,
+    last_distance: f32,
+    at_line: f32,
 }
 
-/// A lap's delta against `reference` at each of its samples, in seconds. Where the
-/// reference has no time the point is a break.
-pub fn lap_points(lap: &[LapSample], reference: &[LapSample]) -> Vec<Point> {
-    lap.iter()
-        .map(|s| Point {
-            distance: s.distance_m,
-            delta: time_at(reference, s.distance_m).map_or(f32::NAN, |t| (s.time_ms - t) / 1000.0),
-        })
-        .collect()
+impl Default for Memory {
+    fn default() -> Self {
+        Self {
+            identity: None,
+            epoch: None,
+            seen: 0,
+            current: vec![],
+            previous: vec![],
+            last_time: f32::NEG_INFINITY,
+            last_distance: f32::NAN,
+            at_line: f32::NAN,
+        }
+    }
+}
+
+impl Memory {
+    fn restart(&mut self) {
+        self.current.clear();
+        self.previous.clear();
+        self.last_time = f32::NEG_INFINITY;
+        self.last_distance = f32::NAN;
+        self.at_line = f32::NAN;
+    }
+
+    fn add(&mut self, point: Point) {
+        if !point.distance.is_finite()
+            && self.current.last().is_some_and(|p| !p.distance.is_finite())
+        {
+            return;
+        }
+        self.current.push(point);
+        if self.current.len() > 20_000 {
+            self.current.drain(..5_000);
+        }
+    }
+
+    fn sample(&mut self, time: f32, distance: f32, delta: f32) {
+        if time < self.last_time {
+            self.restart();
+        }
+        self.last_time = time;
+        if !distance.is_finite() || distance < 0.0 {
+            self.add(Point {
+                distance: f32::NAN,
+                delta: f32::NAN,
+            });
+            return;
+        }
+        if distance < self.last_distance - 100.0 {
+            if self.current.iter().filter(|p| p.delta.is_finite()).count() > 1 {
+                self.previous = std::mem::take(&mut self.current);
+            }
+            self.current.clear();
+            self.last_distance = distance;
+            self.at_line = distance;
+            return;
+        }
+        if distance == self.at_line {
+            return;
+        }
+        self.at_line = f32::NAN;
+        if distance < self.last_distance {
+            self.add(Point {
+                distance,
+                delta: f32::NAN,
+            });
+            self.last_distance = distance;
+            return;
+        }
+        self.last_distance = distance;
+        if let Some(last) = self.current.last_mut()
+            && last.distance == distance
+        {
+            last.delta = delta;
+        } else {
+            self.add(Point { distance, delta });
+        }
+    }
+
+    pub fn inputs(
+        &mut self,
+        reader: &Reader,
+        model: &SessionModel,
+        index: Option<usize>,
+        reference: Reference,
+        size: (f32, f32),
+    ) -> Inputs {
+        let fast = reader.fast();
+        let identity = index.map(|i| (i, reference));
+        if identity != self.identity {
+            *self = Self::default();
+            self.identity = identity;
+        }
+        let batch = reader.fast_since(self.seen);
+        let cutoff = fast.session_time - FAST_HISTORY_SECONDS;
+        let expired = batch
+            .frames
+            .iter()
+            .any(|f| f.epoch == fast.epoch && f.session_time < cutoff);
+        if (batch.overrun || expired) && index.is_some() {
+            self.add(Point {
+                distance: f32::NAN,
+                delta: f32::NAN,
+            });
+        }
+        if let Some(index) = index {
+            for frame in batch.frames.iter().filter(|f| {
+                f.generation <= fast.generation && f.epoch == fast.epoch && f.session_time >= cutoff
+            }) {
+                if self.epoch != Some(frame.epoch) {
+                    self.restart();
+                    self.epoch = Some(frame.epoch);
+                }
+                let values = match reference {
+                    Reference::Previous => &frame.delta_previous,
+                    _ => &frame.delta_best,
+                };
+                self.sample(
+                    frame.session_time,
+                    frame
+                        .lap_distances
+                        .get(index)
+                        .and_then(Readout::value)
+                        .copied()
+                        .unwrap_or(f32::NAN),
+                    values
+                        .get(index)
+                        .and_then(Readout::value)
+                        .copied()
+                        .unwrap_or(f32::NAN)
+                        / 1000.0,
+                );
+            }
+        }
+        self.seen = fast.generation;
+        let mut inputs = Inputs::from_model(model, index, reference, size);
+        let deltas = match reference {
+            Reference::Previous => &fast.delta_previous,
+            _ => &fast.delta_best,
+        };
+        inputs.delta = index
+            .and_then(|i| deltas.get(i))
+            .copied()
+            .unwrap_or(Readout::Absent);
+        if fast.epoch != model.epoch() {
+            // Source switching publishes the fast reset before the next model snapshot.
+            inputs.track_length = 0.0;
+        }
+        inputs.current = self.current.clone();
+        inputs.previous = self.previous.clone();
+        inputs
+    }
 }
 
 /// NaN or a gap over 100 m starts a new segment, as does going backwards; negative
@@ -203,43 +342,13 @@ impl Inputs {
             )
         });
         let car = index.and_then(|i| model.car(i));
-        let current_trace = car.and_then(|c| c.current_lap_trace());
-        let current = car
-            .zip(current_trace)
-            .and_then(|(c, lap)| {
-                let reference = c.lap_trace(reference)?;
-                Some(lap_points(&lap.samples, &reference.samples))
-            })
-            .unwrap_or_default();
-        let previous = car
-            .zip(current_trace)
-            .and_then(|(c, lap)| {
-                let finished = c.completed_lap_trace(lap.lap_number.checked_sub(1)?)?;
-                // The reference that lap was driven against: the lap before it, or the best
-                // valid lap completed before it.
-                let against = match reference {
-                    Reference::Previous => finished.lap_number.checked_sub(1)?,
-                    _ => {
-                        c.session_history()
-                            .laps
-                            .iter()
-                            .filter(|l| l.valid && l.lap_number < finished.lap_number)
-                            .min_by_key(|l| (l.lap_time_ms, l.lap_number))?
-                            .lap_number
-                    }
-                };
-                let against = c.completed_lap_trace(against)?;
-                Some(lap_points(&finished.samples, &against.samples))
-            })
-            .filter(|points| points.iter().filter(|p| p.delta.is_finite()).count() > 1)
-            .unwrap_or_default();
         Self {
             delta: car.map_or(Readout::Absent, |c| c.live_delta(reference)),
             reference,
             track_length: session.map_or(0.0, |s| s.0),
             sectors: session.map_or([0.0; 2], |s| s.1),
-            current,
-            previous,
+            current: vec![],
+            previous: vec![],
             lifecycle: model.lifecycle(),
             width: size.0,
             height: size.1,
@@ -521,16 +630,6 @@ mod tests {
     fn p(distance: f32, delta: f32) -> Point {
         Point { distance, delta }
     }
-    fn sample(distance_m: f32, time_ms: f32) -> LapSample {
-        LapSample {
-            distance_m,
-            time_ms,
-            session_time: 0.0,
-            speed_kph: None,
-            throttle: None,
-            brake: None,
-        }
-    }
     fn base(delta: Readout<f32>) -> Inputs {
         Inputs {
             delta,
@@ -721,31 +820,6 @@ mod tests {
             distances(&segments(&points)),
             vec![vec![10.0, 20.0], vec![15.0, 25.0], vec![30.0]]
         );
-    }
-
-    #[test]
-    fn lap_points_compare_lap_time_with_the_reference_at_the_same_distance() {
-        let reference = [
-            sample(0.0, 0.0),
-            sample(50.0, 1000.0),
-            sample(100.0, 2000.0),
-            sample(300.0, 6000.0),
-        ];
-        let lap = [
-            sample(0.0, 0.0),
-            sample(25.0, 400.0),
-            sample(100.0, 2300.0),
-            sample(200.0, 4000.0),
-        ];
-        let points = lap_points(&lap, &reference);
-        assert_eq!(points[0], p(0.0, 0.0));
-        assert_eq!(points[1], p(25.0, -0.1), "interpolated 500 ms at 25 m");
-        assert_eq!(points[2], p(100.0, 0.3));
-        assert!(
-            points[3].delta.is_nan(),
-            "reference gap over 100 m is never bridged"
-        );
-        assert!(lap_points(&lap, &[]).iter().all(|p| p.delta.is_nan()));
     }
 
     #[test]

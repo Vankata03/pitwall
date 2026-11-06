@@ -49,7 +49,7 @@ impl InputSample {
 /// Which car's timeline a history belongs to: `(epoch, car index)`.
 pub type HistoryIdentity = (u64, usize);
 
-/// The rolling input history a trace is drawn from: the last 30 s at 60 Hz plus one.
+/// The rolling input history a trace is drawn from: the last 30 s of publications.
 /// A new identity (epoch or car) or a step back in session time starts it again; a sample
 /// at the same session time as the newest replaces it, so a paused replay that keeps
 /// publishing the same instant never evicts what was received.
@@ -60,7 +60,9 @@ pub struct InputHistory {
 }
 
 impl InputHistory {
-    pub const CAPACITY: usize = 1801;
+    /// A safety bound above 30 seconds at the native feed's 240 Hz budget. Unlike the
+    /// web's 1801 frames, native publications include multiple packet groups per frame.
+    pub const CAPACITY: usize = 20_000;
 
     pub fn new() -> Self {
         Self::default()
@@ -83,6 +85,14 @@ impl InputHistory {
                 }
                 self.samples.push_back(sample);
             }
+        }
+        let cutoff = sample.session_time - INPUT_WINDOW_SECONDS;
+        while self
+            .samples
+            .front()
+            .is_some_and(|s| s.session_time < cutoff)
+        {
+            self.samples.pop_front();
         }
     }
 
