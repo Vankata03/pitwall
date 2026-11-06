@@ -101,17 +101,16 @@ inputs, pause deduplication, time reversal and reference alignment.
 overflow, independent snapshots and untorn reads. Existing view tests cover Restricted,
 channels, units, smoothing, density and chart geometry.
 
-The larger feed has not been rebenchmarked against the native CPU/memory budget. The
-numbers in `fast-path.md` describe the earlier feed and are not new performance evidence.
+The larger feed and bounded catch-up allocation are measured in [channel-controls.md](channel-controls.md).
+Those short measurements do not establish the native CPU/memory budget.
 Manual side-by-side recording checks remain open. The full native port is unfinished.
 
 ## Differences from the web build
 
 - **Engine temp gauge.** The web gauge fills with a horizontal gradient; the native gauge
   fills in four solid steps of the same colours.
-- **Settings.** The channel setting of Throttle/brake traces is read and its rules are
-  tested (`toggle_channel`), but its channel selector is not wired into the layout
-  settings dialog yet, so INPUT-01 stays open.
+- **Settings.** Throttle/brake traces now uses the existing list-setting control for channels.
+  INPUT-01 implementation and named tests are recorded in [channel-controls.md](channel-controls.md).
 - **Accessibility.** The G-force circle does not yet expose a screen-reader summary,
   so GFORCE-01 stays open.
 

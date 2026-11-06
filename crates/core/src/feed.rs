@@ -256,8 +256,13 @@ impl Reader {
         let first = generation
             .saturating_add(1)
             .max(latest.saturating_sub(FAST_HISTORY_CAPACITY as u64 - 1));
+        // Reserve once for the observed tail. Idle/future cursors allocate nothing;
+        // overruns cannot reserve beyond the ring even after a very long stall.
+        let count = latest
+            .saturating_sub(generation)
+            .min(FAST_HISTORY_CAPACITY as u64) as usize;
         let mut batch = FastBatch {
-            frames: Vec::new(),
+            frames: Vec::with_capacity(count),
             overrun: latest.saturating_sub(generation) > FAST_HISTORY_CAPACITY as u64,
         };
         for expected in first..=latest {

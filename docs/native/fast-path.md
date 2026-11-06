@@ -48,10 +48,11 @@ Three mechanisms were candidates: a lock-free ring, a seqlock and a triple buffe
   at once.
 - A seqlock has one writer, any number of readers, and a writer that never waits.
 
-The fast frame is a fixed size, so the seqlock stores it as 98 `AtomicU64` words: one
-header word, three per car slot for the inputs, one per car slot for lap distance and
-one model epoch word. The optional catch-up read (`fast_since`) retains 256 publications
-in approximately 198 KiB of atomic storage per channel. It reports overruns; the overlay
+The fast frame is a fixed size, so the seqlock now stores it as 146 `AtomicU64` words:
+one header word, three per car slot for the inputs, three per car slot for lap distance
+and both named deltas, and one model epoch word. The catch-up read (`fast_since`) retains
+2,400 publications in 2,822,400 bytes of atomic history per channel.
+Current storage, allocation and benchmark evidence is in [channel-controls.md](channel-controls.md). It reports overruns; the overlay
 clears its old history before consuming the retained tail. Epoch tags prevent a new
 snapshot from displaying old frames while the two feed paths catch up.
 The measurements below were taken before the lap-distance word was added (73 words, 608
