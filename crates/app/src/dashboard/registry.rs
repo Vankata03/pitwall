@@ -284,8 +284,9 @@ fn traces(inputs: &TileInputs<'_>, memory: &mut Memory) -> TileView {
     )))
 }
 
-fn delta(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
-    TileView::LiveDelta(live_delta::view(&live_delta::Inputs::from_model(
+fn delta(inputs: &TileInputs<'_>, memory: &mut Memory) -> TileView {
+    TileView::LiveDelta(live_delta::view(&memory.delta.inputs(
+        inputs.reader,
         inputs.snapshot,
         inputs.car.index(),
         live_delta::Reference::best_or_previous_of(&inputs.tile.settings),

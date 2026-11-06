@@ -66,15 +66,19 @@ fn trace_readers_receive_every_intervening_frame_in_publication_order() {
 #[test]
 fn a_slow_trace_reader_is_told_when_bounded_history_overwrites_old_frames() {
     let (mut publisher, reader) = feed::channel();
-    for _ in 0..259 {
+    let count = pitwall_core::feed::FAST_HISTORY_CAPACITY as u64 + 3;
+    for _ in 0..count {
         publisher.publish_fast(&SessionModel::default());
     }
     let batch = reader.fast_since(0);
     assert!(batch.overrun);
-    assert_eq!(batch.frames.len(), 256);
+    assert_eq!(
+        batch.frames.len(),
+        pitwall_core::feed::FAST_HISTORY_CAPACITY
+    );
     assert_eq!(batch.frames.first().unwrap().generation, 4);
-    assert_eq!(batch.frames.last().unwrap().generation, 259);
-    assert!(!reader.fast_since(259).overrun);
+    assert_eq!(batch.frames.last().unwrap().generation, count);
+    assert!(!reader.fast_since(count).overrun);
 }
 
 /// A model with car 0 valid and one Car Telemetry packet applied at `at`.

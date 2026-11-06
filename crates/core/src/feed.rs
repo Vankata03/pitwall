@@ -27,7 +27,7 @@ use std::{
 };
 
 use crate::{
-    model::{Readout, SessionModel},
+    model::{Readout, Reference, SessionModel},
     telemetry::{CarTelemetryData, MAX_CARS},
 };
 
@@ -86,6 +86,10 @@ pub struct FastFrame {
     /// Negative before the line at a race start. Lets a trace align a live sample with a
     /// reference lap at the same circuit position.
     pub lap_distances: [Readout<f32>; MAX_CARS],
+    /// Signed milliseconds against the named reference, including the official figure
+    /// on the first next-lap update. Graph consumers exclude that update.
+    pub delta_best: [Readout<f32>; MAX_CARS],
+    pub delta_previous: [Readout<f32>; MAX_CARS],
 }
 
 /// A bounded catch-up read for traces. An overrun means some intervening publications
@@ -95,8 +99,10 @@ pub struct FastBatch {
     pub overrun: bool,
 }
 
-/// One second of publications at up to 240 Hz. The writer never waits for readers.
-pub const FAST_HISTORY_CAPACITY: usize = 256;
+/// The web frame ring's ten-second lookback, at the native 240 Hz publication budget.
+/// The writer never waits for readers. Consumers also trim by the session clock.
+pub const FAST_HISTORY_SECONDS: f32 = 10.0;
+pub const FAST_HISTORY_CAPACITY: usize = 2400;
 
 /// One slow-state publish: a shared, immutable session model. Dereferences to
 /// [`SessionModel`], so `snapshot.car(0)` and `snapshot.race_control()` work directly.
@@ -286,6 +292,8 @@ impl Shared {
             if let Some(car) = model.car(index) {
                 *slot = car.telemetry().map(CarInputs::from);
                 frame.lap_distances[index] = car.lap().map(|lap| lap.lap_distance);
+                frame.delta_best[index] = car.live_delta(Reference::Best);
+                frame.delta_previous[index] = car.live_delta(Reference::Previous);
             }
         }
         let words = encode(&frame);
@@ -303,11 +311,15 @@ const EMPTY_FRAME: FastFrame = FastFrame {
     player_car_index: None,
     cars: [Readout::Absent; MAX_CARS],
     lap_distances: [Readout::Absent; MAX_CARS],
+    delta_best: [Readout::Absent; MAX_CARS],
+    delta_previous: [Readout::Absent; MAX_CARS],
 };
 
-/// One header word, three input words per car, one lap-distance word per car, then epoch.
-const WORDS: usize = 2 + 4 * MAX_CARS;
+/// One header word, three input words and three distance/delta words per car, then epoch.
+const WORDS: usize = 2 + 6 * MAX_CARS;
 const LAP_BASE: usize = 1 + 3 * MAX_CARS;
+const BEST_BASE: usize = LAP_BASE + MAX_CARS;
+const PREVIOUS_BASE: usize = BEST_BASE + MAX_CARS;
 const EPOCH_WORD: usize = WORDS - 1;
 
 /// A single-writer sequence lock over plain atomic words, so a racing read is never a
@@ -363,6 +375,7 @@ const NO_PLAYER: u64 = 0xFF;
 const ABSENT: u64 = 0;
 const LIVE: u64 = 1;
 const STALE: u64 = 2;
+const RESTRICTED: u64 = 3;
 
 fn encode(frame: &FastFrame) -> [u64; WORDS] {
     let mut words = [0; WORDS];
@@ -375,7 +388,8 @@ fn encode(frame: &FastFrame) -> [u64; WORDS] {
         let (state, inputs) = match car {
             Readout::Live(inputs) => (LIVE, Some(inputs)),
             Readout::Stale(inputs) => (STALE, Some(inputs)),
-            Readout::Restricted | Readout::Absent => (ABSENT, None),
+            Readout::Restricted => (RESTRICTED, None),
+            Readout::Absent => (ABSENT, None),
         };
         let base = 1 + 3 * index;
         if let Some(c) = inputs {
@@ -390,12 +404,19 @@ fn encode(frame: &FastFrame) -> [u64; WORDS] {
         }
         words[base + 2] |= state << 56;
     }
-    for (index, distance) in frame.lap_distances.iter().enumerate() {
-        words[LAP_BASE + index] = match distance {
-            Readout::Live(metres) => u64::from(metres.to_bits()) | LIVE << 56,
-            Readout::Stale(metres) => u64::from(metres.to_bits()) | STALE << 56,
-            Readout::Restricted | Readout::Absent => ABSENT << 56,
-        };
+    for (base, values) in [
+        (LAP_BASE, &frame.lap_distances),
+        (BEST_BASE, &frame.delta_best),
+        (PREVIOUS_BASE, &frame.delta_previous),
+    ] {
+        for (index, value) in values.iter().enumerate() {
+            words[base + index] = match value {
+                Readout::Live(value) => u64::from(value.to_bits()) | LIVE << 56,
+                Readout::Stale(value) => u64::from(value.to_bits()) | STALE << 56,
+                Readout::Restricted => RESTRICTED << 56,
+                Readout::Absent => ABSENT << 56,
+            };
+        }
     }
     words
 }
@@ -424,17 +445,25 @@ fn decode(generation: u64, words: &[u64; WORDS]) -> FastFrame {
             match c >> 56 {
                 LIVE => Readout::Live(inputs),
                 STALE => Readout::Stale(inputs),
+                RESTRICTED => Readout::Restricted,
                 _ => Readout::Absent,
             }
         }),
-        lap_distances: std::array::from_fn(|index| {
-            let word = words[LAP_BASE + index];
-            let metres = f32::from_bits(word as u32);
-            match word >> 56 {
-                LIVE => Readout::Live(metres),
-                STALE => Readout::Stale(metres),
-                _ => Readout::Absent,
-            }
-        }),
+        lap_distances: decode_values(words, LAP_BASE),
+        delta_best: decode_values(words, BEST_BASE),
+        delta_previous: decode_values(words, PREVIOUS_BASE),
     }
+}
+
+fn decode_values(words: &[u64; WORDS], base: usize) -> [Readout<f32>; MAX_CARS] {
+    std::array::from_fn(|index| {
+        let word = words[base + index];
+        let value = f32::from_bits(word as u32);
+        match word >> 56 {
+            LIVE => Readout::Live(value),
+            STALE => Readout::Stale(value),
+            RESTRICTED => Readout::Restricted,
+            _ => Readout::Absent,
+        }
+    })
 }

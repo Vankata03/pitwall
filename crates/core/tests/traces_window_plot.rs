@@ -177,3 +177,15 @@ fn reference_values_interpolate_by_distance_and_never_extrapolate() {
     assert_eq!(at(200.0), None); // neighbours more than 100 m apart
     assert_eq!(at(f64::NAN), None);
 }
+
+#[test]
+fn native_publication_rates_keep_the_full_thirty_second_window_beyond_feed_history() {
+    let mut s = Samples::new();
+    for i in 0..=9600 {
+        s.add(f64::from(i) / 240.0, 100.0, 70.0, 0.0);
+    }
+    let plot = s.plot(None);
+    assert_eq!(plot.x.first(), Some(&-30.0));
+    assert_eq!(plot.x.last(), Some(&0.0));
+    assert_eq!(plot.x.len(), 7201);
+}

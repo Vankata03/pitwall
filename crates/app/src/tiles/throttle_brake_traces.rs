@@ -9,7 +9,7 @@
 
 use gpui::{Hsla, IntoElement, ParentElement, Styled, canvas, div, px, relative};
 use pitwall_core::{
-    feed::{FastFrame, Reader},
+    feed::{FAST_HISTORY_SECONDS, FastFrame, Reader},
     model::{LapSample, SessionModel},
     readout::{ReadoutState, ReadoutView, readout_view},
     traces::{
@@ -80,8 +80,7 @@ pub fn settings_of(settings: &Value) -> Settings {
 }
 
 /// The settings with `channel` toggled, in canonical order; `None` when it is the last
-/// channel, which cannot be deselected. For a settings dialog with list settings; the
-/// layout dialog offers single choices only so far.
+/// channel, which cannot be deselected. The layout dialog uses the same channel rules.
 #[cfg_attr(not(test), expect(dead_code))]
 pub fn toggle_channel(settings: &Value, channel: Channel) -> Option<Value> {
     let selected = settings_of(settings).channels;
@@ -113,18 +112,46 @@ pub fn toggle_channel(settings: &Value, channel: Channel) -> Option<Value> {
 pub struct Memory {
     history: InputHistory,
     seen: Option<u64>,
+    identity: Option<(u64, usize)>,
+    break_pending: bool,
 }
 
 impl Memory {
     /// Record `frames` for the car at `index`, oldest first. A frame whose car has no
     /// inputs records a gap.
     pub fn record(&mut self, frames: &[FastFrame], index: Option<usize>) {
-        let Some(index) = index else { return };
+        let Some(index) = index else {
+            self.history.clear();
+            self.identity = None;
+            return;
+        };
         for frame in frames {
+            let identity = (frame.epoch, index);
+            if self.identity != Some(identity) {
+                self.history.clear();
+                self.identity = Some(identity);
+                self.break_pending = false;
+            }
             let inputs = frame.cars.get(index).and_then(|c| c.value());
             let distance = frame.lap_distances.get(index).and_then(|d| d.value());
-            if inputs.is_none() && distance.is_none() {
+            if inputs.is_none() && distance.is_none() && self.history.is_empty() {
                 continue;
+            }
+            if self.break_pending
+                && let Some(last) = self.history.samples().back()
+                && f64::from(frame.session_time) > last.session_time
+            {
+                self.history.record(
+                    identity,
+                    InputSample {
+                        session_time: (last.session_time + f64::from(frame.session_time)) / 2.0,
+                        lap_distance: f64::NAN,
+                        throttle: f64::NAN,
+                        brake: f64::NAN,
+                        speed: f64::NAN,
+                    },
+                );
+                self.break_pending = false;
             }
             self.history.record(
                 (frame.epoch, index),
@@ -145,7 +172,8 @@ impl Memory {
     }
 
     /// Catch up on every fast frame since the last render, then build the tile's inputs
-    /// for the car at `index`. A late joiner starts from the newest frame only.
+    /// for the car at `index`. A late joiner starts from the retained observed tail;
+    /// reference-lap samples never fill earlier current time history.
     #[allow(clippy::too_many_arguments)]
     pub fn inputs<'a>(
         &'a mut self,
@@ -157,16 +185,36 @@ impl Memory {
         units: Units,
         size: (f32, f32),
     ) -> Inputs<'a> {
+        if self.identity != index.map(|i| (fast.epoch, i)) {
+            self.history.clear();
+            self.seen = None;
+            self.identity = index.map(|i| (fast.epoch, i));
+            self.break_pending = false;
+        }
         let frames = match self.seen {
-            None => vec![*fast],
-            Some(seen) => reader.fast_since(seen).frames,
+            None => reader.fast_since(0).frames,
+            Some(seen) => {
+                let batch = reader.fast_since(seen);
+                self.break_pending |= batch.overrun;
+                batch.frames
+            }
         };
+        let frames: Vec<_> = frames
+            .into_iter()
+            .filter(|f| {
+                f.generation <= fast.generation
+                    && f.epoch == fast.epoch
+                    && f.session_time >= fast.session_time - FAST_HISTORY_SECONDS
+            })
+            .collect();
         if let Some(last) = frames.last() {
             self.seen = Some(last.generation);
         }
         self.record(&frames, index);
         let settings = settings_of(settings);
-        let car = index.and_then(|i| model.car(i));
+        let car = index
+            .filter(|_| fast.epoch == model.epoch())
+            .and_then(|i| model.car(i));
         let reference = car.and_then(|c| c.lap_trace(settings.reference));
         let inputs = index
             .filter(|_| fast.epoch == model.epoch())
@@ -536,6 +584,8 @@ mod tests {
             player_car_index: Some(0),
             cars,
             lap_distances,
+            delta_best: [Readout::Absent; MAX_CARS],
+            delta_previous: [Readout::Absent; MAX_CARS],
         }
     }
     fn f(seq: u32, distance: f32, throttle: f32, brake: f32) -> FastFrame {
