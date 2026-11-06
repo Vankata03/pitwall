@@ -7,13 +7,17 @@ pub mod ers;
 pub mod format;
 pub mod fuel;
 pub mod g_force;
+pub mod gaps;
+pub mod lap_state;
 pub mod lap_timing;
 pub mod live_delta;
 pub mod memory;
 mod paint;
 mod slow;
 pub mod speed_rpm_gear;
+pub mod stint;
 pub mod throttle_brake_traces;
+pub mod timing_tower;
 mod widgets;
 
 /// How much a tile shows at its current pixel size.
@@ -67,3 +71,6 @@ mod lap_timing_tests;
 
 #[cfg(test)]
 mod live_delta_tests;
+
+#[cfg(test)]
+mod timing_tests;

@@ -41,7 +41,6 @@ use pitwall_core::{
     units::{PressureUnit, SpeedUnit, TemperatureUnit, Units},
     window::{Command, DashboardWindow, WindowChoices, WindowSetup, choices_path},
 };
-use serde_json::{Value, json};
 
 use pitwall_native::desktop;
 
@@ -498,10 +497,7 @@ impl Dashboard {
         let time_trial = self.time_trial();
         for field in registry::renderer(&tile.kind).map_or(&[][..], |r| r.settings) {
             body = body.child(field.label);
-            let saved = tile.settings.get(field.key).and_then(Value::as_str);
-            let selected = saved
-                .filter(|v| field.choices.iter().any(|c| c.value == *v))
-                .unwrap_or(field.default);
+            let selected = field.selected(&tile.settings);
             for choice in field.choices {
                 if choice.time_trial_only && !time_trial && selected != choice.value {
                     body = body.child(
@@ -519,7 +515,7 @@ impl Dashboard {
                     Action::Command(Command::Setting(
                         id.to_owned(),
                         field.key.into(),
-                        json!(choice.value),
+                        field.stored(choice),
                     )),
                     cx,
                 ));
