@@ -48,7 +48,9 @@ are covered by the tower and Stint ports. The tower's Full-density "Wear (max)" 
 ## Visual check
 
 Screenshots in [tiles/](tiles/) come from real recordings replayed with an empty data
-folder, captured from the window's own pixels:
+folder, captured from the window's own pixels. They were taken before #73 merged, so
+the track map, weather, race-control feed, SM and track discipline tiles still show their
+placeholders:
 
 - `timing-tiles-race-full.png`: Austria Race near the end, Race layout. The tower is at
   Full density with its three lines per car, including Wear (max); Lap state; Stint with
