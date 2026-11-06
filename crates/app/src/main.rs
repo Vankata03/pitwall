@@ -11,14 +11,11 @@ mod status;
 mod theme;
 mod tiles;
 mod tray;
+mod windows;
 
-use crate::{
-    dashboard::{Dashboard, Stats},
-    source::Args,
-    status::StatusWindow,
-};
+use crate::{dashboard::Stats, source::Args, status::StatusWindow, windows::Windows};
 use gpui::{App, AppContext, Bounds, WindowBounds, WindowOptions, px, size};
-use pitwall_core::{data::DataFolder, feed::Reader, layouts::LayoutLibrary, paths::AppPaths};
+use pitwall_core::{data::DataFolder, paths::AppPaths};
 use pitwall_native::{
     desktop::{self, FirstRun, Instance, Launch},
     host::{Command, Control, Desktop, Runtime},
@@ -36,35 +33,6 @@ const FONTS: [&[u8]; 3] = [
     include_bytes!("../assets/fonts/Oxanium-SemiBold.ttf"),
     include_bytes!("../assets/fonts/Oxanium-Bold.ttf"),
 ];
-
-fn open_dashboard(
-    cx: &mut App,
-    reader: Reader,
-    stats: Arc<Stats>,
-    dimensions: (f32, f32),
-    library: LayoutLibrary,
-    paths: AppPaths,
-) -> Result<(), String> {
-    let bounds = Bounds::centered(None, size(px(dimensions.0), px(dimensions.1)), cx);
-    cx.open_window(
-        WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            // A dashboard on a second screen is inactive while the game has focus:
-            // never throttle it.
-            inactive_frame_interval: None,
-            low_power_frame_interval: None,
-            thermal_frame_interval: None,
-            ..Default::default()
-        },
-        |window, cx| {
-            cx.new(|cx| {
-                Dashboard::new(reader, "pitwall".into(), stats, library, &paths, window, cx)
-            })
-        },
-    )
-    .map(|_| ())
-    .map_err(|e| format!("Dashboard window: {e:#}"))
-}
 
 fn open_status(cx: &mut App, control: Control, dashboard: Arc<dyn Fn(&mut App)>) {
     let bounds = Bounds::centered(None, size(px(860.0), px(860.0)), cx);
@@ -160,39 +128,35 @@ fn main() -> ExitCode {
             desktop::log(&app_paths, &format!("Fonts: {error:#}"));
         }
         let first_run = FirstRun::new(&app_paths);
+        // Every dashboard and stream window shares one layout library and one window list.
+        let windows = Windows::load(
+            reader.clone(),
+            stats.clone(),
+            layouts.clone(),
+            app_paths.clone(),
+            control.clone(),
+            args.size,
+        );
         let dashboard: Arc<dyn Fn(&mut App)> = {
-            let (reader, stats, paths, size) =
-                (reader.clone(), stats.clone(), app_paths.clone(), args.size);
-            let layouts = layouts.clone();
+            let (windows, paths) = (windows.clone(), app_paths.clone());
             let first_run = FirstRun::new(&app_paths);
             Arc::new(move |cx| {
-                match open_dashboard(
-                    cx,
-                    reader.clone(),
-                    stats.clone(),
-                    size,
-                    layouts.clone(),
-                    paths.clone(),
-                ) {
-                    Ok(()) => {
-                        if first_run.pending()
-                            && let Err(error) = first_run.opened()
-                        {
-                            desktop::log(&paths, &format!("First run: {error}"));
-                        }
-                        cx.activate(true);
+                // A failure is logged and notified where the window is opened.
+                if windows.open_dashboard(cx).is_ok() {
+                    if first_run.pending()
+                        && let Err(error) = first_run.opened()
+                    {
+                        desktop::log(&paths, &format!("First run: {error}"));
                     }
-                    Err(error) => {
-                        desktop::log(&paths, &error);
-                        desktop::notify("pitwall window failed", &error);
-                    }
+                    cx.activate(true);
                 }
             })
         };
-        // Only the first successful run and debugging starts open a window; ordinary
-        // starts stay in the tray.
+        // The windows open at the last quit come back, each on its monitor. Otherwise only
+        // the first successful run and debugging starts open a window; ordinary starts
+        // stay in the tray.
         let debugging = args.cli.console || args.stats || args.replay.is_some();
-        if first_run.pending() || debugging {
+        if !windows.restore(cx) && (first_run.pending() || debugging) {
             dashboard(cx);
         }
         let mut tray = match tray::Tray::new(reader.clone(), app_paths.clone(), overlay) {
@@ -205,8 +169,10 @@ fn main() -> ExitCode {
             }
         };
         if tray.is_none() {
-            cx.on_window_closed(|cx, _| {
+            let windows = windows.clone();
+            cx.on_window_closed(move |cx, _| {
                 if cx.windows().is_empty() {
+                    windows.quit();
                     cx.quit();
                 }
             })
@@ -237,7 +203,10 @@ fn main() -> ExitCode {
                     .as_mut()
                     .map_or_else(Vec::new, |tray| tray.tick(&control));
                 let quit = actions.iter().any(|a| matches!(a, tray::Action::Quit));
+                windows.save_if_due();
                 if quit {
+                    // The windows open now come back on the next start.
+                    windows.quit();
                     // Dropping the tray closes the overlay and saves its geometry.
                     drop(tray.take());
                 }
