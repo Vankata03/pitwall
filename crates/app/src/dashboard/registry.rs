@@ -5,7 +5,8 @@
 
 use crate::tiles::{
     car_status, engine_temp, ers, fuel, g_force, gaps, lap_state, lap_timing, live_delta,
-    memory::Memory, speed_rpm_gear, stint, throttle_brake_traces, timing_tower,
+    memory::Memory, notice, race_control_feed, sm, speed_rpm_gear, stint, throttle_brake_traces,
+    timing_tower, track_discipline, track_map, weather,
 };
 use gpui::{AnyElement, IntoElement};
 use pitwall_core::{
@@ -279,6 +280,58 @@ const TOWER: &[SettingField] = &[
     },
 ];
 
+fn sm(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
+    sm::render(sm::view(&sm::Inputs::from_model(
+        inputs.snapshot,
+        inputs.car.index(),
+        inputs.size,
+    )))
+    .into_any_element()
+}
+
+fn track_discipline(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
+    track_discipline::render(track_discipline::view(
+        &track_discipline::Inputs::from_model(inputs.snapshot, inputs.car.index(), inputs.size),
+    ))
+    .into_any_element()
+}
+
+fn weather(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
+    weather::render(weather::view(&weather::Inputs::from_model(
+        inputs.snapshot,
+        inputs.units,
+        inputs.size,
+    )))
+    .into_any_element()
+}
+
+fn notice(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
+    notice::render(notice::view(inputs.size)).into_any_element()
+}
+
+fn race_control_feed(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
+    let feed =
+        race_control_feed::Inputs::from_model(inputs.snapshot, &inputs.tile.settings, inputs.size);
+    let shown =
+        memory
+            .race_control_feed
+            .announce_now(feed.candidates(), feed.epoch, &feed.entry_types);
+    race_control_feed::render(race_control_feed::view(&feed, &shown)).into_any_element()
+}
+
+/// Session-wide: `inputs.car` is the window focus, or the player while the window follows
+/// the player.
+fn track_map(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
+    let memory = &mut memory.track_map;
+    let map = memory.inputs(
+        inputs.snapshot,
+        track_map::TRACKS.get(),
+        inputs.car.index(),
+        inputs.size,
+    );
+    track_map::render(track_map::view(&map, &mut memory.fit)).into_any_element()
+}
+
 /// Best (default) or previous: Live delta and Throttle/brake traces.
 const BEST_OR_PREVIOUS: &[SettingField] = &[SettingField {
     key: "reference",
@@ -402,6 +455,43 @@ pub static RENDERERS: &[Renderer] = &[
         kind: stint::TYPE,
         name: stint::NAME,
         render: stint,
+        settings: &[],
+    },
+    Renderer {
+        kind: sm::TYPE,
+        name: sm::NAME,
+        render: sm,
+        settings: &[],
+    },
+    Renderer {
+        kind: track_discipline::TYPE,
+        name: track_discipline::NAME,
+        render: track_discipline,
+        settings: &[],
+    },
+    Renderer {
+        kind: weather::TYPE,
+        name: weather::NAME,
+        render: weather,
+        settings: &[],
+    },
+    Renderer {
+        kind: notice::TYPE,
+        name: notice::NAME,
+        render: notice,
+        settings: &[],
+    },
+    Renderer {
+        kind: race_control_feed::TYPE,
+        name: race_control_feed::NAME,
+        render: race_control_feed,
+        // The entryTypes setting is a list; its choice arrives with list settings.
+        settings: &[],
+    },
+    Renderer {
+        kind: track_map::TYPE,
+        name: track_map::NAME,
+        render: track_map,
         settings: &[],
     },
 ];
