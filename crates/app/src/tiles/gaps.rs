@@ -176,7 +176,7 @@ mod tests {
     fn keeps_stale_restricted_and_absent_explicit_and_never_substitutes_zero() {
         let stale = view(&base(vec![car(
             0,
-            Readout::Stale(1),
+            Readout::Stale(2),
             Readout::Stale(Some(1234)),
         )]));
         assert_eq!(stale.rows[0].value.state, ReadoutState::Stale);
@@ -193,6 +193,17 @@ mod tests {
         let absent = view(&base(vec![car(0, Readout::Absent, Readout::Absent)]));
         assert!(absent.rows.iter().all(|r| r.value.text == ABSENT_TEXT));
         assert_eq!(absent.message, Some("No data"));
+    }
+
+    #[test]
+    fn the_race_leader_reads_no_gap_ahead() {
+        let v = view(&base(vec![
+            car(0, Readout::Live(1), Readout::Live(Some(0))),
+            car(1, Readout::Live(2), Readout::Live(Some(11_004))),
+        ]));
+        assert_eq!(v.rows[0].value.state, ReadoutState::Absent);
+        assert_eq!(v.rows[1].value.text, "\u{2212}11.004 s");
+        assert_eq!(v.notes[1].as_deref(), Some("P2 \u{b7} Driver 2"));
     }
 
     #[test]

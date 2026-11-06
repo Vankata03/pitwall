@@ -447,6 +447,26 @@ pub struct Memory {
     open: Rc<RefCell<HashSet<u64>>>,
 }
 
+impl Memory {
+    /// Expand a collapsed set, collapse an expanded one.
+    pub fn toggle(&self, id: u64) {
+        let mut open = self.open.borrow_mut();
+        if !open.remove(&id) {
+            open.insert(id);
+        }
+    }
+
+    pub fn is_open(&self, id: u64) -> bool {
+        self.open.borrow().contains(&id)
+    }
+
+    fn handle(&self) -> Self {
+        Self {
+            open: self.open.clone(),
+        }
+    }
+}
+
 fn family_colour(family: Family) -> Hsla {
     match family {
         Family::Soft => theme::brake(),
@@ -610,7 +630,6 @@ pub fn render(view: View, memory: &mut Memory) -> AnyElement {
                 .child(widgets::readout(window, 14.0)),
         );
     }
-    let open = memory.open.borrow().clone();
     let mut detail = div()
         .id("stint-detail")
         .flex()
@@ -620,8 +639,8 @@ pub fn render(view: View, memory: &mut Memory) -> AnyElement {
         .overflow_y_scroll();
     for past in &view.past {
         let colour = family_colour(past.family);
-        let expanded = open.contains(&past.id);
-        let toggle = memory.open.clone();
+        let expanded = memory.is_open(past.id);
+        let toggle = memory.handle();
         let id = past.id;
         let mut item = line_top(div().flex().flex_col()).child(
             div()
@@ -632,10 +651,7 @@ pub fn render(view: View, memory: &mut Memory) -> AnyElement {
                 .min_h(px(if compact { 26.0 } else { 28.0 }))
                 .cursor_pointer()
                 .on_click(move |_, window, _| {
-                    let mut open = toggle.borrow_mut();
-                    if !open.remove(&id) {
-                        open.insert(id);
-                    }
+                    toggle.toggle(id);
                     window.refresh();
                 })
                 .child(ring(past.symbol, colour, 24.0))
@@ -938,6 +954,21 @@ mod tests {
             ..inputs(false, true)
         });
         assert_eq!(missing.message, Some("No stint data"));
+    }
+
+    #[test]
+    fn a_completed_set_expands_and_collapses_on_its_own() {
+        let memory = Memory::default();
+        assert!(!memory.is_open(1));
+        memory.toggle(1);
+        assert!(memory.is_open(1) && !memory.is_open(2));
+        memory.handle().toggle(1);
+        assert!(!memory.is_open(1));
+        // Expanded detail: starting and final age and each wheel.
+        let past = &view(&inputs(false, true)).past[0];
+        let wheels = past.wheels.as_ref().unwrap();
+        assert_eq!(wheels.len(), 4);
+        assert_eq!(wheels[0].wheel, "FL");
     }
 
     #[test]
