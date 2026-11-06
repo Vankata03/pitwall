@@ -1112,13 +1112,13 @@ impl Dashboard {
         frame: &Frame,
         cx: &Context<Self>,
     ) -> AnyElement {
-        let shown = shown_tiles(tiles, false);
-        let rows: Vec<_> = shown.iter().map(|t| (t.y, t.h)).collect();
-        let metrics = screen::stream_grid_metrics(&rows, height);
-        let geometry = GridGeometry::new(
+        // Every tile, the Notice included: a stream window has no short line of its own.
+        let shown: Vec<&Tile> = tiles.iter().collect();
+        let geometry = GridGeometry::stream(
             screen::screen_class_of(width),
             width.max(1.0),
-            metrics.row_height,
+            tiles,
+            height,
         );
         div()
             .id("stream")

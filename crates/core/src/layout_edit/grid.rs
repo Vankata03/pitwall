@@ -9,7 +9,7 @@
 
 use super::GridItem;
 use crate::layouts::{ScreenClass, Tile};
-use crate::screen::{GRID_MARGIN, cells_to_pixels};
+use crate::screen::{GRID_MARGIN, cells_to_pixels, stream_grid_metrics};
 
 /// Tallest a resize can make a tile, in rows.
 const MAX_ROWS: u32 = 1000;
@@ -24,24 +24,44 @@ pub enum Gesture {
     Resize,
 }
 
-/// One screen class drawn `width` logical pixels wide with rows `row` pixels high.
+/// One screen class drawn `width` logical pixels wide with rows `row` pixels high and
+/// `margin` pixels between cells.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GridGeometry {
     pub class: ScreenClass,
     pub width: f32,
     pub row: f32,
+    pub margin: f32,
 }
 
 impl GridGeometry {
     pub fn new(class: ScreenClass, width: f32, row: f32) -> Self {
-        Self { class, width, row }
+        Self {
+            class,
+            width,
+            row,
+            margin: GRID_MARGIN,
+        }
+    }
+
+    /// A stream window's grid: rows and gaps share `height` exactly
+    /// ([`stream_grid_metrics`]), so the last row never scrolls or overflows.
+    pub fn stream(class: ScreenClass, width: f32, tiles: &[Tile], height: f32) -> Self {
+        let rows: Vec<_> = tiles.iter().map(|t| (t.y, t.h)).collect();
+        let metrics = stream_grid_metrics(&rows, height);
+        Self {
+            class,
+            width,
+            row: metrics.row_height,
+            margin: metrics.margin,
+        }
     }
 
     /// Distance from one column (row) to the next, in pixels.
     pub fn pitch(self) -> (f32, f32) {
         (
-            (self.width + GRID_MARGIN) / self.class.columns() as f32,
-            self.row + GRID_MARGIN,
+            (self.width + self.margin) / self.class.columns() as f32,
+            self.row + self.margin,
         )
     }
 
@@ -55,7 +75,7 @@ impl GridGeometry {
             item.w,
             item.h,
             self.row,
-            GRID_MARGIN,
+            self.margin,
         );
         (item.x as f32 * px, item.y as f32 * py, w, h)
     }

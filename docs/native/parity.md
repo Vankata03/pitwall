@@ -409,7 +409,8 @@ and position, moves it back onto a shrunken monitor, and centres it on the prima
 monitor when its monitor is gone. A stream window is opened from a dashboard's Display
 menu for that window's layout and units, with a solid, green-key (`#00FF00`) or
 magenta-key (`#FF00FF`) background. It has no title bar, chrome, banners or footer,
-follows the player car (tile pins still apply), moves by dragging anywhere and closes with
+draws every tile (the Notice tile included) with rows fitted to the window height
+(`GridGeometry::stream`), follows the player car (tile pins still apply), moves by dragging anywhere and closes with
 Escape or the system menu. A missing, deleted or renamed layout leaves only the
 background, is reported to status and the log once per change
 (`Command::WindowProblem`), and recovers when the layout exists again.
