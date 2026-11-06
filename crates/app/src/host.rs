@@ -111,6 +111,8 @@ impl Desktop {
 pub struct Runtime {
     pub control: Control,
     pub reader: Reader,
+    /// The host's track store (shared): the Track map tile reads maps from it.
+    pub tracks: TrackStore,
     worker: Option<JoinHandle<io::Result<()>>>,
 }
 impl Runtime {
@@ -118,6 +120,7 @@ impl Runtime {
         let (publisher, reader) = feed::channel();
         let (sender, receiver) = mpsc::channel();
         let host = Host::open(folder, cli, desktop)?;
+        let tracks = host.tracks.clone();
         let state = Arc::new(Mutex::new(host.status.clone()));
         let control = Control {
             sender,
@@ -129,6 +132,7 @@ impl Runtime {
         Ok(Self {
             control,
             reader,
+            tracks,
             worker: Some(worker),
         })
     }

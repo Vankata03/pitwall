@@ -10,10 +10,16 @@ pub mod g_force;
 pub mod lap_timing;
 pub mod live_delta;
 pub mod memory;
+pub mod notice;
 mod paint;
+pub mod race_control_feed;
 mod slow;
+pub mod sm;
 pub mod speed_rpm_gear;
 pub mod throttle_brake_traces;
+pub mod track_discipline;
+pub mod track_map;
+pub mod weather;
 mod widgets;
 
 /// How much a tile shows at its current pixel size.
@@ -67,3 +73,6 @@ mod lap_timing_tests;
 
 #[cfg(test)]
 mod live_delta_tests;
+
+#[cfg(test)]
+mod remaining_tests;
