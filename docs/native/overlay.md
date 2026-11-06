@@ -164,7 +164,8 @@ before startup completed, returned no samples and was discarded.
 - Native application/tray visibility, failure notification and retry-after-toggle wiring
   still need integration. The crate supplies window lifecycle, move mode and persistence;
   it does not replace the collector's existing tray implementation in this slice.
-- Catch-up history is bounded at 256 publications. Longer stalls discard the overwritten
+- Catch-up history is now bounded at 2,400 publications (the ten-second native tail);
+  see [current measurements](channel-controls.md). Longer stalls discard the overwritten
   portion and restart the trace with the retained tail. Live/replay source switching must
   provide a distinct timeline or a new feed; this crate compares model epochs, not source IDs.
 

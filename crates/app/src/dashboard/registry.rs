@@ -87,15 +87,30 @@ pub struct Renderer {
     pub settings: &'static [SettingField],
 }
 
-/// A checkbox group. Empty selections and unknown saved strings are retained.
+/// A checkbox group using the tile's selection rules.
+#[derive(Clone, Copy)]
+enum ListRules {
+    EntryTypes,
+    InputChannels,
+}
+
+/// Choices shared by pointer and keyboard activation in the settings dialog.
 pub struct ListSettingField {
     pub key: &'static str,
     pub label: &'static str,
     pub choices: &'static [(&'static str, &'static str)],
+    rules: ListRules,
 }
 
 impl ListSettingField {
     pub fn selected(&self, settings: &Value) -> Vec<String> {
+        if matches!(self.rules, ListRules::InputChannels) {
+            return throttle_brake_traces::settings_of(settings)
+                .channels
+                .into_iter()
+                .map(|channel| throttle_brake_traces::channel_key(channel).to_owned())
+                .collect();
+        }
         match settings.get(self.key) {
             Some(Value::Array(items)) => items
                 .iter()
@@ -110,14 +125,21 @@ impl ListSettingField {
     }
 
     /// Value for `Command::Setting`; the controller preserves the other settings.
-    pub fn toggled(&self, settings: &Value, choice: &str) -> Value {
+    pub fn toggled(&self, settings: &Value, choice: &str) -> Option<Value> {
+        if matches!(self.rules, ListRules::InputChannels) {
+            let channel = pitwall_core::traces::CHANNEL_ORDER
+                .into_iter()
+                .find(|&channel| throttle_brake_traces::channel_key(channel) == choice)?;
+            return throttle_brake_traces::toggle_channel(settings, channel)
+                .map(|settings| settings["channels"].clone());
+        }
         let mut selected = self.selected(settings);
         if selected.iter().any(|value| value == choice) {
             selected.retain(|value| value != choice);
         } else {
             selected.push(choice.to_owned());
         }
-        Value::from(selected)
+        Some(Value::from(selected))
     }
 }
 
@@ -125,12 +147,26 @@ const FEED_SETTINGS: &[ListSettingField] = &[ListSettingField {
     key: "entryTypes",
     label: "Entry types",
     choices: &race_control_feed::ENTRY_TYPES,
+    rules: ListRules::EntryTypes,
+}];
+
+const INPUT_SETTINGS: &[ListSettingField] = &[ListSettingField {
+    key: "channels",
+    label: "Channels",
+    choices: &[
+        ("throttle", "Throttle"),
+        ("brake", "Brake"),
+        ("speed", "Speed"),
+    ],
+    rules: ListRules::InputChannels,
 }];
 
 impl Renderer {
     pub fn list_settings(&self) -> &'static [ListSettingField] {
         if self.kind == race_control_feed::TYPE {
             FEED_SETTINGS
+        } else if self.kind == throttle_brake_traces::TYPE {
+            INPUT_SETTINGS
         } else {
             &[]
         }
@@ -529,7 +565,6 @@ pub static RENDERERS: &[Renderer] = &[
     Renderer {
         kind: throttle_brake_traces::TYPE,
         prepare: traces,
-        // The channels setting is a list; its choice arrives with list settings.
         settings: BEST_OR_PREVIOUS,
     },
     Renderer {
@@ -615,6 +650,159 @@ mod tests {
     use pitwall_core::tile_catalog::declaration;
 
     #[test]
+    fn input_channel_choices_match_web_defaults_canonical_order_and_last_selection_guard() {
+        let fields = renderer(throttle_brake_traces::TYPE)
+            .unwrap()
+            .list_settings();
+        assert_eq!(fields.len(), 1, "the settings dialog must offer channels");
+        let field = &fields[0];
+        assert_eq!((field.key, field.label), ("channels", "Channels"));
+        assert_eq!(
+            field.choices,
+            &[
+                ("throttle", "Throttle"),
+                ("brake", "Brake"),
+                ("speed", "Speed")
+            ]
+        );
+        assert_eq!(
+            field.selected(&serde_json::json!({})),
+            ["throttle", "brake"]
+        );
+        for settings in [
+            serde_json::json!({"channels": []}),
+            serde_json::json!({"channels": ["future", 7]}),
+            serde_json::json!({"channels": null}),
+        ] {
+            assert_eq!(field.selected(&settings), ["throttle", "brake"]);
+            assert_eq!(
+                field.toggled(&settings, "speed"),
+                Some(serde_json::json!(["throttle", "brake", "speed"]))
+            );
+        }
+        let settings = serde_json::json!({"channels": ["speed", "future", "brake", "speed"]});
+        assert_eq!(field.selected(&settings), ["brake", "speed"]);
+        assert_eq!(
+            field.toggled(&settings, "throttle"),
+            Some(serde_json::json!(["throttle", "brake", "speed"]))
+        );
+        assert_eq!(
+            field.toggled(
+                &serde_json::json!({"channels": ["future", "speed"]}),
+                "speed"
+            ),
+            None
+        );
+        assert_eq!(field.toggled(&settings, "future"), None);
+    }
+
+    #[test]
+    fn input_channels_use_draft_save_cancel_and_prepare_the_selected_trace_view() {
+        use pitwall_core::{
+            layouts::{LayoutLibrary, ScreenClass},
+            traces::{Channel, Lap},
+            window::{Command, DashboardWindow, WindowChoices, WindowSetup},
+        };
+        let root = std::env::temp_dir().join(format!(
+            "pitwall-input-settings-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("layouts.json");
+        let library = LayoutLibrary::open(path.clone()).unwrap();
+        library.save("Inputs", serde_json::from_value(serde_json::json!({"schemaVersion":1,"name":"Inputs","arrangements":{"wide":[{"i":"inputs","type":"throttle-brake-traces","x":0,"y":0,"w":10,"h":7,"settings":{"reference":"previous","channels":["future","brake","speed","brake"],"other":{"keep":true}}}]}})).unwrap()).unwrap();
+        let mut window = DashboardWindow::open(WindowSetup {
+            library: library.clone(),
+            choices: WindowChoices {
+                layout: Some("Inputs".into()),
+                ..Default::default()
+            },
+            path: None,
+            options: Default::default(),
+        });
+        let field = &renderer(throttle_brake_traces::TYPE)
+            .unwrap()
+            .list_settings()[0];
+        let original = window.tiles(ScreenClass::Wide)[0].settings.clone();
+        window.apply(Command::Edit(ScreenClass::Wide));
+        let next = field.toggled(&original, "brake").unwrap();
+        assert_eq!(next, serde_json::json!(["speed"]));
+        window.apply(Command::Setting("inputs".into(), field.key.into(), next));
+        let changed = window.tiles(ScreenClass::Wide)[0].clone();
+        assert_eq!(
+            changed.settings,
+            serde_json::json!({"reference":"previous","channels":["speed"],"other":{"keep":true}})
+        );
+        assert_eq!(
+            library
+                .get("Inputs")
+                .unwrap()
+                .arrangement(ScreenClass::Wide)[0]
+                .settings,
+            original
+        );
+        // A last-channel click produces no command, just as the web settings do.
+        assert_eq!(field.toggled(&changed.settings, "speed"), None);
+        let (_publisher, reader) = pitwall_core::feed::channel();
+        let snapshot = reader.snapshot();
+        let fast = reader.fast();
+        let view = (renderer(throttle_brake_traces::TYPE).unwrap().prepare)(
+            &TileInputs {
+                tile: &changed,
+                snapshot: &snapshot,
+                fast: &fast,
+                reader: &reader,
+                car: ResolvedCar::NotInSession,
+                units: Units::default(),
+                size: (700.0, 400.0),
+            },
+            &mut Memory::default(),
+        );
+        let TileView::ThrottleBrakeTraces(view) = view else {
+            panic!("input trace view")
+        };
+        assert_eq!(view.note, "Speed \u{b7} Dim previous lap");
+        assert_eq!(view.plot.window_seconds, 30.0);
+        assert!(
+            view.plot
+                .series
+                .iter()
+                .all(|series| series.channel == Channel::Speed)
+        );
+        assert!(
+            view.plot
+                .series
+                .iter()
+                .any(|series| series.lap == Lap::Current)
+        );
+        assert_eq!([view.meters[0].label, view.meters[1].label], ["THR", "BRK"]);
+        window.apply(Command::Cancel);
+        assert_eq!(window.tiles(ScreenClass::Wide)[0].settings, original);
+        window.apply(Command::Edit(ScreenClass::Wide));
+        window.apply(Command::Setting(
+            "inputs".into(),
+            field.key.into(),
+            field.toggled(&original, "brake").unwrap(),
+        ));
+        window.apply(Command::Done);
+        assert_eq!(
+            LayoutLibrary::open(path.clone())
+                .unwrap()
+                .get("Inputs")
+                .unwrap()
+                .arrangement(ScreenClass::Wide)[0]
+                .settings,
+            changed.settings
+        );
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
     fn feed_settings_toggle_known_types_without_losing_future_types_or_empty_selection() {
         let field = &renderer(race_control_feed::TYPE).unwrap().list_settings()[0];
         assert_eq!(field.label, "Entry types");
@@ -632,13 +820,20 @@ mod tests {
             ]
         );
         let saved = serde_json::json!({"entryTypes": ["Future", "Game", 7], "other": true});
-        assert_eq!(field.toggled(&saved, "Game"), serde_json::json!(["Future"]));
         assert_eq!(
-            field.toggled(&serde_json::json!({"entryTypes": ["Game"]}), "Game"),
+            field.toggled(&saved, "Game").unwrap(),
+            serde_json::json!(["Future"])
+        );
+        assert_eq!(
+            field
+                .toggled(&serde_json::json!({"entryTypes": ["Game"]}), "Game")
+                .unwrap(),
             serde_json::json!([])
         );
         assert_eq!(
-            field.toggled(&serde_json::json!({"entryTypes": []}), "PitExit"),
+            field
+                .toggled(&serde_json::json!({"entryTypes": []}), "PitExit")
+                .unwrap(),
             serde_json::json!(["PitExit"])
         );
     }
@@ -676,7 +871,7 @@ mod tests {
         window.apply(Command::Setting(
             "feed".into(),
             field.key.into(),
-            field.toggled(&saved, "Game"),
+            field.toggled(&saved, "Game").unwrap(),
         ));
         assert_eq!(
             window.tiles(ScreenClass::Wide)[0].settings,
@@ -692,7 +887,7 @@ mod tests {
         window.apply(Command::Setting(
             "feed".into(),
             field.key.into(),
-            field.toggled(&saved, "Game"),
+            field.toggled(&saved, "Game").unwrap(),
         ));
         window.apply(Command::Done);
         let reloaded = LayoutLibrary::open(path.clone()).unwrap();

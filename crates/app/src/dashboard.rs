@@ -601,11 +601,9 @@ impl Dashboard {
             let selected = field.selected(&tile.settings);
             for (value, label) in field.choices {
                 let on = selected.iter().any(|item| item == value);
-                let action = Action::Command(Command::Setting(
-                    id.to_owned(),
-                    field.key.into(),
-                    field.toggled(&tile.settings, value),
-                ));
+                let action = field.toggled(&tile.settings, value).map(|next| {
+                    Action::Command(Command::Setting(id.to_owned(), field.key.into(), next))
+                });
                 body = body.child(
                     div()
                         .id(SharedString::from(format!("{}-{value}", field.key)))
@@ -630,7 +628,9 @@ impl Dashboard {
                         ))
                         .on_click(cx.listener(move |this, _, window, cx| {
                             cx.stop_propagation();
-                            this.act(action.clone(), window, cx);
+                            if let Some(action) = &action {
+                                this.act(action.clone(), window, cx);
+                            }
                         })),
                 );
             }

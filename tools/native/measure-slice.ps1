@@ -26,7 +26,7 @@ public static class PitwallMeasurementPower {
 $appProcess = $null
 try {
     # The native dashboard is the UI under test, so it must have a visible window.
-    $appProcess = Start-Process -FilePath $executablePath -ArgumentList @('--replay', ('"' + $recordingPath + '"'), '--from', '120', '--loop', '--stats') -WindowStyle Normal -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+    $appProcess = Start-Process -FilePath $executablePath -ArgumentList @('--console', '--data-dir', ('"' + $runFolder + '"'), '--replay', ('"' + $recordingPath + '"'), '--from', '120', '--loop', '--stats') -WindowStyle Normal -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
     Start-Sleep -Seconds 6
     $appProcess.Refresh()
     if ($appProcess.HasExited) { throw "App exited: $(Get-Content -LiteralPath $stderr -Raw)" }
@@ -40,7 +40,7 @@ try {
         $appProcess.Refresh()
         if ($appProcess.HasExited) { throw "App exited: $(Get-Content -LiteralPath $stderr -Raw)" }
         try {
-            $counter = Get-Counter -Counter '\GPU Engine(*)\Utilization Percentage' -ErrorAction Stop
+            $counter = Get-Counter -Counter "\GPU Engine(pid_$($appProcess.Id)_*)\Utilization Percentage" -ErrorAction Stop
             $engines = @($counter.CounterSamples | Where-Object { $_.InstanceName -like "pid_$($appProcess.Id)_*" })
             if ($engines.Count -gt 0) {
                 $gpuValues.Add(($engines | Measure-Object -Property CookedValue -Sum).Sum)
@@ -55,6 +55,7 @@ try {
     $frames = @($stats | ForEach-Object { if ($_ -match 'frames/s=(\d+)') { [int]$Matches[1] } })
     $result = [ordered]@{
         measuredAt = (Get-Date).ToString('o')
+        isolatedDataDirectory = $runFolder
         executable = $executablePath
         executableSha256 = (Get-FileHash -LiteralPath $executablePath -Algorithm SHA256).Hash
         recording = [IO.Path]::GetFileName($recordingPath)

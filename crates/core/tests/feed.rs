@@ -292,3 +292,34 @@ fn frame_model_and_slow_snapshot_publish_independently() {
     assert_eq!(reader.frame_snapshot().generation, 1);
     assert_eq!(reader.snapshot().generation, 1);
 }
+
+#[test]
+fn catch_up_allocation_is_bounded_by_one_decoded_history_ring() {
+    let (mut publisher, reader) = feed::channel();
+    let model = SessionModel::default();
+    for _ in 0..feed::FAST_HISTORY_CAPACITY + 1 {
+        publisher.publish_fast(&model);
+    }
+    let batch = reader.fast_since(0);
+    assert!(batch.overrun);
+    assert_eq!(batch.frames.len(), feed::FAST_HISTORY_CAPACITY);
+    assert_eq!(batch.frames.first().unwrap().generation, 2);
+    assert_eq!(
+        batch.frames.last().unwrap().generation,
+        feed::FAST_HISTORY_CAPACITY as u64 + 1
+    );
+    assert!(
+        batch.frames.capacity() <= feed::FAST_HISTORY_CAPACITY,
+        "catch-up must not allocate beyond the retained ring"
+    );
+    for seen in [reader.fast_generation(), u64::MAX] {
+        let empty = reader.fast_since(seen);
+        assert!(empty.frames.is_empty());
+        assert_eq!(
+            empty.frames.capacity(),
+            0,
+            "idle and future cursors need no allocation"
+        );
+        assert!(!empty.overrun);
+    }
+}

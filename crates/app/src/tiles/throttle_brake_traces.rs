@@ -42,7 +42,7 @@ pub struct Settings {
     pub channels: Vec<Channel>,
 }
 
-fn channel_key(channel: Channel) -> &'static str {
+pub(crate) fn channel_key(channel: Channel) -> &'static str {
     match channel {
         Channel::Throttle => "throttle",
         Channel::Brake => "brake",
@@ -81,7 +81,6 @@ pub fn settings_of(settings: &Value) -> Settings {
 
 /// The settings with `channel` toggled, in canonical order; `None` when it is the last
 /// channel, which cannot be deselected. The layout dialog uses the same channel rules.
-#[cfg_attr(not(test), expect(dead_code))]
 pub fn toggle_channel(settings: &Value, channel: Channel) -> Option<Value> {
     let selected = settings_of(settings).channels;
     let next: Vec<&str> = CHANNEL_ORDER

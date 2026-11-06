@@ -1,0 +1,54 @@
+{
+  "baseline": "e267df6758f704cce833dafa9bec7d0cf1af4c58",
+  "native": {
+    "measuredAt": "2026-11-06T23:44:46.3644913+02:00",
+    "isolatedDataDirectory": "C:\\Users\\Vankata\\AppData\\Local\\Temp\\pitwall-slice-1c3cf8e3-b7d7-43b8-9051-a1bf64b4c4a6",
+    "executable": "C:\\Users\\Vankata\\.t3\\worktrees\\pitwall\\t3-971d1518\\artifacts\\channel-controls\\bin\\pitwall-native.exe",
+    "executableSha256": "B93F0197E7BC797A59B62593B74F183BCCF9DFEDEEF02B9611C300A12FF08F7A",
+    "recording": "2026-11-03_1633_Suzuka_Qualifying_3.pitrec",
+    "recordingSha256": "01E7ADA247D74F6F06A8401E9AC7157C09735AD3684F015E1E7DE1A0B7B79126",
+    "wallSeconds": 20.8054452,
+    "logicalProcessors": 16,
+    "cpuOneCorePercent": 14.118899988739486,
+    "cpuMachinePercent": 0.8824312492962179,
+    "workingSetBytes": 102768640,
+    "peakWorkingSetBytes": 105771008,
+    "privateBytes": 190836736,
+    "gpuEngineSumAveragePercent": 9.546605400539741,
+    "gpuEngineSumMaxPercent": 10.501936440303759,
+    "gpuSamples": 10,
+    "gpuError": null,
+    "rendersPerSecond": 33.19047619047619,
+    "rendersPerSecondMin": 32.0,
+    "displayFramesPerSecond": 163.04761904761904,
+    "statsFile": "C:\\Users\\Vankata\\AppData\\Local\\Temp\\pitwall-slice-1c3cf8e3-b7d7-43b8-9051-a1bf64b4c4a6\\stats.txt",
+    "stderrFile": "C:\\Users\\Vankata\\AppData\\Local\\Temp\\pitwall-slice-1c3cf8e3-b7d7-43b8-9051-a1bf64b4c4a6\\stderr.txt",
+    "keepDisplayOn": true,
+    "focusAndDisplayPower": "Focus uncontrolled; inspect render counts before claiming 60 Hz."
+  },
+  "feedBeforeReservation": "fast frame: 1192 bytes as a struct\n\n# uncontended, ns per call\nseqlock publish_fast (extract 24 slots + write)     363.6\nseqlock fast() read                                  114.6\nseqlock fast_generation()                              1.0\nmutex write (frame copy under lock)                   23.5\nmutex read (frame copy under lock)                    10.0\npublish_snapshot (model clone into Arc)              138.5\nsnapshot() read (Arc clone under lock)                 6.7\n\n# channel construction and catch-up reads, ns per call (median of five)\nchannel() allocate/initialize/drop   468415.0\nfast_since    0 frames        7.0\nfast_since    1 frames      221.0\nfast_since    4 frames      717.0\nfast_since 2400 frames  1038271.0\n\n# writer flat out, 1 reader thread(s) spinning\nseqlock:    419.3 ns/write,   5.81 M reads/s\nmutex:      178.5 ns/write,  15.02 M reads/s\n\n# writer flat out, 3 reader thread(s) spinning\nseqlock:    438.6 ns/write,  17.43 M reads/s\nmutex:      630.5 ns/write,   8.80 M reads/s\n\n# writer at a game-like 120 Hz, 3 readers spinning: worst write latency\nseqlock: mean   2.60 us, worst  19.20 us\nmutex: mean   2.43 us, worst  43.00 us\n",
+  "feedAfterReservation": "fast frame: 1192 bytes as a struct\n\n# uncontended, ns per call\nseqlock publish_fast (extract 24 slots + write)     465.9\nseqlock fast() read                                  114.9\nseqlock fast_generation()                              1.0\nmutex write (frame copy under lock)                   23.5\nmutex read (frame copy under lock)                    10.0\npublish_snapshot (model clone into Arc)              137.0\nsnapshot() read (Arc clone under lock)                 6.7\n\n# channel construction and catch-up reads, ns per call (median of five)\nchannel() allocate/initialize/drop   463774.0\nfast_since    0 frames        7.0\nfast_since    1 frames      208.0\nfast_since    4 frames      561.0\nfast_since 2400 frames   617420.0\n\n# writer flat out, 1 reader thread(s) spinning\nseqlock:    436.9 ns/write,   6.76 M reads/s\nmutex:      266.1 ns/write,  17.92 M reads/s\n\n# writer flat out, 3 reader thread(s) spinning\nseqlock:    431.2 ns/write,  18.19 M reads/s\nmutex:      718.3 ns/write,   8.86 M reads/s\n\n# writer at a game-like 120 Hz, 3 readers spinning: worst write latency\nseqlock: mean   2.44 us, worst   9.60 us\nmutex: mean   1.89 us, worst  36.40 us\n",
+  "overlay": {
+    "executableSha256": "9D8BAD68821D6316200420E67E5C4BB8072A210E759566B3199C9784CB72AF43",
+    "recording": "2026-11-01_1015_Melbourne_Time_Trial.pitrec",
+    "recordingSha256": "B579E950D3CF3A35B9F0A5073065813E309AC17D5B03B5D857A13761B09FDCA8",
+    "firstRun": "10 s: overlay thread 1.09 % of one core, process 1.72 %; private 46.8 MiB (peak 46.9, +32.7 since the overlay opened), working set 54.9 MiB\n586 presented frames (58.6 fps), 0 render failures\n20 s: overlay thread 1.80 % of one core, process 2.50 %; private 48.0 MiB (peak 48.0, +33.9 since the overlay opened), working set 55.9 MiB\n1176 presented frames (58.8 fps), 0 render failures\n20 s: overlay thread 1.80 % of one core, process 2.50 %; private 48.0 MiB (peak 48.0, +33.9 since the overlay opened), working set 55.9 MiB\n1176 presented frames (58.8 fps), 0 render failures\n",
+    "firstRunProfile": "Loaded C:\\Users\\Vankata\\AppData\\Roaming/pitwall/recordings/2026-11-01_1015_Melbourne_Time_Trial.pitrec in 0.5 s\nOverlay: 583 frames drawn, 0.439 ms each\nOverlay: 1175 frames drawn, 0.421 ms each\nFinal geometry: OverlaySettings { visible: true, position: Some((1100, 1042)), size: Some((360, 110)) }\n",
+    "sampledRun": "10 s: overlay thread 0.00 % of one core, process 0.16 %; private 46.3 MiB (peak 46.3, +31.0 since the overlay opened), working set 53.0 MiB\n573 presented frames (57.3 fps), 0 render failures\n20 s: overlay thread 0.08 % of one core, process 0.16 %; private 47.7 MiB (peak 47.7, +32.4 since the overlay opened), working set 54.1 MiB\n1157 presented frames (57.8 fps), 0 render failures\n20 s: overlay thread 0.08 % of one core, process 0.16 %; private 47.7 MiB (peak 47.7, +32.4 since the overlay opened), working set 54.1 MiB\n1157 presented frames (57.8 fps), 0 render failures\n",
+    "sampledRunProfile": "Loaded C:\\Users\\Vankata\\AppData\\Roaming/pitwall/recordings/2026-11-01_1015_Melbourne_Time_Trial.pitrec in 0.5 s\nOverlay: 570 frames drawn, 0.428 ms each\nOverlay: 1155 frames drawn, 0.407 ms each\nFinal geometry: OverlaySettings { visible: true, position: Some((1100, 1042)), size: Some((360, 110)) }\n",
+    "gpu": {
+      "pid": 15252,
+      "validEngineSamples": 128,
+      "meanIndividualEnginePercent": 0.06157098091656338,
+      "maxIndividualEnginePercent": 1.009318487803953,
+      "limitation": "Individual process engine instances, not total adapter utilization."
+    }
+  },
+  "limits": [
+    "No live game, datagram-to-draw latency, collector-drop, multiwindow or long-run proof.",
+    "No matched historical app/overlay or WebView2 baseline.",
+    "GPU engine instances and sums are not total adapter utilization.",
+    "First native run overlapped compilation and is excluded; initial overlay GPU query had zero valid samples and is excluded.",
+    "Desktop load, focus, GPU clocks and physical display state were not controlled; native display wake was requested."
+  ]
+}
