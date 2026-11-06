@@ -114,7 +114,7 @@ pub struct Dashboard {
     drag: Option<Drag>,
     /// Kept while editing so tiles do not jump as rows are added.
     row_height: f32,
-    drawn: (u64, u64, u64),
+    drawn: (u64, u64, u64, u64),
     stats: Arc<Stats>,
     /// The window's id in the window list; names its choices file.
     id: String,
@@ -202,7 +202,7 @@ impl Dashboard {
             focus_handle,
             drag: None,
             row_height: screen::ROW_HEIGHT,
-            drawn: (u64::MAX, u64::MAX, u64::MAX),
+            drawn: (u64::MAX, u64::MAX, u64::MAX, u64::MAX),
             stats: services.stats.clone(),
             memory: RefCell::default(),
             id: spec.id.clone(),
@@ -236,6 +236,7 @@ impl Dashboard {
         (
             self.reader.fast_generation(),
             self.reader.snapshot().generation,
+            self.reader.frame_snapshot().generation,
             self.window.controller().version(),
         ) != self.drawn
     }
@@ -819,6 +820,7 @@ impl Render for Dashboard {
         self.drawn = (
             fast.generation,
             snap.generation,
+            self.reader.frame_snapshot().generation,
             self.window.controller().version(),
         );
         let viewport = window.viewport_size();
@@ -1143,9 +1145,8 @@ impl Dashboard {
         for tile in shown.iter().copied() {
             let declaration = tile_catalog::declaration(&tile.kind);
             let renderer = registry::renderer(&tile.kind);
-            let name = renderer
-                .map(|r| r.name)
-                .or(declaration.map(|d| d.name))
+            let name = declaration
+                .map(|d| d.name)
                 .unwrap_or(tile.kind.as_str())
                 .to_owned();
             let (x, y, w, h) = geometry.rect(tile);
@@ -1200,9 +1201,14 @@ impl Dashboard {
                     match missing_car_message(&binding, resolved).filter(|_| follows) {
                         Some(text) => message(text.to_owned()),
                         None => {
+                            let frame_snapshot = self.reader.frame_snapshot();
                             let inputs = registry::TileInputs {
                                 tile,
-                                snapshot: snap,
+                                snapshot: if renderer.frame_rate() {
+                                    &frame_snapshot
+                                } else {
+                                    snap
+                                },
                                 fast,
                                 reader: &self.reader,
                                 car: resolved,

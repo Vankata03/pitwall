@@ -16,8 +16,8 @@ use super::{
     widgets,
 };
 
-pub const TYPE: &str = "gaps";
-pub const NAME: &str = "Gaps";
+pub const TYPE: &str = pitwall_core::tile_catalog::GAPS.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (320.0, 64.0),
     full: None,
@@ -140,7 +140,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("gaps", "Gaps"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::GAPS.name),
+            ("gaps", "Gaps")
+        );
         assert_eq!(DENSITIES.pick(319.0, 64.0), Density::Compact);
         assert_eq!(DENSITIES.pick(320.0, 64.0), Density::Regular);
     }
@@ -196,12 +199,13 @@ mod tests {
     }
 
     #[test]
-    fn the_race_leader_reads_no_gap_ahead() {
+    fn the_race_leader_keeps_the_web_interval_display() {
         let v = view(&base(vec![
             car(0, Readout::Live(1), Readout::Live(Some(0))),
             car(1, Readout::Live(2), Readout::Live(Some(11_004))),
         ]));
-        assert_eq!(v.rows[0].value.state, ReadoutState::Absent);
+        assert_eq!(v.rows[0].value.state, ReadoutState::Live);
+        assert_eq!(v.rows[0].value.text, "+0.000 s");
         assert_eq!(v.rows[1].value.text, "\u{2212}11.004 s");
         assert_eq!(v.notes[1].as_deref(), Some("P2 \u{b7} Driver 2"));
     }

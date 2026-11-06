@@ -20,8 +20,8 @@ use serde_json::Value;
 use super::{Densities, Density, format::fixed, widgets};
 use crate::theme;
 
-pub const TYPE: &str = "race-control-feed";
-pub const NAME: &str = "Race-control feed";
+pub const TYPE: &str = pitwall_core::tile_catalog::RACE_CONTROL_FEED.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (240.0, 184.0),
     full: Some((400.0, 304.0)),
@@ -170,19 +170,8 @@ fn flag(n: i8) -> String {
     }
 }
 
-const SKIES: [&str; 6] = [
-    "Clear",
-    "Light cloud",
-    "Overcast",
-    "Light rain",
-    "Heavy rain",
-    "Storm",
-];
 fn sky(weather: u8) -> &'static str {
-    SKIES
-        .get(usize::from(weather))
-        .copied()
-        .unwrap_or("Unknown")
+    pitwall_core::weather::sky(weather).unwrap_or("Unknown")
 }
 
 fn game_text(event: &Event) -> String {
@@ -987,7 +976,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("race-control-feed", "Race-control feed"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::RACE_CONTROL_FEED.name),
+            ("race-control-feed", "Race-control feed")
+        );
         assert_eq!(DENSITIES.pick(239.0, 400.0), Density::Compact);
         assert_eq!(DENSITIES.pick(240.0, 184.0), Density::Regular);
         assert_eq!(DENSITIES.pick(400.0, 304.0), Density::Full);

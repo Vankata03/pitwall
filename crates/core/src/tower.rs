@@ -253,7 +253,7 @@ pub fn timing_tower(
         .map(|at| {
             let car = all[at];
             let position = car.position();
-            let mut gap = with_state(&car.gaps, "\u{2014}".to_string());
+            let mut gap = with_state(&car.gaps, crate::readout::ABSENT_TEXT.to_string());
             match (race, gaps_value(&car.gaps)) {
                 (true, Some(mine)) => {
                     let compare = if settings.gap == GapMode::Interval {
@@ -278,7 +278,9 @@ pub fn timing_tower(
                             }
                             _ if settings.gap == GapMode::Interval => mine
                                 .to_car_in_front_ms
-                                .map_or("\u{2014}".to_string(), |ms| signed_seconds(i64::from(ms))),
+                                .map_or(crate::readout::ABSENT_TEXT.to_string(), |ms| {
+                                    signed_seconds(i64::from(ms))
+                                }),
                             _ => signed_seconds(
                                 i64::from(mine.to_leader_ms) - i64::from(other.to_leader_ms),
                             ),
@@ -298,7 +300,7 @@ pub fn timing_tower(
                             Some(reference_best) => {
                                 signed_seconds(i64::from(best) - i64::from(reference_best))
                             }
-                            None => "\u{2014}".to_string(),
+                            None => crate::readout::ABSENT_TEXT.to_string(),
                         }
                     };
                     gap = with_state(&car.lap, text);
@@ -319,36 +321,20 @@ pub fn timing_tower(
 /// `m:ss.mmm`; no time, or zero, is an em dash.
 pub fn lap_time_text(ms: Option<u32>) -> String {
     match ms {
-        Some(ms) if ms > 0 => format!("{}:{:06.3}", ms / 60_000, f64::from(ms % 60_000) / 1000.0),
-        _ => "\u{2014}".to_string(),
+        Some(ms) if ms > 0 => crate::format::clock(ms, true),
+        _ => crate::readout::ABSENT_TEXT.to_string(),
     }
 }
 
 /// The tyre badge letter for a visual compound; unknown compounds show their number.
 pub fn compound_letter(visual_compound: u8) -> String {
-    match visual_compound {
-        16 | 20 => "S",
-        17 | 21 => "M",
-        18 | 22 => "H",
-        7 => "I",
-        8 => "W",
-        19 => "SS",
-        other => return other.to_string(),
-    }
-    .to_string()
+    crate::compound::Compound::from_visual(visual_compound).badge()
 }
 
 /// Accessible name of a badge letter, "<name> tyres" in the tile.
 pub fn compound_name(letter: &str) -> String {
-    match letter {
-        "S" => "Soft".into(),
-        "M" => "Medium".into(),
-        "H" => "Hard".into(),
-        "I" => "Intermediate".into(),
-        "W" => "Wet".into(),
-        "SS" => "Super soft".into(),
-        other => format!("Compound {other}"),
-    }
+    crate::compound::Compound::from_badge(letter)
+        .map_or_else(|| format!("Compound {letter}"), |c| c.name())
 }
 
 /// The Status column. `retired` is the model's retired flag.
@@ -387,7 +373,7 @@ pub fn wear_text(condition: [f32; 4]) -> String {
 /// Places gained since the grid, signed; no grid slot is an em dash.
 pub fn gained_text(grid_position: u8, position: u8) -> String {
     if grid_position == 0 {
-        return "\u{2014}".to_string();
+        return crate::readout::ABSENT_TEXT.to_string();
     }
     let gained = i32::from(grid_position) - i32::from(position);
     if gained >= 0 {

@@ -164,6 +164,10 @@ struct FastSource {
     restore_live: bool,
 }
 type FastOutput = Arc<Mutex<FastSource>>;
+struct ReceiverOutput {
+    state: Arc<Mutex<LiveView>>,
+    fast: FastOutput,
+}
 
 struct LiveView {
     model: SessionModel,
@@ -207,8 +211,10 @@ impl ReceiverWorker {
                     tracks,
                     receiver,
                     &worker_stop,
-                    &worker_state,
-                    fast,
+                    ReceiverOutput {
+                        state: worker_state.clone(),
+                        fast,
+                    },
                 );
                 if let Err(error) = &result {
                     worker_state.lock().unwrap().error = Some(error.to_string());
@@ -239,13 +245,14 @@ fn receive(
     tracks: TrackStore,
     updates: mpsc::Receiver<PreparedUpdate>,
     stop: &AtomicBool,
-    state: &Mutex<LiveView>,
-    fast: FastOutput,
+    output: ReceiverOutput,
 ) -> io::Result<()> {
     let origin = Instant::now();
     let mut last_publish = Instant::now() - Duration::from_secs(1);
     let mut last_status = last_publish;
     let mut dirty = false;
+    let mut frame_dirty = false;
+    let mut last_frame = last_publish;
     let mut model = SessionModel::default();
     let mut samples = Vec::new();
     let mut tap = |at, bytes: &[u8]| {
@@ -266,7 +273,8 @@ fn receive(
                 model.apply(Duration::from_micros(received.arrival_time_us), &parsed);
                 tracks.observe(&model);
                 dirty = true;
-                let mut output = fast.lock().unwrap();
+                frame_dirty = true;
+                let mut output = output.fast.lock().unwrap();
                 if !output.replay {
                     output.writer.publish_fast(&model);
                 }
@@ -277,16 +285,27 @@ fn receive(
         }
         let stale_changed = model.advance_readouts(Duration::from_micros(now()));
         dirty |= stale_changed;
+        frame_dirty |= stale_changed;
+        if frame_dirty && last_frame.elapsed() >= Duration::from_nanos(16_666_667) {
+            let frame_model = Arc::new(model.clone());
+            let mut output = output.fast.lock().unwrap();
+            if !output.replay {
+                output.writer.publish_frame_model(frame_model);
+            }
+            frame_dirty = false;
+            last_frame = Instant::now();
+        }
         {
-            let mut output = fast.lock().unwrap();
+            let mut output = output.fast.lock().unwrap();
             if !output.replay && (stale_changed || output.restore_live) {
                 output.writer.publish_fast(&model);
+                frame_dirty |= output.restore_live;
                 output.restore_live = false;
             }
         }
         let publish = dirty && last_publish.elapsed() >= Duration::from_millis(200);
         if publish || last_status.elapsed() >= Duration::from_millis(50) {
-            let mut out = state.lock().unwrap();
+            let mut out = output.state.lock().unwrap();
             if publish {
                 out.model = model.clone();
                 out.generation += 1;
@@ -828,9 +847,12 @@ impl Host {
                         replay.model().epoch(),
                     );
                     let new_source = source != Some(true);
-                    let changed = published != Some(key);
+                    let changed = new_source || published != Some(key);
                     if changed {
-                        fast.lock().unwrap().writer.publish_fast(replay.model());
+                        let frame_model = Arc::new(replay.model().clone());
+                        let mut output = fast.lock().unwrap();
+                        output.writer.publish_fast(replay.model());
+                        output.writer.publish_frame_model(frame_model);
                         published = Some(key);
                     }
                     // A load or seek changes the model timeline immediately. Pending
@@ -859,7 +881,12 @@ impl Host {
                     source = Some(false);
                 } else if source == Some(true) {
                     let model = SessionModel::default();
-                    fast.lock().unwrap().writer.publish_fast(&model);
+                    let frame_model = Arc::new(model.clone());
+                    {
+                        let mut output = fast.lock().unwrap();
+                        output.writer.publish_fast(&model);
+                        output.writer.publish_frame_model(frame_model);
+                    }
                     publisher.publish_snapshot(&model);
                     source = None;
                     published = None;

@@ -13,8 +13,8 @@ use pitwall_core::{
 
 use super::{Densities, Density, widgets};
 
-pub const TYPE: &str = "sm";
-pub const NAME: &str = "SM";
+pub const TYPE: &str = pitwall_core::tile_catalog::SM.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (190.0, 72.0),
     full: None,
@@ -142,7 +142,10 @@ mod tests {
     #[test]
     fn declares_the_catalogue_entry() {
         let d = declaration(TYPE).unwrap();
-        assert_eq!((d.name, d.follows_car()), (NAME, true));
+        assert_eq!(
+            (d.name, d.follows_car()),
+            (pitwall_core::tile_catalog::SM.name, true)
+        );
         assert_eq!((d.minimum, d.default), ((2, 2), (4, 2)));
         assert_eq!(DENSITIES.pick(189.0, 72.0), Density::Compact);
         assert_eq!(DENSITIES.pick(190.0, 72.0), Density::Regular);

@@ -121,6 +121,10 @@ pub fn channel() -> (Publisher, Reader) {
             generation: 0,
             model: Arc::new(SessionModel::default()),
         }),
+        frame_snapshot: Mutex::new(Snapshot {
+            generation: 0,
+            model: Arc::new(SessionModel::default()),
+        }),
         fast: SeqLock::new(encode(&EMPTY_FRAME)),
         history: (0..FAST_HISTORY_CAPACITY)
             .map(|_| SeqLock::new(encode(&EMPTY_FRAME)))
@@ -194,6 +198,14 @@ pub struct FastPublisher {
     shared: Arc<Shared>,
 }
 impl FastPublisher {
+    /// Publish the shared model used by complex frame tiles, at most once per display
+    /// frame. Prepare the copy outside source switching; the store only swaps an Arc.
+    pub fn publish_frame_model(&mut self, model: Arc<SessionModel>) {
+        let mut snapshot = self.shared.frame_snapshot.lock().unwrap();
+        let generation = snapshot.generation + 1;
+        *snapshot = Snapshot { generation, model };
+    }
+
     /// Publish the frame-rate car data of `model`. Never blocks and never allocates.
     pub fn publish_fast(&mut self, model: &SessionModel) {
         self.shared.publish_fast(model);
@@ -207,6 +219,12 @@ pub struct Reader {
 }
 
 impl Reader {
+    /// Model data for frame tiles (lap timing, delta, map and other complex readouts).
+    /// Kept separate from the 5 Hz snapshot consumed by slow tiles.
+    pub fn frame_snapshot(&self) -> Snapshot {
+        self.shared.frame_snapshot.lock().unwrap().clone()
+    }
+
     /// The latest slow-state snapshot. Holds the lock only to clone an `Arc`.
     pub fn snapshot(&self) -> Snapshot {
         self.shared.snapshot.lock().unwrap().clone()
@@ -252,6 +270,7 @@ impl Reader {
 }
 
 struct Shared {
+    frame_snapshot: Mutex<Snapshot>,
     snapshot: Mutex<Snapshot>,
     fast: SeqLock,
     history: Box<[SeqLock]>,

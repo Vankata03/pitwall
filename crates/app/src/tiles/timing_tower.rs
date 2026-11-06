@@ -27,8 +27,8 @@ use pitwall_core::{
 use super::{Densities, Density, widgets};
 use crate::theme;
 
-pub const TYPE: &str = "timing-tower";
-pub const NAME: &str = "Timing tower";
+pub const TYPE: &str = pitwall_core::tile_catalog::TIMING_TOWER.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (500.0, 240.0),
     full: Some((500.0, 480.0)),
@@ -302,7 +302,9 @@ pub fn view(inputs: &Inputs) -> View {
                     car.label.as_deref().unwrap_or_default(),
                 )),
                 cell(if row.gap == Readout::Restricted {
-                    readout_view(ReadoutState::Absent, "")
+                    let mut value = readout_view(ReadoutState::Restricted, "");
+                    value.text = pitwall_core::readout::ABSENT_TEXT.into();
+                    value
                 } else {
                     view_of(&row.gap, String::clone)
                 }),
@@ -361,14 +363,9 @@ pub fn view(inputs: &Inputs) -> View {
 
 /// The tyre ring's colour: the compound letter is always in the text too.
 fn compound_colour(letter: &str) -> Hsla {
-    match letter {
-        "S" | "SS" => theme::brake(),
-        "M" => theme::slower(),
-        "H" => theme::window(),
-        "I" => theme::personal_best(),
-        "W" => theme::cold(),
-        _ => theme::muted(),
-    }
+    let family = pitwall_core::compound::Compound::from_badge(letter)
+        .map_or(pitwall_core::compound::Family::Unknown, |c| c.family());
+    theme::compound_colour(family)
 }
 
 const PADDING: f32 = 12.0;
@@ -610,7 +607,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry_and_reaches_full_only_at_500_px_wide() {
-        assert_eq!((TYPE, NAME), ("timing-tower", "Timing tower"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::TIMING_TOWER.name),
+            ("timing-tower", "Timing tower")
+        );
         let (w, h) = cells_to_pixels(ScreenClass::Wide, 1249.0, 9, 16, ROW_HEIGHT, GRID_MARGIN);
         assert_eq!(DENSITIES.pick(w, h), Density::Compact);
         assert_eq!(DENSITIES.pick(500.0, h), Density::Full);
@@ -775,7 +775,7 @@ mod tests {
         let (_, rows) = table(&v);
         let cell = &row_of(rows, "Driver 6").cells[2].value;
         assert_eq!(cell.text, pitwall_core::readout::ABSENT_TEXT);
-        assert_eq!(cell.state, ReadoutState::Absent);
+        assert_eq!(cell.state, ReadoutState::Restricted);
     }
 
     #[test]

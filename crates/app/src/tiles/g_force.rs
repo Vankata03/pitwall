@@ -10,8 +10,8 @@ use pitwall_core::{
 use super::{Densities, Density, format::signed, paint, widgets};
 use crate::theme;
 
-pub const TYPE: &str = "g-force";
-pub const NAME: &str = "G-force";
+pub const TYPE: &str = pitwall_core::tile_catalog::G_FORCE.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (170.0, 120.0),
     full: None,
@@ -201,7 +201,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("g-force", "G-force"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::G_FORCE.name),
+            ("g-force", "G-force")
+        );
         assert_eq!(DENSITIES.pick(169.0, 200.0), Density::Compact);
         assert_eq!(DENSITIES.pick(170.0, 120.0), Density::Regular);
         assert_eq!(DENSITIES.pick(2000.0, 2000.0), Density::Regular);

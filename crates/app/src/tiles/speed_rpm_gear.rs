@@ -12,7 +12,8 @@ use pitwall_core::{
 use super::{Densities, Density, format::grouped, widgets};
 use crate::theme;
 
-pub const NAME: &str = "Speed/RPM/gear";
+pub const TYPE: &str = pitwall_core::tile_catalog::SPEED_RPM_GEAR.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (230.0, 150.0),
     full: Some((330.0, 370.0)),

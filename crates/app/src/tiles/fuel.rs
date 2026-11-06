@@ -13,8 +13,8 @@ use super::{
     slow::{self, Row, Tone},
 };
 
-pub const TYPE: &str = "fuel";
-pub const NAME: &str = "Fuel";
+pub const TYPE: &str = pitwall_core::tile_catalog::FUEL.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (240.0, 64.0),
     full: None,
@@ -112,7 +112,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("fuel", "Fuel"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::FUEL.name),
+            ("fuel", "Fuel")
+        );
         assert_eq!(DENSITIES.pick(239.0, 64.0), Density::Compact);
         assert_eq!(DENSITIES.pick(240.0, 64.0), Density::Regular);
     }

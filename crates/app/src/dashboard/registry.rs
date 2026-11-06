@@ -82,11 +82,26 @@ impl SettingField {
 
 pub struct Renderer {
     pub kind: &'static str,
-    /// The tile module's own name; the same as the catalog's (tested).
-    pub name: &'static str,
     /// Draws the tile; `Memory` is what this placed tile keeps between renders.
     pub prepare: fn(&TileInputs<'_>, &mut Memory) -> TileView,
     pub settings: &'static [SettingField],
+}
+
+impl Renderer {
+    /// These types used the web frame channel; slow tiles retain their 5 Hz model.
+    pub fn frame_rate(&self) -> bool {
+        matches!(
+            self.kind,
+            "speed-rpm-gear"
+                | "lap-timing"
+                | "live-delta"
+                | "g-force"
+                | "ers"
+                | "sm"
+                | "throttle-brake-traces"
+                | "track-map"
+        )
+    }
 }
 
 /// Prepared display values: equality is the repaint boundary, independent of feed generations.
@@ -215,7 +230,7 @@ fn delta(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
     TileView::LiveDelta(live_delta::view(&live_delta::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
-        live_delta::Reference::of(&inputs.tile.settings),
+        live_delta::Reference::best_or_previous_of(&inputs.tile.settings),
         inputs.size,
     )))
 }
@@ -397,12 +412,12 @@ const BEST_OR_PREVIOUS: &[SettingField] = &[SettingField {
     label: "Reference lap",
     choices: &[
         Choice {
-            value: "best",
+            value: pitwall_core::model::Reference::Best.key(),
             label: "Best lap",
             time_trial_only: false,
         },
         Choice {
-            value: "previous",
+            value: pitwall_core::model::Reference::Previous.key(),
             label: "Previous lap",
             time_trial_only: false,
         },
@@ -412,36 +427,34 @@ const BEST_OR_PREVIOUS: &[SettingField] = &[SettingField {
 
 pub static RENDERERS: &[Renderer] = &[
     Renderer {
-        kind: "speed-rpm-gear",
-        name: speed_rpm_gear::NAME,
+        kind: speed_rpm_gear::TYPE,
         prepare: speed,
         settings: &[],
     },
     Renderer {
-        kind: "lap-timing",
-        name: lap_timing::NAME,
+        kind: lap_timing::TYPE,
         prepare: timing,
         settings: &[SettingField {
             key: "reference",
             label: "Reference lap",
             choices: &[
                 Choice {
-                    value: "best",
+                    value: pitwall_core::model::Reference::Best.key(),
                     label: "Best lap",
                     time_trial_only: false,
                 },
                 Choice {
-                    value: "previous",
+                    value: pitwall_core::model::Reference::Previous.key(),
                     label: "Previous lap",
                     time_trial_only: false,
                 },
                 Choice {
-                    value: "personal-best",
+                    value: pitwall_core::model::Reference::PersonalBest.key(),
                     label: "Personal best (Time Trial)",
                     time_trial_only: true,
                 },
                 Choice {
-                    value: "rival",
+                    value: pitwall_core::model::Reference::Rival.key(),
                     label: "Rival (Time Trial)",
                     time_trial_only: true,
                 },
@@ -451,105 +464,88 @@ pub static RENDERERS: &[Renderer] = &[
     },
     Renderer {
         kind: g_force::TYPE,
-        name: g_force::NAME,
         prepare: g_force,
         settings: &[],
     },
     Renderer {
         kind: throttle_brake_traces::TYPE,
-        name: throttle_brake_traces::NAME,
         prepare: traces,
         // The channels setting is a list; its choice arrives with list settings.
         settings: BEST_OR_PREVIOUS,
     },
     Renderer {
         kind: live_delta::TYPE,
-        name: live_delta::NAME,
         prepare: delta,
         settings: BEST_OR_PREVIOUS,
     },
     Renderer {
         kind: ers::TYPE,
-        name: ers::NAME,
         prepare: ers,
         settings: &[],
     },
     Renderer {
         kind: car_status::TYPE,
-        name: car_status::NAME,
         prepare: car_status,
         settings: &[],
     },
     Renderer {
         kind: engine_temp::TYPE,
-        name: engine_temp::NAME,
         prepare: engine_temp,
         settings: &[],
     },
     Renderer {
         kind: fuel::TYPE,
-        name: fuel::NAME,
         prepare: fuel,
         settings: &[],
     },
     Renderer {
         kind: timing_tower::TYPE,
-        name: timing_tower::NAME,
         prepare: tower,
         settings: TOWER,
     },
     Renderer {
         kind: gaps::TYPE,
-        name: gaps::NAME,
         prepare: gaps,
         settings: &[],
     },
     Renderer {
         kind: lap_state::TYPE,
-        name: lap_state::NAME,
         prepare: lap_state,
         settings: &[],
     },
     Renderer {
         kind: stint::TYPE,
-        name: stint::NAME,
         prepare: stint,
         settings: &[],
     },
     Renderer {
         kind: sm::TYPE,
-        name: sm::NAME,
         prepare: sm,
         settings: &[],
     },
     Renderer {
         kind: track_discipline::TYPE,
-        name: track_discipline::NAME,
         prepare: track_discipline,
         settings: &[],
     },
     Renderer {
         kind: weather::TYPE,
-        name: weather::NAME,
         prepare: weather,
         settings: &[],
     },
     Renderer {
         kind: notice::TYPE,
-        name: notice::NAME,
         prepare: notice,
         settings: &[],
     },
     Renderer {
         kind: race_control_feed::TYPE,
-        name: race_control_feed::NAME,
         prepare: race_control_feed,
         // The entryTypes setting is a list; its choice arrives with list settings.
         settings: &[],
     },
     Renderer {
         kind: track_map::TYPE,
-        name: track_map::NAME,
         prepare: track_map,
         settings: &[],
     },
@@ -601,7 +597,7 @@ mod tests {
     fn every_renderer_draws_a_declared_type_once() {
         for (n, r) in RENDERERS.iter().enumerate() {
             let declared = declaration(r.kind).unwrap_or_else(|| panic!("{} is declared", r.kind));
-            assert_eq!(declared.name, r.name);
+            assert!(!declared.name.is_empty());
             assert!(RENDERERS[n + 1..].iter().all(|o| o.kind != r.kind));
         }
     }

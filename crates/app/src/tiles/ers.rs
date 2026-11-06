@@ -11,8 +11,8 @@ use pitwall_core::{
 use super::{Densities, Density, format::grouped, widgets};
 use crate::theme;
 
-pub const TYPE: &str = "ers";
-pub const NAME: &str = "ERS";
+pub const TYPE: &str = pitwall_core::tile_catalog::ERS.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (240.0, 100.0),
     full: Some((340.0, 160.0)),
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("ers", "ERS"));
+        assert_eq!((TYPE, pitwall_core::tile_catalog::ERS.name), ("ers", "ERS"));
         assert_eq!(DENSITIES.pick(239.0, 100.0), Density::Compact);
         assert_eq!(DENSITIES.pick(240.0, 100.0), Density::Regular);
         assert_eq!(DENSITIES.pick(340.0, 160.0), Density::Full);

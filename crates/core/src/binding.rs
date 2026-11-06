@@ -202,12 +202,11 @@ pub fn car_binding_of(settings: &Value) -> CarBinding {
     let Some(car) = settings.get("car").filter(|c| c.is_object()) else {
         return CarBinding::default();
     };
-    let target = match car.get("target").and_then(Value::as_str) {
-        Some("focus") => CarTarget::Focus,
-        Some("pinned") => CarTarget::Pinned,
-        Some("car-ahead") => CarTarget::CarAhead,
-        Some("car-behind") => CarTarget::CarBehind,
-        _ => return CarBinding::default(),
+    let Some(target) = CarTarget::ALL
+        .into_iter()
+        .find(|target| Some(target.key()) == car.get("target").and_then(Value::as_str))
+    else {
+        return CarBinding::default();
     };
     let pin = car
         .get("pin")

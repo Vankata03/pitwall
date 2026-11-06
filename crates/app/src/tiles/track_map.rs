@@ -25,8 +25,8 @@ use pitwall_core::{
 use super::{Densities, Density, format::fixed, paint, widgets};
 use crate::theme;
 
-pub const TYPE: &str = "track-map";
-pub const NAME: &str = "Track map";
+pub const TYPE: &str = pitwall_core::tile_catalog::TRACK_MAP.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (240.0, 160.0),
     full: None,
@@ -753,7 +753,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("track-map", "Track map"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::TRACK_MAP.name),
+            ("track-map", "Track map")
+        );
         assert_eq!(DENSITIES.pick(239.0, 160.0), Density::Compact);
         assert_eq!(DENSITIES.pick(240.0, 160.0), Density::Regular);
     }

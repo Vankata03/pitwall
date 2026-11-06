@@ -29,8 +29,8 @@ use pitwall_livery_art::{LiveryImages, RgbaImage};
 use super::{Densities, Density, widgets};
 use crate::theme;
 
-pub const TYPE: &str = "car-status";
-pub const NAME: &str = "Car status";
+pub const TYPE: &str = pitwall_core::tile_catalog::CAR_STATUS.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (560.0, 380.0),
     full: Some((800.0, 600.0)),
@@ -691,7 +691,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("car-status", "Car status"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::CAR_STATUS.name),
+            ("car-status", "Car status")
+        );
         assert_eq!(DENSITIES.pick(559.0, 380.0), Density::Compact);
         assert_eq!(DENSITIES.pick(560.0, 380.0), Density::Regular);
         assert_eq!(DENSITIES.pick(800.0, 600.0), Density::Full);

@@ -16,8 +16,8 @@ use pitwall_core::{
 use super::{Densities, Density, format::fixed, widgets};
 use crate::theme;
 
-pub const TYPE: &str = "stint";
-pub const NAME: &str = "Stint";
+pub const TYPE: &str = pitwall_core::tile_catalog::STINT.kind;
+
 /// Both densities show the same content.
 pub const DENSITIES: Densities = Densities {
     regular: (300.0, 240.0),
@@ -127,50 +127,16 @@ impl Inputs {
     }
 }
 
-/// Colour family of a visual compound; the compound is always named in text too.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Family {
-    Soft,
-    Medium,
-    Hard,
-    Inter,
-    Wet,
-    Unknown,
-}
-
+use pitwall_core::compound::Compound;
+pub use pitwall_core::compound::Family;
 fn family(compound: u8) -> Family {
-    match compound {
-        16 | 19 | 20 => Family::Soft,
-        17 | 21 => Family::Medium,
-        18 | 22 => Family::Hard,
-        7 => Family::Inter,
-        8 => Family::Wet,
-        _ => Family::Unknown,
-    }
+    Compound::from_visual(compound).family()
 }
-
 fn symbol(family: Family) -> &'static str {
-    match family {
-        Family::Soft => "S",
-        Family::Medium => "M",
-        Family::Hard => "H",
-        Family::Inter => "I",
-        Family::Wet => "W",
-        Family::Unknown => "?",
-    }
+    family.symbol()
 }
-
 fn compound_name(compound: u8) -> String {
-    match compound {
-        16 | 20 => "Soft",
-        17 | 21 => "Medium",
-        18 | 22 => "Hard",
-        7 => "Intermediate",
-        8 => "Wet",
-        19 => "Super soft",
-        other => return format!("Compound {other}"),
-    }
-    .to_string()
+    Compound::from_visual(compound).name()
 }
 
 fn set_label(starting_age: Option<u8>) -> String {
@@ -474,16 +440,7 @@ impl Memory {
     }
 }
 
-fn family_colour(family: Family) -> Hsla {
-    match family {
-        Family::Soft => theme::brake(),
-        Family::Medium => theme::slower(),
-        Family::Hard => theme::window(),
-        Family::Inter => theme::personal_best(),
-        Family::Wet => theme::cold(),
-        Family::Unknown => theme::muted(),
-    }
-}
+use crate::theme::compound_colour as family_colour;
 
 fn ring(symbol: &'static str, colour: Hsla, size: f32) -> Div {
     div()
@@ -808,7 +765,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry_with_the_same_content_at_both_densities() {
-        assert_eq!((TYPE, NAME), ("stint", "Stint"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::STINT.name),
+            ("stint", "Stint")
+        );
         assert_eq!(DENSITIES.pick(299.0, 240.0), Density::Compact);
         assert_eq!(DENSITIES.pick(300.0, 240.0), Density::Regular);
         let regular = view(&inputs(false, true));

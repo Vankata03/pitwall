@@ -121,14 +121,19 @@ pub fn condition_level(percent: f32) -> ConditionLevel {
 }
 
 /// Name of a visual compound (`m_visualTyreCompound`).
-pub fn visual_compound_name(visual_compound: u8) -> &'static str {
-    match visual_compound {
-        16 => "Soft",
-        17 => "Medium",
-        18 => "Hard",
-        7 => "Inter",
-        8 => "Wet",
-        _ => "Unknown",
+pub fn visual_compound_name(id: u8) -> &'static str {
+    // Status uses the web build's shorter vocabulary and supports only these IDs.
+    // Tower and Stint also recognise the alternate-series codes 19-22.
+    if !matches!(id, 7 | 8 | 16..=18) {
+        return "Unknown";
+    }
+    match crate::compound::Compound::from_visual(id).family() {
+        crate::compound::Family::Soft => "Soft",
+        crate::compound::Family::Medium => "Medium",
+        crate::compound::Family::Hard => "Hard",
+        crate::compound::Family::Inter => "Inter",
+        crate::compound::Family::Wet => "Wet",
+        crate::compound::Family::Unknown => "Unknown",
     }
 }
 

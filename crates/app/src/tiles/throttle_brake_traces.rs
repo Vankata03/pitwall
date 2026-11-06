@@ -10,7 +10,7 @@
 use gpui::{Hsla, IntoElement, ParentElement, Styled, canvas, div, px, relative};
 use pitwall_core::{
     feed::{FastFrame, Reader},
-    model::{self, LapSample, SessionModel},
+    model::{LapSample, SessionModel},
     readout::{ReadoutState, ReadoutView, readout_view},
     traces::{
         CHANNEL_ORDER, Channel, INPUT_WINDOW_SECONDS, InputHistory, InputSample, Lap,
@@ -23,8 +23,8 @@ use serde_json::{Value, json};
 use super::{Densities, Density, paint, widgets};
 use crate::theme;
 
-pub const TYPE: &str = "throttle-brake-traces";
-pub const NAME: &str = "Throttle/brake traces";
+pub const TYPE: &str = pitwall_core::tile_catalog::THROTTLE_BRAKE_TRACES.kind;
+
 /// Content is identical at both densities.
 pub const DENSITIES: Densities = Densities {
     regular: (400.0, 200.0),
@@ -33,12 +33,7 @@ pub const DENSITIES: Densities = Densities {
 /// Space the tile's padding, title and meters take from the chart.
 const CHART_INSET: (f32, f32) = (138.0, 45.0);
 
-/// The saved `reference` setting: best (default) or previous.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Reference {
-    Best,
-    Previous,
-}
+pub use pitwall_core::model::Reference;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
@@ -75,11 +70,7 @@ pub fn settings_of(settings: &Value) -> Settings {
         .filter(|c| saved.contains(&channel_key(*c)))
         .collect();
     Settings {
-        reference: if settings.get("reference").and_then(Value::as_str) == Some("previous") {
-            Reference::Previous
-        } else {
-            Reference::Best
-        },
+        reference: Reference::best_or_previous_of(settings),
         channels: if channels.is_empty() {
             vec![Channel::Throttle, Channel::Brake]
         } else {
@@ -176,12 +167,7 @@ impl Memory {
         self.record(&frames, index);
         let settings = settings_of(settings);
         let car = index.and_then(|i| model.car(i));
-        let reference = car.and_then(|c| {
-            c.lap_trace(match settings.reference {
-                Reference::Best => model::Reference::Best,
-                Reference::Previous => model::Reference::Previous,
-            })
-        });
+        let reference = car.and_then(|c| c.lap_trace(settings.reference));
         let inputs = index
             .filter(|_| fast.epoch == model.epoch())
             .and_then(|i| fast.cars.get(i).copied());
@@ -310,8 +296,8 @@ pub fn view(inputs: &Inputs) -> View {
             "{} \u{b7} Dim {}",
             legend.join(" \u{b7} "),
             match settings.reference {
-                Reference::Best => "best lap",
                 Reference::Previous => "previous lap",
+                _ => "best lap",
             }
         ),
         status,
@@ -595,7 +581,7 @@ mod tests {
     #[test]
     fn declares_the_catalogue_entry() {
         assert_eq!(
-            (TYPE, NAME),
+            (TYPE, pitwall_core::tile_catalog::THROTTLE_BRAKE_TRACES.name),
             ("throttle-brake-traces", "Throttle/brake traces")
         );
         assert_eq!(DENSITIES.pick(399.0, 200.0), Density::Compact);

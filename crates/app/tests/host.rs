@@ -491,6 +491,7 @@ fn idle_and_paused_replay_do_not_republish_even_when_udp_is_unavailable() {
         (
             runtime.reader.fast_generation(),
             runtime.reader.snapshot().generation,
+            runtime.reader.frame_snapshot().generation,
         )
     };
     std::thread::sleep(Duration::from_millis(100));
@@ -609,6 +610,14 @@ fn udp_fast_publications_keep_each_applied_packet_separate_from_slow_snapshots()
         runtime.reader.snapshot().generation < runtime.reader.fast_generation() / 2,
         "slow snapshots must not publish at the datagram rate"
     );
+    let frame_deadline = Instant::now() + Duration::from_millis(150);
+    while runtime.reader.frame_snapshot().generation <= runtime.reader.snapshot().generation {
+        assert!(
+            Instant::now() < frame_deadline,
+            "complex frame tiles are throttled to slow state"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
     std::thread::sleep(Duration::from_millis(400));
     let stale = (
         runtime.reader.fast_generation(),
@@ -623,5 +632,40 @@ fn udp_fast_publications_keep_each_applied_packet_separate_from_slow_snapshots()
         stale,
         "silence publishes a staleness transition once, not repeated idle frames"
     );
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn running_status_reports_new_window_quarantines_and_their_removal() {
+    let temp = Temp::new();
+    let blocker = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    let cli = Cli {
+        udp_port: Some(blocker.local_addr().unwrap().port()),
+        ..temp.cli()
+    };
+    let runtime = Runtime::start(
+        DataFolder::open(temp.paths(), &cli).unwrap(),
+        cli,
+        quiet(temp.startup()),
+    )
+    .unwrap();
+    let path = temp.paths().root.join("windows").join("dashboard.json.bad");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "broken choices").unwrap();
+    let wait = |present| {
+        let deadline = Instant::now() + Duration::from_secs(4);
+        while runtime.control.status().bad_files.contains(&path) != present {
+            assert!(
+                Instant::now() < deadline,
+                "status did not refresh quarantined window files"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+    wait(true);
+    let log = std::fs::read_to_string(temp.paths().logs.join("collector.log")).unwrap();
+    assert!(log.contains("dashboard.json.bad"));
+    std::fs::remove_file(&path).unwrap();
+    wait(false);
     runtime.shutdown().unwrap();
 }

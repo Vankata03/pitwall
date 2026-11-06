@@ -18,7 +18,7 @@ pub struct GapsView {
 /// `car`'s interval to the car in front: positive for the car ahead of us, negative for
 /// the car behind. No interval reads absent.
 fn interval(car: &FieldCar, behind: bool) -> Readout<String> {
-    let sign = if behind { '\u{2212}' } else { '+' };
+    let sign = if behind { crate::format::MINUS } else { '+' };
     let text = |ms: u32| format!("{sign}{:.3} s", f64::from(ms) / 1000.0);
     match car.gaps {
         Readout::Live(g) => g

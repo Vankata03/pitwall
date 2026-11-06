@@ -16,27 +16,17 @@ use super::{
 };
 use crate::theme;
 
-pub const TYPE: &str = "weather";
-pub const NAME: &str = "Weather";
+pub const TYPE: &str = pitwall_core::tile_catalog::WEATHER.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (280.0, 104.0),
     full: None,
 };
 
-const SKIES: [&str; 6] = [
-    "Clear",
-    "Light cloud",
-    "Overcast",
-    "Light rain",
-    "Heavy rain",
-    "Storm",
-];
-
 /// The game's sky name for a weather code; a code it does not know is named, not guessed.
 pub fn sky(weather: u8) -> String {
-    SKIES
-        .get(usize::from(weather))
-        .map_or_else(|| format!("Unknown sky ({weather})"), |s| (*s).to_owned())
+    pitwall_core::weather::sky(weather)
+        .map_or_else(|| format!("Unknown sky ({weather})"), str::to_owned)
 }
 
 /// The session facts the tile reads.
@@ -409,7 +399,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("weather", "Weather"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::WEATHER.name),
+            ("weather", "Weather")
+        );
         assert_eq!(DENSITIES.pick(279.0, 104.0), Density::Compact);
         assert_eq!(DENSITIES.pick(280.0, 104.0), Density::Regular);
     }
