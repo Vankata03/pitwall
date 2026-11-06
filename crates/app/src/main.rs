@@ -109,6 +109,7 @@ fn main() -> ExitCode {
         Ok(runtime) => runtime,
         Err(error) => return fatal(Some(&paths), &format!("host: {error}")),
     };
+    let _ = tiles::track_map::TRACKS.set(runtime.tracks.clone());
     let stats = Arc::new(Stats::default());
     if args.stats {
         print_stats(stats.clone());
