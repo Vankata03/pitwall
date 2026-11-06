@@ -46,7 +46,6 @@ use pitwall_native::{desktop, host::Command as HostCommand};
 
 use crate::{
     theme,
-    tiles::memory::Memory,
     windows::{Windows, placement_of},
 };
 use std::{cell::RefCell, collections::HashMap};
@@ -126,7 +125,7 @@ pub struct Dashboard {
     services: Windows,
     _subscriptions: Vec<gpui::Subscription>,
     /// What each placed tile keeps between renders, by tile id.
-    memory: RefCell<HashMap<String, Memory>>,
+    memory: RefCell<HashMap<String, gpui::Entity<registry::TileSurface>>>,
 }
 
 impl Dashboard {
@@ -1096,7 +1095,7 @@ impl Dashboard {
         tiles: &[Tile],
         (width, height): (f32, f32),
         frame: &Frame,
-        cx: &Context<Self>,
+        cx: &mut Context<Self>,
     ) -> AnyElement {
         // Every tile, the Notice included: a stream window has no short line of its own.
         let shown: Vec<&Tile> = tiles.iter().collect();
@@ -1132,7 +1131,7 @@ impl Dashboard {
         shown: &[&Tile],
         tiles: &[Tile],
         editing: bool,
-        cx: &Context<Self>,
+        cx: &mut Context<Self>,
     ) -> gpui::Div {
         let (snap, fast, context) = (frame.snap, frame.fast, frame.context);
         let participants = frame.participants;
@@ -1200,8 +1199,8 @@ impl Dashboard {
                 (Some(_), Some(renderer)) => {
                     match missing_car_message(&binding, resolved).filter(|_| follows) {
                         Some(text) => message(text.to_owned()),
-                        None => (renderer.render)(
-                            &registry::TileInputs {
+                        None => {
+                            let inputs = registry::TileInputs {
                                 tile,
                                 snapshot: snap,
                                 fast,
@@ -1209,9 +1208,23 @@ impl Dashboard {
                                 car: resolved,
                                 units: frame.units,
                                 size: (w, (h - TILE_HEADER).max(0.0)),
-                            },
-                            self.memory.borrow_mut().entry(tile.i.clone()).or_default(),
-                        ),
+                            };
+                            let entity = self
+                                .memory
+                                .borrow_mut()
+                                .entry(tile.i.clone())
+                                .or_insert_with(|| cx.new(|_| registry::TileSurface::default()))
+                                .clone();
+                            entity.update(cx, |surface, cx| {
+                                if surface.prepare(renderer, &inputs) {
+                                    cx.notify();
+                                }
+                            });
+                            let mut style = gpui::StyleRefinement::default();
+                            style.size.width = Some(px(inputs.size.0).into());
+                            style.size.height = Some(px(inputs.size.1).into());
+                            entity.cached(style).into_any_element()
+                        }
                     }
                 }
             };
