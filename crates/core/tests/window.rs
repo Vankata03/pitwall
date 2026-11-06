@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use pitwall_core::binding::{CarBinding, CarIdentity, CarTarget};
-use pitwall_core::layout_edit::{ControllerOptions, GridItem};
+use pitwall_core::layout_edit::{ControllerOptions, GridItem, NoticeKind};
 use pitwall_core::layouts::{Layout, LayoutLibrary, ScreenClass};
 use pitwall_core::units::{PressureUnit, SpeedUnit, TemperatureUnit, Units};
 use pitwall_core::window::{Command, DashboardWindow, WindowChoices, WindowSetup, choices_path};
@@ -317,6 +317,119 @@ fn a_preset_edit_saves_a_copy_that_this_window_then_remembers() {
     assert_eq!(window.current_name(), Some("Pitwall Classic copy"));
     let saved = WindowChoices::load(&f.path()).unwrap().0;
     assert_eq!(saved.layout.as_deref(), Some("Pitwall Classic copy"));
+}
+
+// several windows (EDIT-04, WIN-01, WIN-02)
+
+fn tile_ids(window: &DashboardWindow) -> Vec<String> {
+    let mut ids: Vec<_> = window
+        .tiles(ScreenClass::Wide)
+        .into_iter()
+        .map(|t| t.i)
+        .collect();
+    ids.sort();
+    ids
+}
+
+#[test]
+fn windows_over_one_library_keep_their_own_choices_and_see_each_others_saves() {
+    let f = Fixture::new();
+    let (a_path, b_path) = (
+        choices_path(&f.root, "main"),
+        choices_path(&f.root, "dashboard-2"),
+    );
+    let mut a = f.open_at(WindowChoices::default(), Some(a_path.clone()));
+    let mut b = f.open_at(WindowChoices::default(), Some(b_path.clone()));
+    a.apply(Command::Select("Custom".into()));
+    a.apply(Command::Units(Units {
+        speed: SpeedUnit::Mph,
+        ..Units::DEFAULT
+    }));
+    b.apply(Command::Select("Custom".into()));
+    b.apply(Command::Focus(Some(CarIdentity::Driver { driver_id: 9 })));
+    assert_eq!(WindowChoices::load(&a_path).unwrap().0.focus, None);
+    assert_eq!(
+        WindowChoices::load(&b_path).unwrap().0.units,
+        Units::DEFAULT
+    );
+
+    // A save in one window shows in the other on its next sync, with no notice.
+    a.apply(Command::Edit(ScreenClass::Wide));
+    a.apply(Command::RemoveTile("future".into()));
+    a.apply(Command::Done);
+    b.sync();
+    assert_eq!(tile_ids(&b), ["lap-timing"]);
+    assert!(b.controller().notices().is_empty());
+}
+
+#[test]
+fn an_editor_keeps_its_draft_when_another_window_saves_and_its_done_replaces_the_whole_layout() {
+    let f = Fixture::new();
+    let custom = WindowChoices {
+        layout: Some("Custom".into()),
+        ..Default::default()
+    };
+    let mut a = f.open_at(custom.clone(), None);
+    let mut b = f.open_at(custom, None);
+    b.apply(Command::Edit(ScreenClass::Wide));
+    b.apply(Command::RemoveTile("lap-timing".into()));
+
+    a.apply(Command::Edit(ScreenClass::Wide));
+    a.apply(Command::RemoveTile("future".into()));
+    a.apply(Command::Done);
+    b.sync();
+    assert_eq!(tile_ids(&b), ["future"]);
+    let notices = b.controller().notices();
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].kind, NoticeKind::Conflict);
+
+    // No merge: the last Done wins with its whole draft.
+    b.apply(Command::Done);
+    a.sync();
+    assert_eq!(tile_ids(&a), ["future"]);
+}
+
+#[test]
+fn a_layout_deleted_or_renamed_in_another_window_moves_viewers_to_classic_and_blanks_streams() {
+    let f = Fixture::new();
+    let custom = WindowChoices {
+        layout: Some("Custom".into()),
+        ..Default::default()
+    };
+    let mut a = f.open_at(custom.clone(), None);
+    let mut viewer = f.open_at(custom, None);
+    let mut stream = DashboardWindow::open(WindowSetup {
+        library: f.library.clone(),
+        choices: WindowChoices::default(),
+        path: None,
+        options: ControllerOptions {
+            fixed_layout: Some("Custom".into()),
+            stream: true,
+        },
+    });
+    assert_eq!(stream.stream_problem(), None);
+    assert_eq!(tile_ids(&stream).len(), 2);
+
+    a.apply(Command::Rename("Custom".into(), "Wet".into()));
+    viewer.sync();
+    stream.sync();
+    assert_eq!(viewer.current_name(), Some("Pitwall Classic"));
+    assert_eq!(viewer.controller().notices()[0].kind, NoticeKind::Moved);
+    // The stream window draws nothing (its background only) and says why.
+    assert!(tile_ids(&stream).is_empty());
+    assert_eq!(
+        stream.stream_problem().as_deref(),
+        Some(
+            "Stream window shows nothing: layout \u{201C}Custom\u{201D} does not exist. Create or rename a layout to that name, or open a stream window for another layout."
+        )
+    );
+    assert!(stream.controller().notices().is_empty());
+
+    // It recovers when the layout is back.
+    a.apply(Command::Rename("Wet".into(), "Custom".into()));
+    stream.sync();
+    assert_eq!(stream.stream_problem(), None);
+    assert_eq!(tile_ids(&stream).len(), 2);
 }
 
 #[test]

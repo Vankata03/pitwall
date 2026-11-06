@@ -3,6 +3,7 @@ use pitwall_core::{data::DataFolder, ingest::config::Cli, paths::AppPaths};
 use pitwall_native::{
     desktop::{Startup, startup_script},
     host::{Command, Desktop, Host, Runtime},
+    status_view::StatusView,
 };
 use std::{
     path::{Path, PathBuf},
@@ -420,4 +421,38 @@ fn a_busy_udp_port_reports_keeps_running_and_retries_until_free() {
     let log = std::fs::read_to_string(temp.paths().logs.join("collector.log")).unwrap();
     assert!(log.contains(&format!("Listening: UDP {port}")), "{log}");
     assert!(log.contains("Native host stopped"), "{log}");
+}
+
+#[test]
+fn a_stream_window_problem_is_a_status_alert_logged_once_until_the_window_recovers() {
+    let temp = Temp::new();
+    let mut host = temp.open();
+    host.command(Command::Rescan).unwrap();
+    let feedback = host.status().feedback;
+    let problem = "Stream window shows nothing: layout \u{201C}Air\u{201D} does not exist.";
+    let report = |host: &mut Host, problem: Option<&str>| {
+        host.command(Command::WindowProblem(
+            "stream-1".into(),
+            problem.map(str::to_owned),
+        ))
+        .unwrap()
+    };
+    report(&mut host, Some(problem));
+    report(&mut host, Some(problem));
+    let alert = format!("Window stream-1: {problem}");
+    assert!(StatusView::new(&host.status()).alerts.contains(&alert));
+    let log = || std::fs::read_to_string(temp.paths().logs.join("collector.log")).unwrap();
+    assert_eq!(log().matches(&alert).count(), 1, "{}", log());
+
+    report(&mut host, None);
+    report(&mut host, None);
+    assert!(!StatusView::new(&host.status()).alerts.contains(&alert));
+    assert_eq!(
+        log().matches("Window stream-1: problem cleared").count(),
+        1,
+        "{}",
+        log()
+    );
+    // Window reports leave the last action's feedback alone.
+    assert_eq!(host.status().feedback, feedback);
 }

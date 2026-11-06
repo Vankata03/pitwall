@@ -103,6 +103,12 @@ impl StatusView {
                     .iter()
                     .map(|path| format!("Unreadable file kept aside: {}", path.display())),
             )
+            .chain(
+                status
+                    .windows
+                    .iter()
+                    .map(|(window, problem)| format!("Window {window}: {problem}")),
+            )
             .collect();
         Self {
             alerts,
