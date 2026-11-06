@@ -265,6 +265,9 @@ pub(super) fn part_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
 /// Delete leftovers of interrupted writes, rebuild missing sidecars, drop
 /// sidecars whose recording is gone.
 pub(super) fn repair(dir: &Path) -> io::Result<()> {
+    // Cleanup must not delete a sidecar temporary file owned by an active Pin or
+    // recompression update. Those operations already serialize through SIDECARS.
+    let _guard = SIDECARS.lock().unwrap_or_else(|e| e.into_inner());
     for path in entries(dir)?.collect::<Vec<_>>() {
         let text = path.to_string_lossy();
         if text.ends_with(".pitrec.tmp") || text.ends_with(".json.tmp") {
