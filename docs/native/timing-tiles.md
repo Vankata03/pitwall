@@ -37,11 +37,13 @@ are covered by the tower and Stint ports. The tower's Full-density "Wear (max)" 
 - **Restricted gap cell.** The tower keeps the web build's em dash and restricted style.
 - **Pit stop times.** A stop without a stopped or pit-lane time keeps the web build's
   em dash in the live style, or the stale style after a disconnect.
-- **Stint expand control.** Completed sets expand on click, as the web `<details>`
-  element does, but gpui offers no keyboard focus or accessible name for the row, so the
-  keyboard part of VISUAL-02 stays open.
-- **Tyre badge name.** The view model carries the badge's accessible name ("Soft
-  tyres"); gpui has no way to attach it to the drawn badge yet.
+- **Stint expand control.** Completed sets have a tab stop, a visible focus border and
+  a minimum height of 44 logical pixels. Enter, Space and pointer clicks share the
+  expansion handler. The accessible button name includes the compound and lap range;
+  its expanded state follows the same per-tile memory as the detail view.
+- **Tyre badge name.** The renderer now attaches the view model's compound name
+  ("Soft tyres") to the badge with gpui's image role and `aria_label`. Source evidence
+  and test limits are recorded in [tile-interactions.md](tile-interactions.md).
 
 ## Visual check
 

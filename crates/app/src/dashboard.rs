@@ -93,6 +93,7 @@ enum Action {
     Close,
     /// Open a stream window for this window's layout.
     Stream(Background),
+    FullNotice,
 }
 
 /// A drag on a tile's grip or resize corner, measured from where it started.
@@ -186,10 +187,8 @@ impl Dashboard {
             cx.on_release(|this: &mut Self, _| this.services.closed(&this.id)),
         ];
         let focus_handle = cx.focus_handle();
-        if stream.is_some() {
-            // Escape closes a stream window.
-            window.focus(&focus_handle, cx);
-        }
+        // Start keyboard traversal at the dashboard; Escape also closes stream windows.
+        window.focus(&focus_handle, cx);
         let mut dashboard = DashboardWindow::open(setup);
         if note.is_some() {
             dashboard.set_error(note);
@@ -243,6 +242,20 @@ impl Dashboard {
 
     fn act(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
         match action {
+            Action::FullNotice => {
+                let services = self.services.clone();
+                cx.defer(move |cx| {
+                    let dashboard_services = services.clone();
+                    crate::open_status_at(
+                        cx,
+                        services.control.clone(),
+                        Arc::new(move |cx| {
+                            let _ = dashboard_services.open_dashboard(cx);
+                        }),
+                        true,
+                    );
+                });
+            }
             Action::Command(command) => {
                 // Choosing inside a settings dialog or the Display menu keeps it open.
                 let keep_open = matches!(
@@ -581,6 +594,45 @@ impl Dashboard {
                     )),
                     cx,
                 ));
+            }
+        }
+        for field in registry::renderer(&tile.kind).map_or(&[][..], |r| r.list_settings()) {
+            body = body.child(field.label);
+            let selected = field.selected(&tile.settings);
+            for (value, label) in field.choices {
+                let on = selected.iter().any(|item| item == value);
+                let action = Action::Command(Command::Setting(
+                    id.to_owned(),
+                    field.key.into(),
+                    field.toggled(&tile.settings, value),
+                ));
+                body = body.child(
+                    div()
+                        .id(SharedString::from(format!("{}-{value}", field.key)))
+                        .role(gpui::Role::CheckBox)
+                        .aria_label(*label)
+                        .aria_toggled(if on {
+                            gpui::Toggled::True
+                        } else {
+                            gpui::Toggled::False
+                        })
+                        .tab_stop(true)
+                        .focusable()
+                        .min_h(px(44.0))
+                        .px_2()
+                        .border_2()
+                        .border_color(gpui::transparent_black())
+                        .focus_visible(|style| style.border_color(theme::hot()))
+                        .cursor_pointer()
+                        .child(format!(
+                            "{} {label}",
+                            if on { "\u{2611}" } else { "\u{2610}" }
+                        ))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.act(action.clone(), window, cx);
+                        })),
+                );
             }
         }
         body
@@ -1074,6 +1126,15 @@ impl Render for Dashboard {
                 }),
             )
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                if event.keystroke.key == "tab" {
+                    if event.keystroke.modifiers.shift {
+                        window.focus_prev(cx);
+                    } else {
+                        window.focus_next(cx);
+                    }
+                    cx.stop_propagation();
+                    return;
+                }
                 if event.keystroke.key == "escape" {
                     this.menu = Menu::Closed;
                     this.drag = None;
@@ -1233,6 +1294,30 @@ impl Dashboard {
                         }
                     }
                 }
+            };
+            let content = if tile.kind == crate::tiles::notice::TYPE
+                && crate::tiles::notice::destination(self.stream.is_some(), editing).is_some()
+            {
+                div()
+                    .id("full-notice")
+                    .role(gpui::Role::Link)
+                    .aria_label(SHORT_LINE)
+                    .aria_description("Open the full notice in pitwall status")
+                    .focusable()
+                    .tab_stop(true)
+                    .size_full()
+                    .border_2()
+                    .border_color(gpui::transparent_black())
+                    .focus_visible(|style| style.border_color(theme::hot()))
+                    .cursor_pointer()
+                    .child(content)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.act(Action::FullNotice, window, cx);
+                    }))
+                    .into_any_element()
+            } else {
+                content
             };
             let mut cell = div()
                 .id(SharedString::from(tile.i.clone()))

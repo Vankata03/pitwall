@@ -57,8 +57,8 @@ pub fn entry_types_of(settings: &Value) -> Vec<String> {
 }
 
 /// The settings after ticking or clearing one type. Other keys and unknown saved types
-/// stay as they were. For a settings dialog with list settings; the layout dialog offers
-/// single choices only so far.
+/// stay as they were. The layout dialog uses the shared `ListSettingField` equivalent
+/// and sends only the changed list through the layout controller.
 #[cfg_attr(not(test), expect(dead_code))]
 pub fn toggle_entry_type(settings: &Value, kind: &str, on: bool) -> Value {
     let mut types = entry_types_of(settings);

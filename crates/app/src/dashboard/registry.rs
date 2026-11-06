@@ -87,7 +87,54 @@ pub struct Renderer {
     pub settings: &'static [SettingField],
 }
 
+/// A checkbox group. Empty selections and unknown saved strings are retained.
+pub struct ListSettingField {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub choices: &'static [(&'static str, &'static str)],
+}
+
+impl ListSettingField {
+    pub fn selected(&self, settings: &Value) -> Vec<String> {
+        match settings.get(self.key) {
+            Some(Value::Array(items)) => items
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect(),
+            _ => self
+                .choices
+                .iter()
+                .map(|(value, _)| (*value).to_owned())
+                .collect(),
+        }
+    }
+
+    /// Value for `Command::Setting`; the controller preserves the other settings.
+    pub fn toggled(&self, settings: &Value, choice: &str) -> Value {
+        let mut selected = self.selected(settings);
+        if selected.iter().any(|value| value == choice) {
+            selected.retain(|value| value != choice);
+        } else {
+            selected.push(choice.to_owned());
+        }
+        Value::from(selected)
+    }
+}
+
+const FEED_SETTINGS: &[ListSettingField] = &[ListSettingField {
+    key: "entryTypes",
+    label: "Entry types",
+    choices: &race_control_feed::ENTRY_TYPES,
+}];
+
 impl Renderer {
+    pub fn list_settings(&self) -> &'static [ListSettingField] {
+        if self.kind == race_control_feed::TYPE {
+            FEED_SETTINGS
+        } else {
+            &[]
+        }
+    }
     /// These types used the web frame channel; slow tiles retain their 5 Hz model.
     pub fn frame_rate(&self) -> bool {
         matches!(
@@ -128,7 +175,12 @@ pub enum TileView {
     TrackMap(track_map::View),
 }
 impl TileView {
-    fn render(self, memory: &mut Memory) -> AnyElement {
+    fn render(
+        self,
+        memory: &mut Memory,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> AnyElement {
         match self {
             Self::SpeedRpmGear(view) => speed_rpm_gear::render(view).into_any_element(),
             Self::LapTiming(view) => lap_timing::render(view).into_any_element(),
@@ -146,7 +198,9 @@ impl TileView {
             Self::TimingTower(view) => timing_tower::render(view).into_any_element(),
             Self::Gaps(view) => gaps::render(view).into_any_element(),
             Self::LapState(view) => lap_state::render(view).into_any_element(),
-            Self::Stint(view) => stint::render(view, &mut memory.stint).into_any_element(),
+            Self::Stint(view) => {
+                stint::render(view, &mut memory.stint, window, cx).into_any_element()
+            }
             Self::Sm(view) => sm::render(view).into_any_element(),
             Self::TrackDiscipline(view) => track_discipline::render(view).into_any_element(),
             Self::Weather(view) => weather::render(view).into_any_element(),
@@ -175,11 +229,15 @@ impl TileSurface {
     }
 }
 impl gpui::Render for TileSurface {
-    fn render(&mut self, _: &mut gpui::Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+    fn render(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> impl IntoElement {
         self.view
             .clone()
             .expect("tile prepared before render")
-            .render(&mut self.memory)
+            .render(&mut self.memory, window, cx)
     }
 }
 
@@ -541,7 +599,6 @@ pub static RENDERERS: &[Renderer] = &[
     Renderer {
         kind: race_control_feed::TYPE,
         prepare: race_control_feed,
-        // The entryTypes setting is a list; its choice arrives with list settings.
         settings: &[],
     },
     Renderer {
@@ -555,6 +612,96 @@ pub static RENDERERS: &[Renderer] = &[
 mod tests {
     use super::*;
     use pitwall_core::tile_catalog::declaration;
+
+    #[test]
+    fn feed_settings_toggle_known_types_without_losing_future_types_or_empty_selection() {
+        let field = &renderer(race_control_feed::TYPE).unwrap().list_settings()[0];
+        assert_eq!(field.label, "Entry types");
+        assert_eq!(
+            field.selected(&serde_json::json!({})),
+            vec![
+                "Game",
+                "FlagChanged",
+                "MarshalFlagChanged",
+                "SafetyCarChanged",
+                "WeatherChanged",
+                "PitEntry",
+                "PitExit",
+                "Flashback"
+            ]
+        );
+        let saved = serde_json::json!({"entryTypes": ["Future", "Game", 7], "other": true});
+        assert_eq!(field.toggled(&saved, "Game"), serde_json::json!(["Future"]));
+        assert_eq!(
+            field.toggled(&serde_json::json!({"entryTypes": ["Game"]}), "Game"),
+            serde_json::json!([])
+        );
+        assert_eq!(
+            field.toggled(&serde_json::json!({"entryTypes": []}), "PitExit"),
+            serde_json::json!(["PitExit"])
+        );
+    }
+
+    #[test]
+    fn feed_checkbox_changes_use_the_layout_draft_and_preserve_other_settings_on_save() {
+        use pitwall_core::{
+            layouts::{LayoutLibrary, ScreenClass},
+            window::{Command, DashboardWindow, WindowChoices, WindowSetup},
+        };
+        let root = std::env::temp_dir().join(format!(
+            "pitwall-feed-settings-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("layouts.json");
+        let library = LayoutLibrary::open(path.clone()).unwrap();
+        library.save("Feed", serde_json::from_value(serde_json::json!({"schemaVersion":1,"name":"Feed","arrangements":{"wide":[{"i":"feed","type":"race-control-feed","x":0,"y":0,"w":6,"h":6,"settings":{"entryTypes":["Future","Game"],"other":{"keep":true}}}]}})).unwrap()).unwrap();
+        let mut window = DashboardWindow::open(WindowSetup {
+            library: library.clone(),
+            choices: WindowChoices {
+                layout: Some("Feed".into()),
+                ..Default::default()
+            },
+            path: None,
+            options: Default::default(),
+        });
+        let field = &renderer(race_control_feed::TYPE).unwrap().list_settings()[0];
+        window.apply(Command::Edit(ScreenClass::Wide));
+        let saved = window.tiles(ScreenClass::Wide)[0].settings.clone();
+        window.apply(Command::Setting(
+            "feed".into(),
+            field.key.into(),
+            field.toggled(&saved, "Game"),
+        ));
+        assert_eq!(
+            window.tiles(ScreenClass::Wide)[0].settings,
+            serde_json::json!({"entryTypes":["Future"],"other":{"keep":true}})
+        );
+        assert_eq!(
+            library.get("Feed").unwrap().arrangement(ScreenClass::Wide)[0].settings["entryTypes"],
+            serde_json::json!(["Future", "Game"])
+        );
+        window.apply(Command::Cancel);
+        assert_eq!(window.tiles(ScreenClass::Wide)[0].settings, saved);
+        window.apply(Command::Edit(ScreenClass::Wide));
+        window.apply(Command::Setting(
+            "feed".into(),
+            field.key.into(),
+            field.toggled(&saved, "Game"),
+        ));
+        window.apply(Command::Done);
+        let reloaded = LayoutLibrary::open(path.clone()).unwrap();
+        assert_eq!(
+            reloaded.get("Feed").unwrap().arrangement(ScreenClass::Wide)[0].settings,
+            serde_json::json!({"entryTypes":["Future"],"other":{"keep":true}})
+        );
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
 
     #[test]
     fn retained_tiles_change_only_when_their_displayed_view_changes() {

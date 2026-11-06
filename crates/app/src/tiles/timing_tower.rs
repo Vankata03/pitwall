@@ -8,8 +8,8 @@
 //! target: the window's focus, or the player car while following the player).
 
 use gpui::{
-    AnyElement, Div, FontWeight, Hsla, IntoElement, ParentElement, SharedString, Styled, div,
-    prelude::FluentBuilder, px, rgb,
+    AnyElement, Div, FontWeight, Hsla, InteractiveElement, IntoElement, ParentElement,
+    SharedString, StatefulInteractiveElement, Styled, div, prelude::FluentBuilder, px, rgb,
 };
 use pitwall_core::{
     field::{FieldCar, LapFacts, field_of},
@@ -422,7 +422,12 @@ fn value_cell(
     } else {
         FontWeight::SEMIBOLD
     };
-    let mut text = widgets::readout_coloured(&cell.value, VALUE, colour).font_weight(weight);
+    let mut text = widgets::readout_coloured(&cell.value, VALUE, colour)
+        .font_weight(weight)
+        .min_w_0()
+        .overflow_hidden()
+        .text_ellipsis()
+        .into_any_element();
     if let Some(letter) = &cell.badge {
         let ring = if cell.value.state == ReadoutState::Live {
             compound_colour(letter)
@@ -430,6 +435,9 @@ fn value_cell(
             compound_colour(letter).opacity(0.65)
         };
         text = div()
+            .id("tyre-badge")
+            .role(gpui::Role::Image)
+            .aria_label(cell.label.clone().unwrap_or_else(|| letter.clone()))
             .flex()
             .items_center()
             .justify_center()
@@ -440,7 +448,11 @@ fn value_cell(
             .text_color(ring)
             .text_size(px(VALUE))
             .font_weight(FontWeight::BOLD)
-            .child(SharedString::from(letter.clone()));
+            .min_w_0()
+            .overflow_hidden()
+            .text_ellipsis()
+            .child(SharedString::from(letter.clone()))
+            .into_any_element();
     }
     let mut out = cell_box(width).flex().items_center().gap_2();
     if let Some(team) = team {
@@ -456,7 +468,7 @@ fn value_cell(
                 .bg(marker),
         );
     }
-    out.child(text.min_w_0().overflow_hidden().text_ellipsis())
+    out.child(text)
 }
 
 pub fn render(view: View) -> AnyElement {
@@ -496,7 +508,7 @@ pub fn render(view: View) -> AnyElement {
     };
     let mut table = div().flex().flex_col().w_full().child(header);
     for row in rows {
-        let mut r = line(row_height);
+        let mut r = line(row_height).id(("tower-row", row.index));
         if row.focus {
             r = r.bg(theme::raised());
         }
