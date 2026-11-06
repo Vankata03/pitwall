@@ -307,7 +307,8 @@ pub fn view(inputs: &Inputs) -> View {
             caption: format!(
                 "Laps {}\u{2013}{} \u{b7} current",
                 running.start_lap,
-                lap.map_or("\u{2014}".to_string(), |l| l.to_string())
+                lap.map_or(pitwall_core::readout::ABSENT_TEXT.to_string(), |l| l
+                    .to_string())
             ),
             wear: match &condition(&inputs.tyre_condition) {
                 Readout::Live(c) => Wear::Wheels(wheels(c, dim_state(ReadoutState::Live, stale))),
@@ -346,7 +347,8 @@ pub fn view(inputs: &Inputs) -> View {
                 final_age: format!(
                     "Final tyre age {}",
                     s.tyre_age_laps
-                        .map_or("\u{2014}".to_string(), |a| a.to_string())
+                        .map_or(pitwall_core::readout::ABSENT_TEXT.to_string(), |a| a
+                            .to_string())
                 ),
                 wheels: wear
                     .value()

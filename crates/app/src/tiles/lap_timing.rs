@@ -408,7 +408,7 @@ pub fn view(inputs: &Inputs) -> View {
                         .reference_lap
                         .as_ref()
                         .and_then(|r| r.lap_number)
-                        .map_or("\u{2014}".into(), |n| n.to_string()),
+                        .map_or(pitwall_core::readout::ABSENT_TEXT.into(), |n| n.to_string()),
                     inputs.reference.label()
                 ),
                 readout_view(reference_state, &clock(reference_time.unwrap_or(0), true)),

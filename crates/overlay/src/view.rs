@@ -10,7 +10,7 @@ use pitwall_core::{
 };
 
 /// Shown for a value the game has not sent (the readout rule's absent text).
-pub const ABSENT_TEXT: &str = "—";
+pub use pitwall_core::readout::ABSENT_TEXT;
 
 /// One pedal bar.
 #[derive(Debug, Clone, PartialEq)]

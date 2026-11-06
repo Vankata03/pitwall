@@ -266,7 +266,7 @@ fn summary(inputs: &Inputs) -> String {
         return if inputs.restricted > 0 {
             "Restricted".into()
         } else {
-            "\u{2014}".into()
+            pitwall_core::readout::ABSENT_TEXT.into()
         };
     }
     format!(
@@ -804,7 +804,7 @@ mod tests {
         assert!(v.dots.is_empty());
         assert_eq!(v.summary, "Restricted");
         let v = view(&base(Lookup::NotFound, vec![]), &mut Fit::default());
-        assert_eq!(v.summary, "\u{2014}");
+        assert_eq!(v.summary, pitwall_core::readout::ABSENT_TEXT);
         let mut nan = car(0, f32::NAN);
         nan.z = 0.0;
         assert!(

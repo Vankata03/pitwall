@@ -69,6 +69,5 @@ pub fn field_of(model: &SessionModel) -> Vec<FieldCar> {
 
 /// `+1.234` or `−1.234` (U+2212) seconds from signed milliseconds, three decimals.
 pub fn signed_seconds(ms: i64) -> String {
-    let sign = if ms < 0 { crate::format::MINUS } else { '+' };
-    format!("{sign}{:.3}", ms.unsigned_abs() as f64 / 1000.0)
+    crate::format::seconds_from_millis(ms.unsigned_abs(), ms < 0)
 }

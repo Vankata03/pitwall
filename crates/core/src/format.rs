@@ -11,6 +11,13 @@ pub fn signed(value: f64, digits: usize) -> String {
     format!("{sign}{text}")
 }
 
+/// Signed seconds from an integer duration. Preserve a minus sign even for zero
+/// when a relative interval explicitly refers to the car behind.
+pub fn seconds_from_millis(ms: u64, negative: bool) -> String {
+    let sign = if negative { MINUS } else { '+' };
+    format!("{sign}{:.3}", ms as f64 / 1000.0)
+}
+
 /// JavaScript's `toFixed`: `digits` decimals, a tie rounding away from zero (Rust's
 /// formatter rounds a tie to even, so `18.25` would read `18.2`).
 pub fn fixed(value: f64, digits: usize) -> String {
