@@ -34,11 +34,9 @@ are covered by the tower and Stint ports. The tower's Full-density "Wear (max)" 
 - **Disconnect.** The web tower and Stint tile dim live values while the socket is not
   open. In-process there is no socket; both tiles dim live values while the game is lost
   (no data for a while), which the web build also does.
-- **Restricted gap cell.** A tower gap cell whose gaps readout is restricted reads
-  "Restricted"; the web build printed an em dash in the restricted style. This follows
-  the core tower port (#69).
-- **Pit stop times.** A stop without a stopped or pit-lane time reads as an absent
-  readout (em dash, muted). The web build printed the same dash in the live style.
+- **Restricted gap cell.** The tower keeps the web build's em dash and restricted style.
+- **Pit stop times.** A stop without a stopped or pit-lane time keeps the web build's
+  em dash in the live style, or the stale style after a disconnect.
 - **Stint expand control.** Completed sets expand on click, as the web `<details>`
   element does, but gpui offers no keyboard focus or accessible name for the row, so the
   keyboard part of VISUAL-02 stays open.
@@ -57,20 +55,18 @@ placeholders:
   the current Medium set, the completed Hard set and the lap 10 stop.
 - `timing-tiles-classic-compact.png`: the same moment in Pitwall Classic, where the tower
   is Compact (position, driver, interval, tyre) and the Stint tile is shorter.
-- `timing-tiles-gaps.png`: the Driver layout. The player leads, so Ahead is absent and
+- `timing-tiles-gaps.png`: the Driver layout, captured before the review fixes. The player leads; Ahead was absent and
   Behind names P2.
 - `timing-tiles-qualifying.png`: Suzuka Qualifying 1 after the end of the recording. The
   tower shows the session-best column (best time on row one, differences below), and
   the stale lap data is dimmed. At 1280 px the Race layout's tower is narrower than
   500 px and so Compact (TOWER-05).
 
-While checking the race capture, the Gaps tile showed `+0.000 s` ahead of the race
-leader: in races the game sends a zero interval for P1. `pitwall_core::gaps::gaps_view`
-now reads Ahead as absent for P1 (test
-`the_race_leader_has_no_car_ahead_even_though_the_game_sends_a_zero_interval`). The web
-build reads the same model and probably still shows `+0.000 s` there; GAPS-01 says a
-missing neighbour reads absent, so the native tile follows the parity item. The owner's
-side-by-side check should confirm this.
+Review fixes restore the web Gaps behavior: Ahead displays the bound car's interval,
+including `+0.000 s` for P1 when that is what the game sends. The missing ahead-car
+note remains empty. Native tests `the_race_leader_keeps_the_bound_car_interval_like_the_web_tile`
+and `the_race_leader_keeps_the_web_interval_display` cover this behavior. The screenshots
+above predate this correction and do not prove the corrected rendering visually.
 
 Comparing each tile side by side with the web build on the same recording is a manual
 owner check and has not been done.
