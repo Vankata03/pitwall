@@ -3,11 +3,14 @@
 //! and the settings its dialog offers. A declared type with no entry here draws a
 //! "not yet ported" placeholder and keeps its data; see `notes/70-layouts.md`.
 
-use crate::tiles::{lap_timing, speed_rpm_gear};
+use crate::tiles::{
+    car_status, engine_temp, ers, fuel, g_force, lap_timing, live_delta, memory::Memory,
+    speed_rpm_gear, throttle_brake_traces,
+};
 use gpui::{AnyElement, IntoElement};
 use pitwall_core::{
     binding::ResolvedCar,
-    feed::{FastFrame, Snapshot},
+    feed::{FastFrame, Reader, Snapshot},
     layouts::Tile,
     units::Units,
 };
@@ -17,6 +20,8 @@ pub struct TileInputs<'a> {
     pub tile: &'a Tile,
     pub snapshot: &'a Snapshot,
     pub fast: &'a FastFrame,
+    /// For tiles that catch up on every fast frame since their last render.
+    pub reader: &'a Reader,
     /// The car this tile follows, already resolved; session-wide tiles ignore it.
     pub car: ResolvedCar,
     pub units: Units,
@@ -45,7 +50,8 @@ pub struct Renderer {
     pub kind: &'static str,
     /// The tile module's own name; the same as the catalog's (tested).
     pub name: &'static str,
-    pub render: fn(&TileInputs<'_>) -> AnyElement,
+    /// Draws the tile; `Memory` is what this placed tile keeps between renders.
+    pub render: fn(&TileInputs<'_>, &mut Memory) -> AnyElement,
     pub settings: &'static [SettingField],
 }
 
@@ -53,7 +59,7 @@ pub fn renderer(kind: &str) -> Option<&'static Renderer> {
     RENDERERS.iter().find(|r| r.kind == kind)
 }
 
-fn speed(inputs: &TileInputs<'_>) -> AnyElement {
+fn speed(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
     speed_rpm_gear::render(speed_rpm_gear::view(&speed_rpm_gear::Inputs::from_source(
         inputs.fast,
         inputs.snapshot,
@@ -64,7 +70,7 @@ fn speed(inputs: &TileInputs<'_>) -> AnyElement {
     .into_any_element()
 }
 
-fn timing(inputs: &TileInputs<'_>) -> AnyElement {
+fn timing(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
     lap_timing::render(lap_timing::view(&lap_timing::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
@@ -73,6 +79,99 @@ fn timing(inputs: &TileInputs<'_>) -> AnyElement {
     )))
     .into_any_element()
 }
+
+fn g_force(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
+    g_force::render(g_force::view(&g_force::Inputs::from_model(
+        inputs.snapshot,
+        inputs.car.index(),
+        inputs.size,
+    )))
+    .into_any_element()
+}
+
+fn traces(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
+    throttle_brake_traces::render(throttle_brake_traces::view(&memory.traces.inputs(
+        inputs.reader,
+        inputs.fast,
+        inputs.snapshot,
+        inputs.car.index(),
+        &inputs.tile.settings,
+        inputs.units,
+        inputs.size,
+    )))
+    .into_any_element()
+}
+
+fn delta(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
+    live_delta::render(live_delta::view(&live_delta::Inputs::from_model(
+        inputs.snapshot,
+        inputs.car.index(),
+        live_delta::Reference::of(&inputs.tile.settings),
+        inputs.size,
+    )))
+    .into_any_element()
+}
+
+fn ers(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
+    ers::render(ers::view(&ers::Inputs::from_model(
+        inputs.snapshot,
+        inputs.car.index(),
+        inputs.size,
+    )))
+    .into_any_element()
+}
+
+fn car_status(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
+    car_status::render(
+        car_status::view(&car_status::Inputs::from_model(
+            inputs.snapshot,
+            inputs.car.index(),
+            matches!(inputs.car, ResolvedCar::Retired(_)),
+            inputs.units,
+            inputs.size,
+        )),
+        &mut memory.car_status,
+    )
+    .into_any_element()
+}
+
+fn engine_temp(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
+    engine_temp::render(engine_temp::view(&engine_temp::Inputs::from_model(
+        inputs.snapshot,
+        inputs.car.index(),
+        inputs.units,
+        inputs.size,
+    )))
+    .into_any_element()
+}
+
+fn fuel(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
+    fuel::render(fuel::view(&fuel::Inputs::from_model(
+        inputs.snapshot,
+        inputs.car.index(),
+        inputs.size,
+    )))
+    .into_any_element()
+}
+
+/// Best (default) or previous: Live delta and Throttle/brake traces.
+const BEST_OR_PREVIOUS: &[SettingField] = &[SettingField {
+    key: "reference",
+    label: "Reference lap",
+    choices: &[
+        Choice {
+            value: "best",
+            label: "Best lap",
+            time_trial_only: false,
+        },
+        Choice {
+            value: "previous",
+            label: "Previous lap",
+            time_trial_only: false,
+        },
+    ],
+    default: "best",
+}];
 
 pub static RENDERERS: &[Renderer] = &[
     Renderer {
@@ -112,6 +211,49 @@ pub static RENDERERS: &[Renderer] = &[
             ],
             default: "best",
         }],
+    },
+    Renderer {
+        kind: g_force::TYPE,
+        name: g_force::NAME,
+        render: g_force,
+        settings: &[],
+    },
+    Renderer {
+        kind: throttle_brake_traces::TYPE,
+        name: throttle_brake_traces::NAME,
+        render: traces,
+        // The channels setting is a list; its choice arrives with list settings.
+        settings: BEST_OR_PREVIOUS,
+    },
+    Renderer {
+        kind: live_delta::TYPE,
+        name: live_delta::NAME,
+        render: delta,
+        settings: BEST_OR_PREVIOUS,
+    },
+    Renderer {
+        kind: ers::TYPE,
+        name: ers::NAME,
+        render: ers,
+        settings: &[],
+    },
+    Renderer {
+        kind: car_status::TYPE,
+        name: car_status::NAME,
+        render: car_status,
+        settings: &[],
+    },
+    Renderer {
+        kind: engine_temp::TYPE,
+        name: engine_temp::NAME,
+        render: engine_temp,
+        settings: &[],
+    },
+    Renderer {
+        kind: fuel::TYPE,
+        name: fuel::NAME,
+        render: fuel,
+        settings: &[],
     },
 ];
 

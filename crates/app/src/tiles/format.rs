@@ -11,6 +11,14 @@ pub fn signed(value: f64, digits: usize) -> String {
     format!("{sign}{text}")
 }
 
+/// JavaScript's `toFixed`: `digits` decimals, a tie rounding away from zero (Rust's
+/// formatter rounds a tie to even, so `18.25` would read `18.2`).
+pub fn fixed(value: f64, digits: usize) -> String {
+    let scale = 10f64.powi(digits as i32);
+    let rounded = (value * scale).round() / scale;
+    format!("{:.digits$}", if rounded == 0.0 { 0.0 } else { rounded })
+}
+
 /// Rounded integer with en-US thousands separators.
 pub fn grouped(value: f64) -> String {
     let rounded = value.round() as i64;
@@ -49,6 +57,14 @@ mod tests {
         assert_eq!(signed(1.5, 3), "+1.500");
         assert_eq!(signed(-0.0004, 3), "+0.000");
         assert_eq!(signed(0.0, 3), "+0.000");
+    }
+
+    #[test]
+    fn fixed_rounds_ties_away_from_zero_like_javascript() {
+        assert_eq!(fixed(18.25, 1), "18.3");
+        assert_eq!(fixed(1.2, 2), "1.20");
+        assert_eq!(fixed(-0.001, 2), "0.00");
+        assert_eq!(fixed(21.8 * 0.0689475729, 2), "1.50");
     }
 
     #[test]

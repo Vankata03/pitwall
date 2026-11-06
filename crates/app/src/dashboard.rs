@@ -47,9 +47,10 @@ use pitwall_native::{desktop, host::Command as HostCommand};
 
 use crate::{
     theme,
-    tiles::lap_timing,
+    tiles::{lap_timing, memory::Memory},
     windows::{Windows, placement_of},
 };
+use std::{cell::RefCell, collections::HashMap};
 
 /// Counters a measurement run reads from another thread.
 #[derive(Default)]
@@ -125,6 +126,8 @@ pub struct Dashboard {
     reported: Option<String>,
     services: Windows,
     _subscriptions: Vec<gpui::Subscription>,
+    /// What each placed tile keeps between renders, by tile id.
+    memory: RefCell<HashMap<String, Memory>>,
 }
 
 impl Dashboard {
@@ -203,6 +206,7 @@ impl Dashboard {
             row_height: screen::ROW_HEIGHT,
             drawn: (u64::MAX, u64::MAX, u64::MAX),
             stats: services.stats.clone(),
+            memory: RefCell::default(),
             id: spec.id.clone(),
             stream,
             reported: None,
@@ -1232,14 +1236,18 @@ impl Dashboard {
                 (Some(_), Some(renderer)) => {
                     match missing_car_message(&binding, resolved).filter(|_| follows) {
                         Some(text) => message(text.to_owned()),
-                        None => (renderer.render)(&registry::TileInputs {
-                            tile,
-                            snapshot: snap,
-                            fast,
-                            car: resolved,
-                            units: frame.units,
-                            size: (w, (h - TILE_HEADER).max(0.0)),
-                        }),
+                        None => (renderer.render)(
+                            &registry::TileInputs {
+                                tile,
+                                snapshot: snap,
+                                fast,
+                                reader: &self.reader,
+                                car: resolved,
+                                units: frame.units,
+                                size: (w, (h - TILE_HEADER).max(0.0)),
+                            },
+                            self.memory.borrow_mut().entry(tile.i.clone()).or_default(),
+                        ),
                     }
                 }
             };

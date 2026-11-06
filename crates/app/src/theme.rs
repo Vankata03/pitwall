@@ -37,3 +37,25 @@ pub fn slower() -> Hsla {
 pub fn session_best() -> Hsla {
     colour(0xC58BFF)
 }
+pub fn cold() -> Hsla {
+    colour(0x5CA7E7)
+}
+/// In-window temperature and healthy condition.
+pub fn window() -> Hsla {
+    colour(0xE8EDEF)
+}
+/// Energy and throttle.
+pub fn energy() -> Hsla {
+    colour(0x56D9CA)
+}
+pub fn brake() -> Hsla {
+    colour(0xF55C72)
+}
+/// Chart grid lines (`--pw-line`).
+pub fn line() -> Hsla {
+    colour(0x2E373C)
+}
+/// A raised surface inside a tile (`--pw-tile-bg-raised`).
+pub fn raised() -> Hsla {
+    colour(0x242B2E)
+}
