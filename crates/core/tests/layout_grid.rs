@@ -27,6 +27,17 @@ fn tiles_sit_on_columns_and_rows_with_8_px_gaps() {
 }
 
 #[test]
+fn a_stream_grid_fills_the_window_height_exactly_even_with_more_rows_than_gaps_fit() {
+    // 2 rows in 100 px: 8 px gap. 20 rows in 100 px: the gap shrinks to 2.5 px.
+    for (rows, height, margin) in [(2, 100.0, 8.0), (20, 100.0, 2.5)] {
+        let t = tiles(json!([{"i":"a","type":"x","x":0,"y":0,"w":2,"h":rows}]));
+        let geometry = GridGeometry::stream(ScreenClass::Phone, 424.0, &t, height);
+        assert_eq!(geometry.height(&t), height, "{rows} rows");
+        assert_eq!(geometry.margin, margin);
+    }
+}
+
+#[test]
 fn a_tile_wider_than_the_class_is_drawn_clamped_inside_it() {
     let t = tiles(json!([{"i":"a","type":"x","x":3,"y":0,"w":6,"h":1}]));
     assert_eq!(phone().rect(&t[0]), (0.0, 0.0, 424.0, 32.0));

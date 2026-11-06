@@ -47,6 +47,9 @@ pub enum Command {
     OpenRecordings,
     OpenLogs,
     Shutdown,
+    /// A window reports why it cannot show what it should (`Some`), or that it recovered
+    /// or closed (`None`). Shown in status and logged once per change.
+    WindowProblem(String, Option<String>),
 }
 
 #[derive(Clone, Default)]
@@ -73,6 +76,8 @@ pub struct Status {
     pub track: Option<TrackKey>,
     pub revision: u64,
     pub busy: bool,
+    /// Problems windows report, by window id, such as a stream window's missing layout.
+    pub windows: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Clone)]
@@ -334,6 +339,7 @@ impl Host {
             track: None,
             revision: 0,
             busy: false,
+            windows: Default::default(),
         };
         let enabled = Arc::new(AtomicBool::new(folder.config.recording.enabled));
         let tracks = TrackStore::open(folder.paths.tracks.clone());
@@ -447,6 +453,10 @@ impl Host {
         Ok(())
     }
     pub fn command(&mut self, command: Command) -> io::Result<()> {
+        if let Command::WindowProblem(window, problem) = command {
+            self.window_problem(window, problem);
+            return Ok(());
+        }
         let feedback = match &command {
             Command::Save(_) => {
                 "Settings saved. Live reload applies valid changes; command-line overrides remain effective."
@@ -521,13 +531,34 @@ impl Host {
             }
             Command::OpenRecordings => desktop::open(&self.folder.paths.recordings)?,
             Command::OpenLogs => desktop::open(&self.folder.paths.logs)?,
-            Command::Shutdown => {}
+            Command::Shutdown | Command::WindowProblem(..) => {}
         }
         self.status.recordings = recorder::list(&self.folder.paths.recordings)?;
         self.status.feedback = feedback.into();
         self.status.error = None;
         self.status.revision += 1;
         Ok(())
+    }
+    fn window_problem(&mut self, window: String, problem: Option<String>) {
+        let paths = &self.folder.paths;
+        match problem {
+            Some(problem) => {
+                if self.status.windows.get(&window) != Some(&problem) {
+                    desktop::log(paths, &format!("Window {window}: {problem}"));
+                    self.status.windows.insert(window, problem);
+                    self.status.revision += 1;
+                }
+            }
+            None => {
+                if self.status.windows.remove(&window).is_some() {
+                    desktop::log(
+                        paths,
+                        &format!("Window {window}: problem cleared (recovered or closed)"),
+                    );
+                    self.status.revision += 1;
+                }
+            }
+        }
     }
     /// Load off the host thread; a later Start or Stop makes this load's result stale.
     fn load(&mut self, path: PathBuf, name: String, guard: Option<LoadedGuard>) -> io::Result<()> {
