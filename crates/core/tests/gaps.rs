@@ -68,3 +68,15 @@ fn restricted_gaps_stay_restricted() {
     let view = gaps_view(&[mine], 0);
     assert_eq!(view.ahead, Readout::Restricted);
 }
+
+#[test]
+fn the_race_leader_has_no_car_ahead_even_though_the_game_sends_a_zero_interval() {
+    // In races the game sends 0 ms to the car in front for P1; that is not a gap.
+    let field = [
+        car(0, Readout::Live(1), Some(0)),
+        car(1, Readout::Live(2), Some(11_004)),
+    ];
+    let view = gaps_view(&field, 0);
+    assert_eq!(view.ahead, Readout::Absent);
+    assert_eq!(view.behind, Readout::Live("\u{2212}11.004 s".to_string()));
+}

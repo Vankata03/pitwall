@@ -3,7 +3,7 @@
 //! Race-control feed its held headlines and Track map its fit and map. A
 //! layout host keeps one per placed tile, by tile id.
 
-use super::{car_status, race_control_feed, throttle_brake_traces, track_map};
+use super::{car_status, race_control_feed, stint, throttle_brake_traces, track_map};
 
 #[derive(Default)]
 pub struct Memory {
@@ -11,4 +11,6 @@ pub struct Memory {
     pub car_status: car_status::Memory,
     pub race_control_feed: race_control_feed::Memory,
     pub track_map: track_map::Memory,
+    /// Which completed sets a Stint tile shows expanded.
+    pub stint: stint::Memory,
 }

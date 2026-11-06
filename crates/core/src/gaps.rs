@@ -42,8 +42,13 @@ pub fn gaps_view(field: &[FieldCar], index: usize) -> GapsView {
             behind_note: None,
         };
     };
-    let ahead = interval(mine, false);
     let position = mine.position();
+    // P1 has no car ahead; the game still sends a zero interval for it in races.
+    let ahead = if position == Some(1) {
+        Readout::Absent
+    } else {
+        interval(mine, false)
+    };
     let mut behind = Readout::Absent;
     if let Some(position) = position {
         let next = field.iter().find(|other| {
