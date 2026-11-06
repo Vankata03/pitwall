@@ -301,7 +301,11 @@ pub fn view(inputs: &Inputs) -> View {
                     },
                     car.label.as_deref().unwrap_or_default(),
                 )),
-                cell(view_of(&row.gap, String::clone)),
+                cell(if row.gap == Readout::Restricted {
+                    readout_view(ReadoutState::Absent, "")
+                } else {
+                    view_of(&row.gap, String::clone)
+                }),
                 match car.tyres.value() {
                     Some(t) => {
                         let letter = compound_letter(t.visual_compound);
@@ -761,6 +765,17 @@ mod tests {
         assert_eq!(row_of(rows, "Driver 1").cells[6].value.text, "Retired");
         assert_eq!(row_of(rows, "#3").cells[6].value.text, "NC");
         assert!(rows.iter().all(|r| r.cells[6].value.text != "DSQ"));
+    }
+
+    #[test]
+    fn restricted_gap_uses_the_web_towers_absent_marker() {
+        let mut field = cars();
+        field[5].gaps = Readout::Restricted;
+        let v = view(&inputs(field));
+        let (_, rows) = table(&v);
+        let cell = &row_of(rows, "Driver 6").cells[2].value;
+        assert_eq!(cell.text, pitwall_core::readout::ABSENT_TEXT);
+        assert_eq!(cell.state, ReadoutState::Absent);
     }
 
     #[test]

@@ -34,11 +34,55 @@ impl OverlaySettings {
 
     /// Write pretty-printed JSON through a temporary file.
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        let tmp = path.with_extension("json.tmp");
-        fs::write(
-            &tmp,
-            serde_json::to_string_pretty(self).map_err(io::Error::other)?,
-        )?;
-        fs::rename(tmp, path)
+        crate::storage::atomic_write(
+            path,
+            serde_json::to_vec_pretty(self).map_err(io::Error::other)?,
+        )
+    }
+
+    /// Load overlay settings, preserving malformed originals with the shared `.bad` policy.
+    pub fn load_preserved(path: &Path) -> Loaded {
+        match Self::read(path) {
+            Ok(Some(settings)) => Loaded::Read(settings),
+            Ok(None) => Loaded::Missing(Self::default()),
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                match crate::data::keep_as_bad(path) {
+                    Ok(kept) => Loaded::Malformed {
+                        settings: Self::default(),
+                        kept,
+                        error: error.to_string(),
+                    },
+                    Err(rename) => Loaded::Malformed {
+                        settings: Self::default(),
+                        kept: path.to_owned(),
+                        error: format!("{error}; could not keep it: {rename}"),
+                    },
+                }
+            }
+            Err(error) => Loaded::Malformed {
+                settings: Self::default(),
+                kept: path.to_owned(),
+                error: error.to_string(),
+            },
+        }
+    }
+}
+
+/// Outcome of loading the standalone overlay's settings.
+#[derive(Debug, PartialEq)]
+pub enum Loaded {
+    Read(OverlaySettings),
+    Missing(OverlaySettings),
+    Malformed {
+        settings: OverlaySettings,
+        kept: std::path::PathBuf,
+        error: String,
+    },
+}
+impl Loaded {
+    pub fn settings(&self) -> OverlaySettings {
+        match self {
+            Self::Read(s) | Self::Missing(s) | Self::Malformed { settings: s, .. } => *s,
+        }
     }
 }

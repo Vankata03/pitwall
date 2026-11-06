@@ -46,7 +46,7 @@ use pitwall_native::{desktop, host::Command as HostCommand};
 
 use crate::{
     theme,
-    tiles::{lap_timing, memory::Memory},
+    tiles::memory::Memory,
     windows::{Windows, placement_of},
 };
 use std::{cell::RefCell, collections::HashMap};
@@ -810,7 +810,6 @@ struct Frame<'a> {
     context: &'a BindingContext<'a>,
     participants: &'a [Participant],
     units: Units,
-    time_trial: bool,
 }
 
 impl Render for Dashboard {
@@ -845,10 +844,6 @@ impl Render for Dashboard {
                 context: &context,
                 participants: &participants,
                 units: self.window.choices().units,
-                time_trial: snap
-                    .session()
-                    .value()
-                    .is_some_and(|s| s.session_type == TIME_TRIAL),
             };
             return self.render_stream(background, &tiles, (width, height), &frame, cx);
         }
@@ -888,10 +883,6 @@ impl Render for Dashboard {
             (true, Some(label)) => format!("Focus: {label}"),
             (true, None) => "Focus: car not in session".into(),
         };
-        let time_trial = snap
-            .session()
-            .value()
-            .is_some_and(|s| s.session_type == TIME_TRIAL);
 
         // Chrome, top to bottom. The row height fills what is left (GRID-01).
         let mut chrome = div().flex().flex_col().flex_shrink_0();
@@ -1018,7 +1009,6 @@ impl Render for Dashboard {
             context: &context,
             participants: &participants,
             units: choices.units,
-            time_trial,
         };
         let grid = self.grid(&frame, geometry, &shown, &tiles, editing, cx);
 
@@ -1145,7 +1135,7 @@ impl Dashboard {
         cx: &Context<Self>,
     ) -> gpui::Div {
         let (snap, fast, context) = (frame.snap, frame.fast, frame.context);
-        let (participants, time_trial) = (frame.participants, frame.time_trial);
+        let participants = frame.participants;
         let grid_width = geometry.width;
         let mut grid = div()
             .relative()
@@ -1178,28 +1168,6 @@ impl Dashboard {
                 .text_size(px(12.0))
                 .text_color(theme::muted())
                 .child(name.clone());
-            if tile.kind == "lap-timing" {
-                let label = format!(
-                    "Compare: {}",
-                    lap_timing::LapReference::of(&tile.settings).label()
-                );
-                head = head.child(if editing {
-                    let mut next = tile.settings.clone();
-                    lap_timing::LapReference::cycle(&mut next, time_trial);
-                    self.button(
-                        format!("reference-{}", tile.i),
-                        label,
-                        Action::Command(Command::Setting(
-                            tile.i.clone(),
-                            "reference".into(),
-                            next["reference"].clone(),
-                        )),
-                        cx,
-                    )
-                } else {
-                    div().child(label).into_any_element()
-                });
-            }
             if follows
                 && let Some(p) = resolved
                     .index()

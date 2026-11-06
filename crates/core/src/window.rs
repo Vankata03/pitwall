@@ -114,10 +114,8 @@ impl WindowChoices {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let temporary = path.with_extension("json.tmp");
         let text = serde_json::to_vec_pretty(&self.to_value()).map_err(io::Error::other)?;
-        fs::write(&temporary, text)?;
-        fs::rename(&temporary, path)
+        crate::storage::atomic_write(path, text)
     }
 }
 

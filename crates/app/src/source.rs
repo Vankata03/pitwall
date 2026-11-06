@@ -38,7 +38,7 @@ impl Args {
             stats: false,
             obsolete: vec![],
         };
-        let mut args = args.into_iter();
+        let mut args = args.into_iter().peekable();
         while let Some(arg) = args.next() {
             let (flag, inline) = arg
                 .split_once('=')
@@ -55,12 +55,14 @@ impl Args {
                 "--stats" => result.stats = true,
                 "--loop" => result.looped = true,
                 "--http-port" | "--bind" => {
-                    value()?;
+                    if inline.is_none() && args.peek().is_some_and(|next| !next.starts_with('-')) {
+                        args.next();
+                    }
                     result.obsolete.push(flag.to_owned());
                 }
                 "--config" => result.cli.config_path = Some(value()?.into()),
                 "--data-dir" => result.cli.data_dir = Some(value()?.into()),
-                "--port" | "--udp-port" => {
+                "--udp-port" => {
                     let port: u16 = value()?.parse().map_err(|_| "invalid UDP port")?;
                     if port == 0 {
                         return Err("invalid UDP port".into());
@@ -112,6 +114,25 @@ mod tests {
         .unwrap();
         assert_eq!(args.obsolete, ["--http-port", "--bind"]);
         assert_eq!(args.cli.data_dir, Some(PathBuf::from("C:/copy")));
+    }
+    #[test]
+    fn obsolete_flags_without_values_never_consume_active_flags() {
+        for input in [
+            vec!["--bind"],
+            vec!["--http-port"],
+            vec!["--bind", "--udp-port", "20888"],
+            vec!["--http-port", "--help"],
+        ] {
+            let args = Args::parse(input.iter().map(|s| s.to_string())).unwrap();
+            assert_eq!(args.obsolete.len(), 1);
+            if input.contains(&"--udp-port") {
+                assert_eq!(args.cli.udp_port, Some(20888));
+            }
+            if input.contains(&"--help") {
+                assert!(args.cli.help);
+            }
+        }
+        assert!(Args::parse(["--port", "20888"].map(str::to_owned)).is_err());
     }
     #[test]
     fn rejects_unsafe_duration_and_unknown_arguments() {

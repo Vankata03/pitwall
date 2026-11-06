@@ -72,15 +72,34 @@ impl Startup {
     }
 }
 
-/// `*.bad` files in the data folder root, sorted by name.
+/// Quarantined files in the data folder, including window choices and legacy `.bad.N` names.
+/// Directory links are not followed, so a data-folder junction cannot traverse other data.
 pub fn bad_files(root: &Path) -> Vec<PathBuf> {
-    let mut files: Vec<PathBuf> = fs::read_dir(root)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "bad") && path.is_file())
-        .collect();
+    fn visit(root: &Path, files: &mut Vec<PathBuf>) {
+        for entry in fs::read_dir(root).into_iter().flatten().flatten() {
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_symlink() {
+                continue;
+            }
+            if kind.is_dir() {
+                visit(&entry.path(), files);
+            } else if kind.is_file() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name.ends_with(".bad")
+                    || name
+                        .rsplit_once(".bad.")
+                        .is_some_and(|(_, n)| n.parse::<u64>().is_ok())
+                {
+                    files.push(entry.path());
+                }
+            }
+        }
+    }
+    let mut files = Vec::new();
+    visit(root, &mut files);
     files.sort();
     files
 }

@@ -703,6 +703,56 @@ impl SessionModel {
         }
     }
 
+    /// Advance silence and report only observable readout-state or lifecycle transitions.
+    /// A clock tick alone does not require another UI publication.
+    pub fn advance_readouts(&mut self, time: Duration) -> bool {
+        let before = (self.lifecycle, self.readout_states());
+        self.advance(time);
+        before != (self.lifecycle, self.readout_states())
+    }
+
+    fn readout_states(&self) -> [u64; MAX_CARS + 1] {
+        fn state<T>(readout: Readout<T>) -> u64 {
+            match readout {
+                Readout::Absent => 0,
+                Readout::Live(_) => 1,
+                Readout::Stale(_) => 2,
+                Readout::Restricted => 3,
+            }
+        }
+        let mut states = [0; MAX_CARS + 1];
+        states[MAX_CARS] = state(self.session())
+            | state(self.forecast()) << 2
+            | state(self.time_trial.read(
+                self.now,
+                Duration::from_secs(1),
+                self.lifecycle == Lifecycle::Lost,
+            )) << 4;
+        for (index, bits) in states.iter_mut().take(MAX_CARS).enumerate() {
+            if let Some(car) = self.car(index) {
+                let values = [
+                    state(car.participant()),
+                    state(car.lap()),
+                    state(car.motion()),
+                    state(car.telemetry()),
+                    state(car.aero()),
+                    state(car.history()),
+                    state(car.status()),
+                    state(car.fuel()),
+                    state(car.ers()),
+                    state(car.front_brake_bias()),
+                    state(car.damage()),
+                    state(car.tyre_sets()),
+                    state(self.pit_window(index)),
+                ];
+                for (i, value) in values.into_iter().enumerate() {
+                    *bits |= value << (i * 2);
+                }
+            }
+        }
+        states
+    }
+
     /// Move monotonic input time forwards; backwards ticks cannot freshen data.
     pub fn advance(&mut self, time: Duration) {
         self.now = self.now.max(time);

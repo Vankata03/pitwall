@@ -283,7 +283,14 @@ fn seconds(ms: Option<u32>, stale: bool) -> ReadoutView {
             },
             &format!("{} s", fixed(f64::from(ms) / 1000.0, 3)),
         ),
-        None => readout_view(ReadoutState::Absent, ""),
+        None => readout_view(
+            if stale {
+                ReadoutState::Stale
+            } else {
+                ReadoutState::Live
+            },
+            pitwall_core::readout::ABSENT_TEXT,
+        ),
     }
 }
 
@@ -930,7 +937,8 @@ mod tests {
         let labels: Vec<&str> = v.stops.iter().map(|s| s.label.as_str()).collect();
         assert_eq!(labels, ["Stop \u{b7} lap 10", "Stop \u{b7} lap 13"]);
         assert!(v.stops[1].in_lane);
-        assert_eq!(v.stops[1].stopped.state, ReadoutState::Absent);
+        assert_eq!(v.stops[1].stopped.state, ReadoutState::Live);
+        assert_eq!(v.stops[1].stopped.text, ABSENT_TEXT);
         assert_eq!(v.stop_count, "2 stops");
     }
 

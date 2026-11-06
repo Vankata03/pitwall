@@ -33,11 +33,7 @@ pub struct Tray {
     failed: bool,
 }
 impl Tray {
-    pub fn new(
-        reader: Reader,
-        paths: AppPaths,
-        settings: pitwall_core::overlay::OverlaySettings,
-    ) -> io::Result<Self> {
+    pub fn new(reader: Reader, paths: AppPaths, settings: OverlaySettings) -> io::Result<Self> {
         let menu = Menu::new();
         let line = MenuItem::new("Starting", false, None);
         let dashboard = MenuItem::new("Open dashboard", true, None);
@@ -83,11 +79,7 @@ impl Tray {
             moving,
             retry,
             overlay: None,
-            overlay_settings: OverlaySettings {
-                visible: settings.visible,
-                position: settings.position,
-                size: settings.size,
-            },
+            overlay_settings: settings,
             reader,
             paths,
             failed: false,

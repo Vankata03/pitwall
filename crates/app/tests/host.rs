@@ -456,3 +456,172 @@ fn a_stream_window_problem_is_a_status_alert_logged_once_until_the_window_recove
     // Window reports leave the last action's feedback alone.
     assert_eq!(host.status().feedback, feedback);
 }
+
+#[test]
+fn status_discovers_window_bad_files_created_after_host_open() {
+    let temp = Temp::new();
+    let mut host = temp.open();
+    let nested = temp.paths().root.join("windows");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(nested.join("dash.json.bad"), "broken choices").unwrap();
+    std::fs::write(temp.paths().root.join("windows.json.bad"), "broken windows").unwrap();
+    std::fs::write(
+        temp.paths().root.join("overlay.json.bad.2"),
+        "legacy backup",
+    )
+    .unwrap();
+    host.tick(Duration::ZERO).unwrap();
+    let files = host.status().bad_files;
+    assert!(files.contains(&nested.join("dash.json.bad")));
+    assert!(files.contains(&temp.paths().root.join("windows.json.bad")));
+    assert!(files.contains(&temp.paths().root.join("overlay.json.bad.2")));
+}
+
+#[test]
+fn idle_and_paused_replay_do_not_republish_even_when_udp_is_unavailable() {
+    let temp = Temp::new().with_recording();
+    let blocker = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    let cli = Cli {
+        udp_port: Some(blocker.local_addr().unwrap().port()),
+        ..temp.cli()
+    };
+    let folder = DataFolder::open(temp.paths(), &cli).unwrap();
+    let runtime = Runtime::start(folder, cli, quiet(temp.startup())).unwrap();
+    let generations = || {
+        (
+            runtime.reader.fast_generation(),
+            runtime.reader.snapshot().generation,
+        )
+    };
+    std::thread::sleep(Duration::from_millis(100));
+    let idle = generations();
+    std::thread::sleep(Duration::from_millis(250));
+    assert_eq!(generations(), idle);
+    runtime
+        .control
+        .send(Command::Start(format!("{FIXTURE}.pitrec")))
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while runtime.control.status().replay.is_none() {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    runtime.control.send(Command::Pause(true)).unwrap();
+    std::thread::sleep(Duration::from_millis(250));
+    let paused = generations();
+    assert!(paused.0 > idle.0 && paused.1 > idle.1);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(generations(), paused, "paused replay has no changed data");
+    runtime.control.send(Command::Seek(1.0)).unwrap();
+    std::thread::sleep(Duration::from_millis(250));
+    assert!(generations().0 > paused.0, "seek publishes while paused");
+    let sought = generations();
+    std::thread::sleep(Duration::from_millis(250));
+    assert_eq!(generations(), sought);
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn idle_bound_udp_does_not_republish() {
+    let temp = Temp::new();
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    let port = socket.local_addr().unwrap().port();
+    drop(socket);
+    let cli = Cli {
+        udp_port: Some(port),
+        ..temp.cli()
+    };
+    let runtime = Runtime::start(
+        DataFolder::open(temp.paths(), &cli).unwrap(),
+        cli,
+        quiet(temp.startup()),
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(150));
+    let before = (
+        runtime.reader.fast_generation(),
+        runtime.reader.snapshot().generation,
+    );
+    std::thread::sleep(Duration::from_millis(250));
+    assert_eq!(
+        (
+            runtime.reader.fast_generation(),
+            runtime.reader.snapshot().generation
+        ),
+        before
+    );
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn udp_fast_publications_keep_each_applied_packet_separate_from_slow_snapshots() {
+    let temp = Temp::new();
+    let reservation = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let port = reservation.local_addr().unwrap().port();
+    drop(reservation);
+    let cli = Cli {
+        udp_port: Some(port),
+        ..temp.cli()
+    };
+    let runtime = Runtime::start(
+        DataFolder::open(temp.paths(), &cli).unwrap(),
+        cli,
+        quiet(temp.startup()),
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !runtime.control.status().ready {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // A real recording's first 20 applicable datagrams, sent inside one slow interval.
+    let path =
+        Path::new("../core/tests/fixtures/data/recordings").join(format!("{FIXTURE}.pitrec"));
+    let mut recording =
+        pitwall_core::pitrec::Reader::new(std::fs::File::open(path).unwrap()).unwrap();
+    let mut ingest = pitwall_core::ingest::Ingest::default();
+    let mut packets = Vec::new();
+    while packets.len() < 20 {
+        let record = recording.next().unwrap().unwrap();
+        if matches!(
+            ingest.ingest(record.arrival_us, &record.datagram, &mut |_, _: &[u8]| {}),
+            Ok((_, pitwall_core::ingest::Disposition::Apply))
+        ) {
+            packets.push(record.datagram);
+        }
+    }
+    let start = runtime.reader.fast_generation();
+    let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    for bytes in &packets {
+        sender
+            .send_to(bytes, (std::net::Ipv4Addr::LOCALHOST, port))
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    while runtime.reader.fast_generation() < start + packets.len() as u64 {
+        assert!(
+            Instant::now() < deadline,
+            "fast publications lost applied packets"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(
+        runtime.reader.snapshot().generation < runtime.reader.fast_generation() / 2,
+        "slow snapshots must not publish at the datagram rate"
+    );
+    std::thread::sleep(Duration::from_millis(400));
+    let stale = (
+        runtime.reader.fast_generation(),
+        runtime.reader.snapshot().generation,
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(
+        (
+            runtime.reader.fast_generation(),
+            runtime.reader.snapshot().generation
+        ),
+        stale,
+        "silence publishes a staleness transition once, not repeated idle frames"
+    );
+    runtime.shutdown().unwrap();
+}

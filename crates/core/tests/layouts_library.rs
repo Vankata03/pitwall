@@ -432,8 +432,14 @@ fn a_failed_write_keeps_the_previous_layouts_in_memory_and_on_disk() {
     library.save("Mine", custom("Mine")).unwrap();
     let on_disk = std::fs::read(&file).unwrap();
     let revision = library.revision();
-    // A folder where the temporary file goes makes the write fail.
-    std::fs::create_dir_all(file.with_extension("json.tmp")).unwrap();
+    // A reader denying replacement makes the public save fail without depending on
+    // the storage helper's temporary filename.
+    use std::os::windows::fs::OpenOptionsExt;
+    let _held = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(1)
+        .open(&file)
+        .unwrap();
     let mut changed = custom("Mine");
     changed.arrangements.wide.pop();
     assert!(matches!(
@@ -473,4 +479,23 @@ fn presets_are_exactly_the_source_baselines_three_authored_arrangements() {
     for layout in &fixture {
         assert!(layout.arrangements.tablet.is_some() && layout.arrangements.phone.is_some());
     }
+}
+
+#[test]
+fn migration_keeps_all_earlier_layout_backups() {
+    let file = temp_file();
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    let original = r#"{"schemaVersion":0,"layouts":[]}"#;
+    std::fs::write(&file, original).unwrap();
+    std::fs::write(file.with_extension("json.bak"), "earliest original").unwrap();
+    let library = LayoutLibrary::open(file.clone()).unwrap();
+    library.save("Mine", custom("Mine")).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(file.with_extension("json.bak")).unwrap(),
+        "earliest original"
+    );
+    assert_eq!(
+        std::fs::read_to_string(file.with_extension("json.2.bak")).unwrap(),
+        original
+    );
 }
