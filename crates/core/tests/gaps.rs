@@ -70,13 +70,14 @@ fn restricted_gaps_stay_restricted() {
 }
 
 #[test]
-fn the_race_leader_has_no_car_ahead_even_though_the_game_sends_a_zero_interval() {
-    // In races the game sends 0 ms to the car in front for P1; that is not a gap.
+fn the_race_leader_keeps_the_bound_car_interval_like_the_web_tile() {
+    // The web tile displays the bound car interval even when P1 has no ahead note.
     let field = [
         car(0, Readout::Live(1), Some(0)),
         car(1, Readout::Live(2), Some(11_004)),
     ];
     let view = gaps_view(&field, 0);
-    assert_eq!(view.ahead, Readout::Absent);
+    assert_eq!(view.ahead, Readout::Live("+0.000 s".to_string()));
+    assert_eq!(view.ahead_note, None);
     assert_eq!(view.behind, Readout::Live("\u{2212}11.004 s".to_string()));
 }

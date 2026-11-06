@@ -34,3 +34,9 @@ pub mod tracks;
 pub mod units;
 pub mod window;
 pub mod window_set;
+
+pub mod storage;
+
+pub mod compound;
+pub mod format;
+pub mod weather;

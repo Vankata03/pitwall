@@ -3,7 +3,7 @@
 use crate::desktop;
 use pitwall_core::{
     data::DataFolder,
-    feed::{self, Publisher, Reader},
+    feed::{self, FastPublisher, Publisher, Reader},
     ingest::{
         DatagramTap, Disposition,
         config::{Cli, Config},
@@ -156,6 +156,19 @@ impl Drop for Runtime {
     }
 }
 
+/// A source switch and fast write share only this short critical section. Slow model
+/// cloning, disk access and snapshot publication never hold it. Readers use the seqlock.
+struct FastSource {
+    writer: FastPublisher,
+    replay: bool,
+    restore_live: bool,
+}
+type FastOutput = Arc<Mutex<FastSource>>;
+struct ReceiverOutput {
+    state: Arc<Mutex<LiveView>>,
+    fast: FastOutput,
+}
+
 struct LiveView {
     model: SessionModel,
     status: Option<LiveStatus>,
@@ -175,6 +188,7 @@ impl ReceiverWorker {
         recorder: Arc<Mutex<Recorder>>,
         enabled: Arc<AtomicBool>,
         tracks: TrackStore,
+        fast: FastOutput,
     ) -> io::Result<Self> {
         let (updates, receiver) = mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
@@ -197,7 +211,10 @@ impl ReceiverWorker {
                     tracks,
                     receiver,
                     &worker_stop,
-                    &worker_state,
+                    ReceiverOutput {
+                        state: worker_state.clone(),
+                        fast,
+                    },
                 );
                 if let Err(error) = &result {
                     worker_state.lock().unwrap().error = Some(error.to_string());
@@ -228,10 +245,14 @@ fn receive(
     tracks: TrackStore,
     updates: mpsc::Receiver<PreparedUpdate>,
     stop: &AtomicBool,
-    state: &Mutex<LiveView>,
+    output: ReceiverOutput,
 ) -> io::Result<()> {
     let origin = Instant::now();
-    let mut last_publish = Instant::now();
+    let mut last_publish = Instant::now() - Duration::from_secs(1);
+    let mut last_status = last_publish;
+    let mut dirty = false;
+    let mut frame_dirty = false;
+    let mut last_frame = last_publish;
     let mut model = SessionModel::default();
     let mut samples = Vec::new();
     let mut tap = |at, bytes: &[u8]| {
@@ -251,29 +272,53 @@ fn receive(
             if let Ok((parsed, Disposition::Apply)) = received.result {
                 model.apply(Duration::from_micros(received.arrival_time_us), &parsed);
                 tracks.observe(&model);
+                dirty = true;
+                frame_dirty = true;
+                let mut output = output.fast.lock().unwrap();
+                if !output.replay {
+                    output.writer.publish_fast(&model);
+                }
             }
         }
         if had_input && samples.len() < 4096 {
             samples.push(started.elapsed().as_secs_f64() * 1000.0);
         }
-        model.advance(Duration::from_micros(now()));
-        if last_publish.elapsed()
-            >= if had_input {
-                Duration::from_nanos(16_666_667)
-            } else {
-                Duration::from_millis(50)
+        let stale_changed = model.advance_readouts(Duration::from_micros(now()));
+        dirty |= stale_changed;
+        frame_dirty |= stale_changed;
+        if frame_dirty && last_frame.elapsed() >= Duration::from_nanos(16_666_667) {
+            let frame_model = Arc::new(model.clone());
+            let mut output = output.fast.lock().unwrap();
+            if !output.replay {
+                output.writer.publish_frame_model(frame_model);
             }
+            frame_dirty = false;
+            last_frame = Instant::now();
+        }
         {
-            let mut out = state.lock().unwrap();
-            out.model = model.clone();
+            let mut output = output.fast.lock().unwrap();
+            if !output.replay && (stale_changed || output.restore_live) {
+                output.writer.publish_fast(&model);
+                frame_dirty |= output.restore_live;
+                output.restore_live = false;
+            }
+        }
+        let publish = dirty && last_publish.elapsed() >= Duration::from_millis(200);
+        if publish || last_status.elapsed() >= Duration::from_millis(50) {
+            let mut out = output.state.lock().unwrap();
+            if publish {
+                out.model = model.clone();
+                out.generation += 1;
+                last_publish = Instant::now();
+                dirty = false;
+            }
             out.status = Some(live.status(now()));
-            out.generation += 1;
             out.latency.append(&mut samples);
             if out.latency.len() > 4096 {
                 let excess = out.latency.len() - 4096;
                 out.latency.drain(..excess);
             }
-            last_publish = Instant::now();
+            last_status = Instant::now();
         }
         live.wait(Duration::from_millis(5))?;
     }
@@ -365,7 +410,9 @@ impl Host {
         Ok(host)
     }
     pub fn status(&self) -> Status {
-        self.status.clone()
+        let mut status = self.status.clone();
+        status.bad_files = desktop::bad_files(&self.folder.paths.root);
+        status
     }
     fn load_file_settings(&mut self) -> io::Result<()> {
         if let Some(config) = self.read_file_settings()? {
@@ -513,12 +560,17 @@ impl Host {
                 }
                 self.active()?
                     .seek(Duration::try_from_secs_f64(seconds).map_err(io::Error::other)?)?;
+                self.load_generation += 1;
             }
             Command::Speed(speed) => self.active()?.set_speed(speed)?,
-            Command::JumpLap(car, lap) => self.active()?.jump_lap(car, lap)?,
+            Command::JumpLap(car, lap) => {
+                self.active()?.jump_lap(car, lap)?;
+                self.load_generation += 1;
+            }
             Command::Restart => {
                 self.active()?.seek(Duration::ZERO)?;
                 self.active()?.pause(false);
+                self.load_generation += 1;
             }
             Command::Relearn => {
                 let key = self
@@ -628,6 +680,22 @@ impl Host {
         }
         Ok(())
     }
+    fn refresh_bad_files(&mut self) {
+        let files = desktop::bad_files(&self.folder.paths.root);
+        if files != self.status.bad_files {
+            for path in files
+                .iter()
+                .filter(|path| !self.status.bad_files.contains(path))
+            {
+                desktop::log(
+                    &self.folder.paths,
+                    &format!("Unreadable file kept as {}", path.display()),
+                );
+            }
+            self.status.bad_files = files;
+            self.status.revision += 1;
+        }
+    }
     fn report(&mut self, error: io::Error) {
         let text = error.to_string();
         if self.status.error.as_ref() != Some(&text) {
@@ -643,7 +711,7 @@ impl Host {
         mut self,
         receiver: mpsc::Receiver<Command>,
         state: Arc<Mutex<Status>>,
-        mut publisher: Publisher,
+        publisher: Publisher,
     ) -> io::Result<()> {
         desktop::log(
             &self.folder.paths,
@@ -658,7 +726,16 @@ impl Host {
         let mut last = Instant::now();
         let mut housekeeping = Instant::now() - Duration::from_secs(2);
         let mut system = sysinfo::System::new();
-        let mut published = (u64::MAX, None, None);
+        let (mut publisher, fast_writer) = publisher.split();
+        let fast = Arc::new(Mutex::new(FastSource {
+            writer: fast_writer,
+            replay: false,
+            restore_live: false,
+        }));
+        let mut published = None;
+        let mut snapshotted = None;
+        let mut last_snapshot = Instant::now() - Duration::from_secs(1);
+        let mut source = None;
         loop {
             match receiver.recv_timeout(Duration::from_millis(16)) {
                 Ok(Command::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -669,7 +746,6 @@ impl Host {
                         self.report(e);
                     }
                     self.status.busy = false;
-                    published = (u64::MAX, None, None);
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
             }
@@ -678,6 +754,7 @@ impl Host {
             }
             last = Instant::now();
             if housekeeping.elapsed() >= Duration::from_secs(1) {
+                self.refresh_bad_files();
                 if let Some(live) = &self.live
                     && live.worker.as_ref().is_some_and(JoinHandle::is_finished)
                 {
@@ -699,6 +776,7 @@ impl Host {
                                 self.recorder.clone(),
                                 self.enabled.clone(),
                                 self.tracks.clone(),
+                                fast.clone(),
                             )
                         }) {
                         Ok(live) => {
@@ -747,28 +825,72 @@ impl Host {
                 self.status.revision += 1;
                 housekeeping = Instant::now();
             }
+            let replay_active = self.replay.is_some() || self.status.loading.is_some();
+            {
+                let mut output = fast.lock().unwrap();
+                if output.replay != replay_active {
+                    output.replay = replay_active;
+                    output.restore_live = !replay_active;
+                }
+            }
             if let Some(live) = &self.live {
                 let live = live.state.lock().unwrap();
                 self.status.live = live.status.clone();
-                self.status.line = crate::status_view::connection_line(&self.status);
                 self.live_session = matches!(live.model.lifecycle(), Lifecycle::Live);
-                let model = self.replay.as_ref().map_or(&live.model, |r| r.0.model());
-                if self.replay.is_none() {
-                    self.status.track = track_of(model);
+            }
+            self.status.line = crate::status_view::connection_line(&self.status);
+            if self.status.loading.is_none() {
+                if let Some((replay, _)) = &self.replay {
+                    let key = (
+                        self.load_generation,
+                        replay.position(),
+                        replay.model().epoch(),
+                    );
+                    let new_source = source != Some(true);
+                    let changed = new_source || published != Some(key);
+                    if changed {
+                        let frame_model = Arc::new(replay.model().clone());
+                        let mut output = fast.lock().unwrap();
+                        output.writer.publish_fast(replay.model());
+                        output.writer.publish_frame_model(frame_model);
+                        published = Some(key);
+                    }
+                    // A load or seek changes the model timeline immediately. Pending
+                    // running data also flushes once after pause or end, then stays idle.
+                    let timeline = new_source
+                        || snapshotted.is_none_or(|old: (u64, Duration, u64)| {
+                            old.0 != key.0 || old.2 != key.2
+                        });
+                    if snapshotted != Some(key)
+                        && (timeline || last_snapshot.elapsed() >= Duration::from_millis(200))
+                    {
+                        publisher.publish_snapshot(replay.model());
+                        last_snapshot = Instant::now();
+                        snapshotted = Some(key);
+                    }
+                    self.status.track = track_of(replay.model());
+                    source = Some(true);
+                } else if let Some(live) = &self.live {
+                    let live = live.state.lock().unwrap();
+                    let key = (live.generation, Duration::ZERO, 0);
+                    if source != Some(false) || published != Some(key) {
+                        publisher.publish_snapshot(&live.model);
+                        published = Some(key);
+                    }
+                    self.status.track = track_of(&live.model);
+                    source = Some(false);
+                } else if source == Some(true) {
+                    let model = SessionModel::default();
+                    let frame_model = Arc::new(model.clone());
+                    {
+                        let mut output = fast.lock().unwrap();
+                        output.writer.publish_fast(&model);
+                        output.writer.publish_frame_model(frame_model);
+                    }
+                    publisher.publish_snapshot(&model);
+                    source = None;
+                    published = None;
                 }
-                let key = (
-                    live.generation,
-                    self.status.replay_name.clone(),
-                    self.replay.as_ref().map(|r| r.0.position()),
-                );
-                if key != published && self.status.loading.is_none() {
-                    publisher.publish_fast(model);
-                    publisher.publish_snapshot(model);
-                    published = key;
-                }
-            } else if let Some((replay, _)) = &self.replay {
-                publisher.publish_fast(replay.model());
-                publisher.publish_snapshot(replay.model());
             }
             *state.lock().unwrap() = self.status.clone();
         }

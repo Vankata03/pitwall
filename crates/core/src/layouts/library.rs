@@ -219,7 +219,7 @@ impl Inner {
     /// of another `schemaVersion` copies it to `layouts.json.bak` first (ADR 0003).
     fn commit(&mut self, user: Vec<Layout>) -> io::Result<()> {
         if self.needs_backup {
-            match fs::copy(&self.path, self.path.with_extension("json.bak")) {
+            match crate::storage::preserve(&self.path, "bak") {
                 Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
                 _ => {}
             }
@@ -231,12 +231,7 @@ impl Inner {
             extra: self.extra.clone(),
         };
         let bytes = serde_json::to_vec_pretty(&stored).map_err(io::Error::other)?;
-        let temporary = self.path.with_extension("json.tmp");
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&temporary, bytes)?;
-        fs::rename(&temporary, &self.path)?;
+        crate::storage::atomic_write(&self.path, bytes)?;
         self.user = stored.layouts;
         self.revision += 1;
         Ok(())

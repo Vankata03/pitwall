@@ -10,16 +10,15 @@
 
 use gpui::{Hsla, IntoElement, ParentElement, Styled, canvas, div, px};
 use pitwall_core::{
-    model::{self, LapSample, Lifecycle, Readout, SessionModel},
+    model::{LapSample, Lifecycle, Readout, SessionModel},
     readout::{ReadoutState, ReadoutView, readout_view, whole_tile_message},
 };
-use serde_json::Value;
 
 use super::{Densities, Density, format::signed, paint, widgets};
 use crate::theme;
 
-pub const TYPE: &str = "live-delta";
-pub const NAME: &str = "Live delta";
+pub const TYPE: &str = pitwall_core::tile_catalog::LIVE_DELTA.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (280.0, 170.0),
     full: Some((600.0, 240.0)),
@@ -27,34 +26,7 @@ pub const DENSITIES: Densities = Densities {
 /// Longest gap in lap distance (m) the graph joins with a straight line (spec section 6).
 pub const MAX_JOIN_M: f32 = 100.0;
 
-/// The saved `reference` setting: best (default) or previous. Anything else reads best.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Reference {
-    Best,
-    Previous,
-}
-
-impl Reference {
-    pub fn of(settings: &Value) -> Self {
-        if settings.get("reference").and_then(Value::as_str) == Some("previous") {
-            Self::Previous
-        } else {
-            Self::Best
-        }
-    }
-    fn core(self) -> model::Reference {
-        match self {
-            Self::Best => model::Reference::Best,
-            Self::Previous => model::Reference::Previous,
-        }
-    }
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Best => "Best lap",
-            Self::Previous => "Previous lap",
-        }
-    }
-}
+pub use pitwall_core::model::Reference;
 
 /// Delta in seconds at a lap distance in metres. A NaN delta or distance is a break.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -235,7 +207,7 @@ impl Inputs {
         let current = car
             .zip(current_trace)
             .and_then(|(c, lap)| {
-                let reference = c.lap_trace(reference.core())?;
+                let reference = c.lap_trace(reference)?;
                 Some(lap_points(&lap.samples, &reference.samples))
             })
             .unwrap_or_default();
@@ -247,7 +219,7 @@ impl Inputs {
                 // valid lap completed before it.
                 let against = match reference {
                     Reference::Previous => finished.lap_number.checked_sub(1)?,
-                    Reference::Best => {
+                    _ => {
                         c.session_history()
                             .laps
                             .iter()
@@ -262,7 +234,7 @@ impl Inputs {
             .filter(|points| points.iter().filter(|p| p.delta.is_finite()).count() > 1)
             .unwrap_or_default();
         Self {
-            delta: car.map_or(Readout::Absent, |c| c.live_delta(reference.core())),
+            delta: car.map_or(Readout::Absent, |c| c.live_delta(reference)),
             reference,
             track_length: session.map_or(0.0, |s| s.0),
             sectors: session.map_or([0.0; 2], |s| s.1),
@@ -581,7 +553,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("live-delta", "Live delta"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::LIVE_DELTA.name),
+            ("live-delta", "Live delta")
+        );
         assert_eq!(DENSITIES.pick(279.0, 170.0), Density::Compact);
         assert_eq!(DENSITIES.pick(280.0, 170.0), Density::Regular);
         assert_eq!(DENSITIES.pick(600.0, 240.0), Density::Full);
@@ -606,13 +581,13 @@ mod tests {
 
     #[test]
     fn the_reference_setting_is_best_or_previous_defaulting_to_best() {
-        assert_eq!(Reference::of(&json!({})), Reference::Best);
+        assert_eq!(Reference::best_or_previous_of(&json!({})), Reference::Best);
         assert_eq!(
-            Reference::of(&json!({"reference": "previous"})),
+            Reference::best_or_previous_of(&json!({"reference": "previous"})),
             Reference::Previous
         );
         assert_eq!(
-            Reference::of(&json!({"reference": "nonsense"})),
+            Reference::best_or_previous_of(&json!({"reference": "nonsense"})),
             Reference::Best
         );
         let v = view(&base(Readout::Live(-50.0)));

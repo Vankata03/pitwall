@@ -25,7 +25,7 @@ fn settings_round_trip_and_fall_back_to_hidden() {
     let dir = temp_dir("round-trip");
     let path = dir.join("overlay.json");
     assert_eq!(
-        OverlaySettings::load(&path),
+        OverlaySettings::load_preserved(&path),
         Loaded::Missing(OverlaySettings::default())
     );
     let saved = OverlaySettings {
@@ -34,11 +34,11 @@ fn settings_round_trip_and_fall_back_to_hidden() {
         size: Some((540, 160)),
     };
     saved.save(&path).unwrap();
-    assert_eq!(OverlaySettings::load(&path), Loaded::Read(saved));
+    assert_eq!(OverlaySettings::load_preserved(&path), Loaded::Read(saved));
     // Files saved before the overlay could be resized carry no size.
     std::fs::write(&path, r#"{"visible":true,"position":[36,1252]}"#).unwrap();
     assert_eq!(
-        OverlaySettings::load(&path).settings(),
+        OverlaySettings::load_preserved(&path).settings(),
         OverlaySettings {
             visible: true,
             position: Some((36, 1252)),
@@ -52,7 +52,7 @@ fn settings_round_trip_and_fall_back_to_hidden() {
     )
     .unwrap();
     assert_eq!(
-        OverlaySettings::load(&path).settings(),
+        OverlaySettings::load_preserved(&path).settings(),
         OverlaySettings {
             visible: true,
             position: Some((17, 1200)),
@@ -71,7 +71,7 @@ fn a_malformed_file_is_kept_under_bad_and_defaults_load() {
         settings,
         kept,
         error: _,
-    } = OverlaySettings::load(&path)
+    } = OverlaySettings::load_preserved(&path)
     else {
         panic!("malformed file not reported");
     };
@@ -81,10 +81,10 @@ fn a_malformed_file_is_kept_under_bad_and_defaults_load() {
     assert!(!path.exists());
     // A second bad file never replaces the first one kept.
     std::fs::write(&path, "{").unwrap();
-    let Loaded::Malformed { kept, .. } = OverlaySettings::load(&path) else {
+    let Loaded::Malformed { kept, .. } = OverlaySettings::load_preserved(&path) else {
         panic!("malformed file not reported");
     };
-    assert_eq!(kept, dir.join("overlay.json.bad.2"));
+    assert_eq!(kept, dir.join("overlay.json.2.bad"));
     assert_eq!(
         std::fs::read_to_string(dir.join("overlay.json.bad")).unwrap(),
         "not json"

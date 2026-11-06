@@ -17,11 +17,26 @@ mechanism and the numbers behind it.
 
 Each path carries a generation that advances on every publish. A UI keeps the generation
 it last drew and repaints only when it changes; `fast_generation()` is one atomic load, so
-that check costs nothing.
+that check requires no frame copy.
 
-The ingest thread should call `publish_fast` after each batch of applied datagrams and
-`publish_snapshot` at a lower rate (the current web runtime clones the model on every
-batch with input and every 50 ms when idle).
+The native host publishes `publish_fast` after every applied UDP datagram. It publishes
+slow snapshots only after data or readout-state changes, at most every 200 ms. A separate
+`frame_snapshot()` shares a model for complex frame tiles at most once per display frame;
+preparing that model does not hold the fast-source switch lock. Slow tiles read only the
+slow snapshot. Paused replay and idle UDP do not republish unchanged data. A final pending
+snapshot flushes once after replay pauses or ends; seek and replay loads publish immediately.
+
+The dashboard prepares typed display values and compares them per placed tile. Each tile
+has a retained gpui entity with cached paint, invalidated only when its displayed values,
+size, or inherited text style changes. Editing and window interactions can also invalidate
+paint. The source switch serializes fast writers with a short mutex; seqlock readers never
+take it. Slow cloning and disk operations do not hold that mutex.
+
+Tests: `udp_fast_publications_keep_each_applied_packet_separate_from_slow_snapshots`,
+`idle_bound_udp_does_not_republish`,
+`idle_and_paused_replay_do_not_republish_even_when_udp_is_unavailable`,
+`frame_model_and_slow_snapshot_publish_independently`, and
+`retained_tiles_change_only_when_their_displayed_view_changes`.
 
 ## Mechanism: a seqlock over atomic words
 

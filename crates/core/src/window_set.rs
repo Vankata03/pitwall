@@ -244,12 +244,10 @@ impl WindowSet {
             "schemaVersion": WINDOW_SET_SCHEMA_VERSION,
             "windows": self.windows,
         });
-        let temporary = path.with_extension("json.tmp");
-        fs::write(
-            &temporary,
+        crate::storage::atomic_write(
+            path,
             serde_json::to_vec_pretty(&file).map_err(io::Error::other)?,
-        )?;
-        fs::rename(&temporary, path)
+        )
     }
 
     pub fn windows(&self) -> &[Window] {

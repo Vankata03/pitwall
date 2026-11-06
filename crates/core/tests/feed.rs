@@ -264,3 +264,27 @@ fn concurrent_readers_never_see_a_torn_fast_frame() {
     }
     assert_eq!(reader.fast().generation, 200_001);
 }
+
+#[test]
+fn frame_model_and_slow_snapshot_publish_independently() {
+    let (publisher, reader) = feed::channel();
+    let (mut slow, mut fast) = publisher.split();
+    let model = model_with_inputs(Duration::ZERO, &[("car_telemetry_data.0.speed", "287")]);
+    fast.publish_frame_model(std::sync::Arc::new(model.clone()));
+    assert_eq!(reader.frame_snapshot().generation, 1);
+    assert_eq!(reader.snapshot().generation, 0);
+    assert_eq!(
+        reader
+            .frame_snapshot()
+            .car(0)
+            .unwrap()
+            .telemetry()
+            .value()
+            .unwrap()
+            .speed,
+        287
+    );
+    slow.publish_snapshot(&model);
+    assert_eq!(reader.frame_snapshot().generation, 1);
+    assert_eq!(reader.snapshot().generation, 1);
+}

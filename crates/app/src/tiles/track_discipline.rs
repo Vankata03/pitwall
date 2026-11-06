@@ -12,8 +12,8 @@ use super::{
     slow::{self, Row},
 };
 
-pub const TYPE: &str = "track-discipline";
-pub const NAME: &str = "Track discipline";
+pub const TYPE: &str = pitwall_core::tile_catalog::TRACK_DISCIPLINE.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (240.0, 104.0),
     full: None,
@@ -114,7 +114,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("track-discipline", "Track discipline"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::TRACK_DISCIPLINE.name),
+            ("track-discipline", "Track discipline")
+        );
         assert_eq!(DENSITIES.pick(239.0, 104.0), Density::Compact);
         assert_eq!(DENSITIES.pick(240.0, 104.0), Density::Regular);
     }

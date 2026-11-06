@@ -121,6 +121,10 @@ pub fn channel() -> (Publisher, Reader) {
             generation: 0,
             model: Arc::new(SessionModel::default()),
         }),
+        frame_snapshot: Mutex::new(Snapshot {
+            generation: 0,
+            model: Arc::new(SessionModel::default()),
+        }),
         fast: SeqLock::new(encode(&EMPTY_FRAME)),
         history: (0..FAST_HISTORY_CAPACITY)
             .map(|_| SeqLock::new(encode(&EMPTY_FRAME)))
@@ -143,23 +147,22 @@ pub struct Publisher {
 }
 
 impl Publisher {
+    /// Separate the single fast writer from slow snapshot publication.
+    pub fn split(self) -> (SnapshotPublisher, FastPublisher) {
+        (
+            SnapshotPublisher {
+                shared: self.shared.clone(),
+                generation: self.snapshot_generation,
+            },
+            FastPublisher {
+                shared: self.shared,
+            },
+        )
+    }
+
     /// Publish the frame-rate car data of `model`. Never blocks and never allocates.
     pub fn publish_fast(&mut self, model: &SessionModel) {
-        let mut frame = EMPTY_FRAME;
-        frame.epoch = model.epoch();
-        frame.session_time = model.session_time();
-        frame.player_car_index = model.player_car_index();
-        for (index, slot) in frame.cars.iter_mut().enumerate() {
-            if let Some(car) = model.car(index) {
-                *slot = car.telemetry().map(CarInputs::from);
-                frame.lap_distances[index] = car.lap().map(|lap| lap.lap_distance);
-            }
-        }
-        let words = encode(&frame);
-        let generation = self.shared.fast.sequence.load(Ordering::Relaxed) / 2 + 1;
-        self.shared.history[generation as usize % FAST_HISTORY_CAPACITY]
-            .write_generation(&words, generation);
-        self.shared.fast.write(&words);
+        self.shared.publish_fast(model);
     }
 
     /// Publish `model` as the new slow-state snapshot. Clones the model; readers holding
@@ -174,6 +177,41 @@ impl Publisher {
     }
 }
 
+/// The slow writer can clone models without delaying the fast writer.
+pub struct SnapshotPublisher {
+    shared: Arc<Shared>,
+    generation: u64,
+}
+impl SnapshotPublisher {
+    pub fn publish_snapshot(&mut self, model: &SessionModel) {
+        self.generation += 1;
+        let snapshot = Snapshot {
+            generation: self.generation,
+            model: Arc::new(model.clone()),
+        };
+        *self.shared.snapshot.lock().unwrap() = snapshot;
+    }
+}
+
+/// Exactly one fast writer, independently owned from the slow writer.
+pub struct FastPublisher {
+    shared: Arc<Shared>,
+}
+impl FastPublisher {
+    /// Publish the shared model used by complex frame tiles, at most once per display
+    /// frame. Prepare the copy outside source switching; the store only swaps an Arc.
+    pub fn publish_frame_model(&mut self, model: Arc<SessionModel>) {
+        let mut snapshot = self.shared.frame_snapshot.lock().unwrap();
+        let generation = snapshot.generation + 1;
+        *snapshot = Snapshot { generation, model };
+    }
+
+    /// Publish the frame-rate car data of `model`. Never blocks and never allocates.
+    pub fn publish_fast(&mut self, model: &SessionModel) {
+        self.shared.publish_fast(model);
+    }
+}
+
 /// The reading end. Clone one per UI thread or window; reads never block the publisher.
 #[derive(Clone)]
 pub struct Reader {
@@ -181,6 +219,12 @@ pub struct Reader {
 }
 
 impl Reader {
+    /// Model data for frame tiles (lap timing, delta, map and other complex readouts).
+    /// Kept separate from the 5 Hz snapshot consumed by slow tiles.
+    pub fn frame_snapshot(&self) -> Snapshot {
+        self.shared.frame_snapshot.lock().unwrap().clone()
+    }
+
     /// The latest slow-state snapshot. Holds the lock only to clone an `Arc`.
     pub fn snapshot(&self) -> Snapshot {
         self.shared.snapshot.lock().unwrap().clone()
@@ -226,9 +270,30 @@ impl Reader {
 }
 
 struct Shared {
+    frame_snapshot: Mutex<Snapshot>,
     snapshot: Mutex<Snapshot>,
     fast: SeqLock,
     history: Box<[SeqLock]>,
+}
+
+impl Shared {
+    fn publish_fast(&self, model: &SessionModel) {
+        let mut frame = EMPTY_FRAME;
+        frame.epoch = model.epoch();
+        frame.session_time = model.session_time();
+        frame.player_car_index = model.player_car_index();
+        for (index, slot) in frame.cars.iter_mut().enumerate() {
+            if let Some(car) = model.car(index) {
+                *slot = car.telemetry().map(CarInputs::from);
+                frame.lap_distances[index] = car.lap().map(|lap| lap.lap_distance);
+            }
+        }
+        let words = encode(&frame);
+        let generation = self.fast.sequence.load(Ordering::Relaxed) / 2 + 1;
+        self.history[generation as usize % FAST_HISTORY_CAPACITY]
+            .write_generation(&words, generation);
+        self.fast.write(&words);
+    }
 }
 
 const EMPTY_FRAME: FastFrame = FastFrame {

@@ -82,49 +82,140 @@ impl SettingField {
 
 pub struct Renderer {
     pub kind: &'static str,
-    /// The tile module's own name; the same as the catalog's (tested).
-    pub name: &'static str,
     /// Draws the tile; `Memory` is what this placed tile keeps between renders.
-    pub render: fn(&TileInputs<'_>, &mut Memory) -> AnyElement,
+    pub prepare: fn(&TileInputs<'_>, &mut Memory) -> TileView,
     pub settings: &'static [SettingField],
+}
+
+impl Renderer {
+    /// These types used the web frame channel; slow tiles retain their 5 Hz model.
+    pub fn frame_rate(&self) -> bool {
+        matches!(
+            self.kind,
+            "speed-rpm-gear"
+                | "lap-timing"
+                | "live-delta"
+                | "g-force"
+                | "ers"
+                | "sm"
+                | "throttle-brake-traces"
+                | "track-map"
+        )
+    }
+}
+
+/// Prepared display values: equality is the repaint boundary, independent of feed generations.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TileView {
+    SpeedRpmGear(speed_rpm_gear::View),
+    LapTiming(lap_timing::View),
+    GForce(g_force::View),
+    ThrottleBrakeTraces(throttle_brake_traces::View),
+    LiveDelta(live_delta::View),
+    Ers(ers::View),
+    CarStatus(car_status::View),
+    EngineTemp(engine_temp::View),
+    Fuel(fuel::View),
+    TimingTower(timing_tower::View),
+    Gaps(gaps::View),
+    LapState(lap_state::View),
+    Stint(stint::View),
+    Sm(sm::View),
+    TrackDiscipline(track_discipline::View),
+    Weather(weather::View),
+    Notice(notice::View),
+    RaceControlFeed(race_control_feed::View),
+    TrackMap(track_map::View),
+}
+impl TileView {
+    fn render(self, memory: &mut Memory) -> AnyElement {
+        match self {
+            Self::SpeedRpmGear(view) => speed_rpm_gear::render(view).into_any_element(),
+            Self::LapTiming(view) => lap_timing::render(view).into_any_element(),
+            Self::GForce(view) => g_force::render(view).into_any_element(),
+            Self::ThrottleBrakeTraces(view) => {
+                throttle_brake_traces::render(view).into_any_element()
+            }
+            Self::LiveDelta(view) => live_delta::render(view).into_any_element(),
+            Self::Ers(view) => ers::render(view).into_any_element(),
+            Self::CarStatus(view) => {
+                car_status::render(view, &mut memory.car_status).into_any_element()
+            }
+            Self::EngineTemp(view) => engine_temp::render(view).into_any_element(),
+            Self::Fuel(view) => fuel::render(view).into_any_element(),
+            Self::TimingTower(view) => timing_tower::render(view).into_any_element(),
+            Self::Gaps(view) => gaps::render(view).into_any_element(),
+            Self::LapState(view) => lap_state::render(view).into_any_element(),
+            Self::Stint(view) => stint::render(view, &mut memory.stint).into_any_element(),
+            Self::Sm(view) => sm::render(view).into_any_element(),
+            Self::TrackDiscipline(view) => track_discipline::render(view).into_any_element(),
+            Self::Weather(view) => weather::render(view).into_any_element(),
+            Self::Notice(view) => notice::render(view).into_any_element(),
+            Self::RaceControlFeed(view) => race_control_feed::render(view).into_any_element(),
+            Self::TrackMap(view) => track_map::render(view).into_any_element(),
+        }
+    }
+}
+
+/// One retained gpui content entity per placed tile. Preparing a view can update
+/// traces and announcement state, but painting is invalidated only by changed content.
+#[derive(Default)]
+pub struct TileSurface {
+    memory: Memory,
+    view: Option<TileView>,
+}
+impl TileSurface {
+    pub fn prepare(&mut self, renderer: &Renderer, inputs: &TileInputs<'_>) -> bool {
+        let next = (renderer.prepare)(inputs, &mut self.memory);
+        if self.view.as_ref() == Some(&next) {
+            return false;
+        }
+        self.view = Some(next);
+        true
+    }
+}
+impl gpui::Render for TileSurface {
+    fn render(&mut self, _: &mut gpui::Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+        self.view
+            .clone()
+            .expect("tile prepared before render")
+            .render(&mut self.memory)
+    }
 }
 
 pub fn renderer(kind: &str) -> Option<&'static Renderer> {
     RENDERERS.iter().find(|r| r.kind == kind)
 }
 
-fn speed(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    speed_rpm_gear::render(speed_rpm_gear::view(&speed_rpm_gear::Inputs::from_source(
+fn speed(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::SpeedRpmGear(speed_rpm_gear::view(&speed_rpm_gear::Inputs::from_source(
         inputs.fast,
         inputs.snapshot,
         inputs.car.index(),
         inputs.units,
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn timing(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    lap_timing::render(lap_timing::view(&lap_timing::Inputs::from_model(
+fn timing(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::LapTiming(lap_timing::view(&lap_timing::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
         lap_timing::LapReference::of(&inputs.tile.settings),
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn g_force(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    g_force::render(g_force::view(&g_force::Inputs::from_model(
+fn g_force(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::GForce(g_force::view(&g_force::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn traces(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
-    throttle_brake_traces::render(throttle_brake_traces::view(&memory.traces.inputs(
+fn traces(inputs: &TileInputs<'_>, memory: &mut Memory) -> TileView {
+    TileView::ThrottleBrakeTraces(throttle_brake_traces::view(&memory.traces.inputs(
         inputs.reader,
         inputs.fast,
         inputs.snapshot,
@@ -133,64 +224,55 @@ fn traces(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
         inputs.units,
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn delta(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    live_delta::render(live_delta::view(&live_delta::Inputs::from_model(
+fn delta(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::LiveDelta(live_delta::view(&live_delta::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
-        live_delta::Reference::of(&inputs.tile.settings),
+        live_delta::Reference::best_or_previous_of(&inputs.tile.settings),
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn ers(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    ers::render(ers::view(&ers::Inputs::from_model(
+fn ers(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::Ers(ers::view(&ers::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn car_status(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
-    car_status::render(
-        car_status::view(&car_status::Inputs::from_model(
-            inputs.snapshot,
-            inputs.car.index(),
-            matches!(inputs.car, ResolvedCar::Retired(_)),
-            inputs.units,
-            inputs.size,
-        )),
-        &mut memory.car_status,
-    )
-    .into_any_element()
+fn car_status(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::CarStatus(car_status::view(&car_status::Inputs::from_model(
+        inputs.snapshot,
+        inputs.car.index(),
+        matches!(inputs.car, ResolvedCar::Retired(_)),
+        inputs.units,
+        inputs.size,
+    )))
 }
 
-fn engine_temp(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    engine_temp::render(engine_temp::view(&engine_temp::Inputs::from_model(
+fn engine_temp(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::EngineTemp(engine_temp::view(&engine_temp::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
         inputs.units,
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn fuel(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    fuel::render(fuel::view(&fuel::Inputs::from_model(
+fn fuel(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::Fuel(fuel::view(&fuel::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn tower(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
+fn tower(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
     // A session-wide tile resolves the default Focus target: the window's focus car.
-    timing_tower::render(timing_tower::view(&timing_tower::Inputs::from_model(
+    TileView::TimingTower(timing_tower::view(&timing_tower::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
         pitwall_core::tower::TowerSettings::from_json(&inputs.tile.settings),
@@ -198,34 +280,29 @@ fn tower(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
     )))
 }
 
-fn gaps(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    gaps::render(gaps::view(&gaps::Inputs::from_model(
+fn gaps(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::Gaps(gaps::view(&gaps::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn lap_state(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    lap_state::render(lap_state::view(&lap_state::Inputs::from_model(
+fn lap_state(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::LapState(lap_state::view(&lap_state::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn stint(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
-    stint::render(
-        stint::view(&stint::Inputs::from_model(
-            inputs.snapshot,
-            inputs.car.index(),
-            matches!(inputs.car, ResolvedCar::Retired(_)),
-            inputs.size,
-        )),
-        &mut memory.stint,
-    )
+fn stint(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::Stint(stint::view(&stint::Inputs::from_model(
+        inputs.snapshot,
+        inputs.car.index(),
+        matches!(inputs.car, ResolvedCar::Retired(_)),
+        inputs.size,
+    )))
 }
 
 const fn choice(value: &'static str, label: &'static str) -> Choice {
@@ -280,48 +357,45 @@ const TOWER: &[SettingField] = &[
     },
 ];
 
-fn sm(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    sm::render(sm::view(&sm::Inputs::from_model(
+fn sm(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::Sm(sm::view(&sm::Inputs::from_model(
         inputs.snapshot,
         inputs.car.index(),
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn track_discipline(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    track_discipline::render(track_discipline::view(
+fn track_discipline(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::TrackDiscipline(track_discipline::view(
         &track_discipline::Inputs::from_model(inputs.snapshot, inputs.car.index(), inputs.size),
     ))
-    .into_any_element()
 }
 
-fn weather(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    weather::render(weather::view(&weather::Inputs::from_model(
+fn weather(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::Weather(weather::view(&weather::Inputs::from_model(
         inputs.snapshot,
         inputs.units,
         inputs.size,
     )))
-    .into_any_element()
 }
 
-fn notice(inputs: &TileInputs<'_>, _: &mut Memory) -> AnyElement {
-    notice::render(notice::view(inputs.size)).into_any_element()
+fn notice(inputs: &TileInputs<'_>, _: &mut Memory) -> TileView {
+    TileView::Notice(notice::view(inputs.size))
 }
 
-fn race_control_feed(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
+fn race_control_feed(inputs: &TileInputs<'_>, memory: &mut Memory) -> TileView {
     let feed =
         race_control_feed::Inputs::from_model(inputs.snapshot, &inputs.tile.settings, inputs.size);
     let shown =
         memory
             .race_control_feed
             .announce_now(feed.candidates(), feed.epoch, &feed.entry_types);
-    race_control_feed::render(race_control_feed::view(&feed, &shown)).into_any_element()
+    TileView::RaceControlFeed(race_control_feed::view(&feed, &shown))
 }
 
 /// Session-wide: `inputs.car` is the window focus, or the player while the window follows
 /// the player.
-fn track_map(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
+fn track_map(inputs: &TileInputs<'_>, memory: &mut Memory) -> TileView {
     let memory = &mut memory.track_map;
     let map = memory.inputs(
         inputs.snapshot,
@@ -329,7 +403,7 @@ fn track_map(inputs: &TileInputs<'_>, memory: &mut Memory) -> AnyElement {
         inputs.car.index(),
         inputs.size,
     );
-    track_map::render(track_map::view(&map, &mut memory.fit)).into_any_element()
+    TileView::TrackMap(track_map::view(&map, &mut memory.fit))
 }
 
 /// Best (default) or previous: Live delta and Throttle/brake traces.
@@ -338,12 +412,12 @@ const BEST_OR_PREVIOUS: &[SettingField] = &[SettingField {
     label: "Reference lap",
     choices: &[
         Choice {
-            value: "best",
+            value: pitwall_core::model::Reference::Best.key(),
             label: "Best lap",
             time_trial_only: false,
         },
         Choice {
-            value: "previous",
+            value: pitwall_core::model::Reference::Previous.key(),
             label: "Previous lap",
             time_trial_only: false,
         },
@@ -353,36 +427,34 @@ const BEST_OR_PREVIOUS: &[SettingField] = &[SettingField {
 
 pub static RENDERERS: &[Renderer] = &[
     Renderer {
-        kind: "speed-rpm-gear",
-        name: speed_rpm_gear::NAME,
-        render: speed,
+        kind: speed_rpm_gear::TYPE,
+        prepare: speed,
         settings: &[],
     },
     Renderer {
-        kind: "lap-timing",
-        name: lap_timing::NAME,
-        render: timing,
+        kind: lap_timing::TYPE,
+        prepare: timing,
         settings: &[SettingField {
             key: "reference",
             label: "Reference lap",
             choices: &[
                 Choice {
-                    value: "best",
+                    value: pitwall_core::model::Reference::Best.key(),
                     label: "Best lap",
                     time_trial_only: false,
                 },
                 Choice {
-                    value: "previous",
+                    value: pitwall_core::model::Reference::Previous.key(),
                     label: "Previous lap",
                     time_trial_only: false,
                 },
                 Choice {
-                    value: "personal-best",
+                    value: pitwall_core::model::Reference::PersonalBest.key(),
                     label: "Personal best (Time Trial)",
                     time_trial_only: true,
                 },
                 Choice {
-                    value: "rival",
+                    value: pitwall_core::model::Reference::Rival.key(),
                     label: "Rival (Time Trial)",
                     time_trial_only: true,
                 },
@@ -392,106 +464,89 @@ pub static RENDERERS: &[Renderer] = &[
     },
     Renderer {
         kind: g_force::TYPE,
-        name: g_force::NAME,
-        render: g_force,
+        prepare: g_force,
         settings: &[],
     },
     Renderer {
         kind: throttle_brake_traces::TYPE,
-        name: throttle_brake_traces::NAME,
-        render: traces,
+        prepare: traces,
         // The channels setting is a list; its choice arrives with list settings.
         settings: BEST_OR_PREVIOUS,
     },
     Renderer {
         kind: live_delta::TYPE,
-        name: live_delta::NAME,
-        render: delta,
+        prepare: delta,
         settings: BEST_OR_PREVIOUS,
     },
     Renderer {
         kind: ers::TYPE,
-        name: ers::NAME,
-        render: ers,
+        prepare: ers,
         settings: &[],
     },
     Renderer {
         kind: car_status::TYPE,
-        name: car_status::NAME,
-        render: car_status,
+        prepare: car_status,
         settings: &[],
     },
     Renderer {
         kind: engine_temp::TYPE,
-        name: engine_temp::NAME,
-        render: engine_temp,
+        prepare: engine_temp,
         settings: &[],
     },
     Renderer {
         kind: fuel::TYPE,
-        name: fuel::NAME,
-        render: fuel,
+        prepare: fuel,
         settings: &[],
     },
     Renderer {
         kind: timing_tower::TYPE,
-        name: timing_tower::NAME,
-        render: tower,
+        prepare: tower,
         settings: TOWER,
     },
     Renderer {
         kind: gaps::TYPE,
-        name: gaps::NAME,
-        render: gaps,
+        prepare: gaps,
         settings: &[],
     },
     Renderer {
         kind: lap_state::TYPE,
-        name: lap_state::NAME,
-        render: lap_state,
+        prepare: lap_state,
         settings: &[],
     },
     Renderer {
         kind: stint::TYPE,
-        name: stint::NAME,
-        render: stint,
+        prepare: stint,
         settings: &[],
     },
     Renderer {
         kind: sm::TYPE,
-        name: sm::NAME,
-        render: sm,
+        prepare: sm,
         settings: &[],
     },
     Renderer {
         kind: track_discipline::TYPE,
-        name: track_discipline::NAME,
-        render: track_discipline,
+        prepare: track_discipline,
         settings: &[],
     },
     Renderer {
         kind: weather::TYPE,
-        name: weather::NAME,
-        render: weather,
+        prepare: weather,
         settings: &[],
     },
     Renderer {
         kind: notice::TYPE,
-        name: notice::NAME,
-        render: notice,
+        prepare: notice,
         settings: &[],
     },
     Renderer {
         kind: race_control_feed::TYPE,
-        name: race_control_feed::NAME,
-        render: race_control_feed,
+        prepare: race_control_feed,
         // The entryTypes setting is a list; its choice arrives with list settings.
         settings: &[],
     },
     Renderer {
         kind: track_map::TYPE,
-        name: track_map::NAME,
-        render: track_map,
+        prepare: track_map,
         settings: &[],
     },
 ];
@@ -502,10 +557,47 @@ mod tests {
     use pitwall_core::tile_catalog::declaration;
 
     #[test]
+    fn retained_tiles_change_only_when_their_displayed_view_changes() {
+        let (mut publisher, reader) = pitwall_core::feed::channel();
+        let model = pitwall_core::model::SessionModel::default();
+        let tile: Tile = serde_json::from_value(serde_json::json!({"i":"notice", "type":"notice", "x":0,"y":0,"w":4,"h":2,"settings":{}})).unwrap();
+        let mut surface = TileSurface::default();
+        let mut prepare = |size| {
+            let snapshot = reader.snapshot();
+            let fast = reader.fast();
+            let inputs = TileInputs {
+                tile: &tile,
+                snapshot: &snapshot,
+                fast: &fast,
+                reader: &reader,
+                car: ResolvedCar::NotInSession,
+                units: Units::default(),
+                size,
+            };
+            surface.prepare(renderer("notice").unwrap(), &inputs)
+        };
+        assert!(prepare((400.0, 100.0)));
+        publisher.publish_fast(&model);
+        assert!(
+            !prepare((400.0, 100.0)),
+            "a fast frame cannot repaint a static tile"
+        );
+        publisher.publish_snapshot(&model);
+        assert!(
+            !prepare((400.0, 100.0)),
+            "an unchanged slow view also keeps its paint"
+        );
+        assert!(
+            prepare((600.0, 100.0)),
+            "density changes invalidate the tile"
+        );
+    }
+
+    #[test]
     fn every_renderer_draws_a_declared_type_once() {
         for (n, r) in RENDERERS.iter().enumerate() {
             let declared = declaration(r.kind).unwrap_or_else(|| panic!("{} is declared", r.kind));
-            assert_eq!(declared.name, r.name);
+            assert!(!declared.name.is_empty());
             assert!(RENDERERS[n + 1..].iter().all(|o| o.kind != r.kind));
         }
     }

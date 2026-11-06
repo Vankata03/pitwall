@@ -15,8 +15,8 @@ use super::{
 };
 use crate::theme;
 
-pub const TYPE: &str = "engine-temp";
-pub const NAME: &str = "Engine temp";
+pub const TYPE: &str = pitwall_core::tile_catalog::ENGINE_TEMP.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (140.0, 64.0),
     full: None,
@@ -252,7 +252,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("engine-temp", "Engine temp"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::ENGINE_TEMP.name),
+            ("engine-temp", "Engine temp")
+        );
         assert_eq!(DENSITIES.pick(139.0, 64.0), Density::Compact);
         assert_eq!(DENSITIES.pick(140.0, 64.0), Density::Regular);
     }

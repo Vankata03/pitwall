@@ -2,105 +2,12 @@
 //! wrote (ADR 0003): `{ "visible": bool, "position": [x, y] | null, "size": [w, h] | null }`
 //! in physical pixels, with `size` optional for files saved before resizing existed.
 
-use serde::{Deserialize, Serialize};
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-};
+pub use pitwall_core::overlay::{Loaded, OverlaySettings};
 
 /// Default logical size of the overlay window.
 pub const DEFAULT_SIZE: (f64, f64) = (360.0, 110.0);
 /// Smallest logical size the overlay can be resized to while it stays readable.
 pub const MIN_SIZE: (f64, f64) = (180.0, 70.0);
-
-/// What the overlay remembers between runs, in `overlay.json` in the data folder.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OverlaySettings {
-    pub visible: bool,
-    /// Physical screen position of the window's top-left corner; `None` until first placed.
-    pub position: Option<(i32, i32)>,
-    /// Physical size; `None` until first resized.
-    #[serde(default)]
-    pub size: Option<(u32, u32)>,
-}
-
-/// The outcome of reading `overlay.json`.
-#[derive(Debug, PartialEq)]
-pub enum Loaded {
-    Read(OverlaySettings),
-    /// No file (or it could not be read): start hidden at the default position.
-    Missing(OverlaySettings),
-    /// The file did not parse. It was moved to `kept` and the defaults apply (MIG-04).
-    Malformed {
-        settings: OverlaySettings,
-        kept: PathBuf,
-        error: String,
-    },
-}
-
-impl Loaded {
-    pub fn settings(&self) -> OverlaySettings {
-        match self {
-            Self::Read(s) | Self::Missing(s) | Self::Malformed { settings: s, .. } => *s,
-        }
-    }
-}
-
-impl OverlaySettings {
-    /// Read `path`. A malformed file is never overwritten: it is renamed to the first free
-    /// `<name>.bad`, `<name>.bad.2`, … and the defaults load.
-    pub fn load(path: &Path) -> Loaded {
-        let Ok(text) = fs::read_to_string(path) else {
-            return Loaded::Missing(Self::default());
-        };
-        match serde_json::from_str(&text) {
-            Ok(settings) => Loaded::Read(settings),
-            Err(error) => {
-                let kept = free_bad_path(path);
-                if let Err(rename) = fs::rename(path, &kept) {
-                    // Could not move it aside: still load defaults, and say so.
-                    return Loaded::Malformed {
-                        settings: Self::default(),
-                        kept: path.to_owned(),
-                        error: format!("{error}; could not keep it: {rename}"),
-                    };
-                }
-                Loaded::Malformed {
-                    settings: Self::default(),
-                    kept,
-                    error: error.to_string(),
-                }
-            }
-        }
-    }
-
-    /// Write through a temporary file and a rename, so a crash never leaves half a file.
-    pub fn save(&self, path: &Path) -> io::Result<()> {
-        let tmp = path.with_extension("json.tmp");
-        fs::write(
-            &tmp,
-            serde_json::to_string_pretty(self).map_err(io::Error::other)?,
-        )?;
-        fs::rename(tmp, path)
-    }
-}
-
-fn free_bad_path(path: &Path) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(".bad");
-    let first = path.with_file_name(&name);
-    if !first.exists() {
-        return first;
-    }
-    (2..)
-        .map(|n| {
-            let mut numbered = name.clone();
-            numbered.push(format!(".{n}"));
-            path.with_file_name(numbered)
-        })
-        .find(|p| !p.exists())
-        .unwrap()
-}
 
 /// Default placement: horizontally centred, with the bottom edge a fifth of the monitor
 /// height above the bottom. `monitor` is `(x, y, width, height)`.

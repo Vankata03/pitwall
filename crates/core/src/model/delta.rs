@@ -9,6 +9,48 @@ pub enum Reference {
     Rival,
 }
 
+impl Reference {
+    pub const ALL: [Self; 4] = [Self::Best, Self::Previous, Self::PersonalBest, Self::Rival];
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Best => "best",
+            Self::Previous => "previous",
+            Self::PersonalBest => "personal-best",
+            Self::Rival => "rival",
+        }
+    }
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Best => "Best lap",
+            Self::Previous => "Previous lap",
+            Self::PersonalBest => "Personal best",
+            Self::Rival => "Rival",
+        }
+    }
+    pub fn of(settings: &serde_json::Value) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|reference| {
+                Some(reference.key())
+                    == settings
+                        .get("reference")
+                        .and_then(serde_json::Value::as_str)
+            })
+            .unwrap_or(Self::Best)
+    }
+    /// Trace and delta settings accept only best or previous, as in the web build.
+    pub fn best_or_previous_of(settings: &serde_json::Value) -> Self {
+        if Self::of(settings) == Self::Previous {
+            Self::Previous
+        } else {
+            Self::Best
+        }
+    }
+    pub const fn extra(self) -> bool {
+        matches!(self, Self::PersonalBest | Self::Rival)
+    }
+}
+
 /// Official summary comparison. No distance samples are required.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
 pub struct LapResult {

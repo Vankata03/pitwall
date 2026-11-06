@@ -205,9 +205,7 @@ impl DataFolder {
         if let Some(parent) = self.config_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let temporary = self.config_path.with_extension("toml.tmp");
-        fs::write(&temporary, text)?;
-        fs::rename(&temporary, &self.config_path)
+        crate::storage::atomic_write(&self.config_path, text)
     }
 }
 
@@ -242,17 +240,7 @@ fn quarantine(file: DataFile, path: &Path, error: String) -> io::Result<LoadIssu
 /// Move an unparseable file aside to the first free `<name>.bad`, `<name>.2.bad`, ...
 /// and return where it went. Never overwrites an earlier copy.
 pub(crate) fn keep_as_bad(path: &Path) -> io::Result<PathBuf> {
-    let name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let kept_as = (1..)
-        .map(|n| match n {
-            1 => path.with_file_name(format!("{name}.bad")),
-            n => path.with_file_name(format!("{name}.{n}.bad")),
-        })
-        .find(|candidate| !candidate.exists())
-        .expect("a free name exists");
-    fs::rename(path, &kept_as)?;
+    let kept_as = crate::storage::preserve(path, "bad")?;
+    fs::remove_file(path)?;
     Ok(kept_as)
 }

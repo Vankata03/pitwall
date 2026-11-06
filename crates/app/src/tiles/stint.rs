@@ -16,8 +16,8 @@ use pitwall_core::{
 use super::{Densities, Density, format::fixed, widgets};
 use crate::theme;
 
-pub const TYPE: &str = "stint";
-pub const NAME: &str = "Stint";
+pub const TYPE: &str = pitwall_core::tile_catalog::STINT.kind;
+
 /// Both densities show the same content.
 pub const DENSITIES: Densities = Densities {
     regular: (300.0, 240.0),
@@ -127,50 +127,16 @@ impl Inputs {
     }
 }
 
-/// Colour family of a visual compound; the compound is always named in text too.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Family {
-    Soft,
-    Medium,
-    Hard,
-    Inter,
-    Wet,
-    Unknown,
-}
-
+use pitwall_core::compound::Compound;
+pub use pitwall_core::compound::Family;
 fn family(compound: u8) -> Family {
-    match compound {
-        16 | 19 | 20 => Family::Soft,
-        17 | 21 => Family::Medium,
-        18 | 22 => Family::Hard,
-        7 => Family::Inter,
-        8 => Family::Wet,
-        _ => Family::Unknown,
-    }
+    Compound::from_visual(compound).family()
 }
-
 fn symbol(family: Family) -> &'static str {
-    match family {
-        Family::Soft => "S",
-        Family::Medium => "M",
-        Family::Hard => "H",
-        Family::Inter => "I",
-        Family::Wet => "W",
-        Family::Unknown => "?",
-    }
+    family.symbol()
 }
-
 fn compound_name(compound: u8) -> String {
-    match compound {
-        16 | 20 => "Soft",
-        17 | 21 => "Medium",
-        18 | 22 => "Hard",
-        7 => "Intermediate",
-        8 => "Wet",
-        19 => "Super soft",
-        other => return format!("Compound {other}"),
-    }
-    .to_string()
+    Compound::from_visual(compound).name()
 }
 
 fn set_label(starting_age: Option<u8>) -> String {
@@ -283,7 +249,14 @@ fn seconds(ms: Option<u32>, stale: bool) -> ReadoutView {
             },
             &format!("{} s", fixed(f64::from(ms) / 1000.0, 3)),
         ),
-        None => readout_view(ReadoutState::Absent, ""),
+        None => readout_view(
+            if stale {
+                ReadoutState::Stale
+            } else {
+                ReadoutState::Live
+            },
+            pitwall_core::readout::ABSENT_TEXT,
+        ),
     }
 }
 
@@ -334,7 +307,8 @@ pub fn view(inputs: &Inputs) -> View {
             caption: format!(
                 "Laps {}\u{2013}{} \u{b7} current",
                 running.start_lap,
-                lap.map_or("\u{2014}".to_string(), |l| l.to_string())
+                lap.map_or(pitwall_core::readout::ABSENT_TEXT.to_string(), |l| l
+                    .to_string())
             ),
             wear: match &condition(&inputs.tyre_condition) {
                 Readout::Live(c) => Wear::Wheels(wheels(c, dim_state(ReadoutState::Live, stale))),
@@ -373,7 +347,8 @@ pub fn view(inputs: &Inputs) -> View {
                 final_age: format!(
                     "Final tyre age {}",
                     s.tyre_age_laps
-                        .map_or("\u{2014}".to_string(), |a| a.to_string())
+                        .map_or(pitwall_core::readout::ABSENT_TEXT.to_string(), |a| a
+                            .to_string())
                 ),
                 wheels: wear
                     .value()
@@ -467,16 +442,7 @@ impl Memory {
     }
 }
 
-fn family_colour(family: Family) -> Hsla {
-    match family {
-        Family::Soft => theme::brake(),
-        Family::Medium => theme::slower(),
-        Family::Hard => theme::window(),
-        Family::Inter => theme::personal_best(),
-        Family::Wet => theme::cold(),
-        Family::Unknown => theme::muted(),
-    }
-}
+use crate::theme::compound_colour as family_colour;
 
 fn ring(symbol: &'static str, colour: Hsla, size: f32) -> Div {
     div()
@@ -801,7 +767,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry_with_the_same_content_at_both_densities() {
-        assert_eq!((TYPE, NAME), ("stint", "Stint"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::STINT.name),
+            ("stint", "Stint")
+        );
         assert_eq!(DENSITIES.pick(299.0, 240.0), Density::Compact);
         assert_eq!(DENSITIES.pick(300.0, 240.0), Density::Regular);
         let regular = view(&inputs(false, true));
@@ -930,7 +899,8 @@ mod tests {
         let labels: Vec<&str> = v.stops.iter().map(|s| s.label.as_str()).collect();
         assert_eq!(labels, ["Stop \u{b7} lap 10", "Stop \u{b7} lap 13"]);
         assert!(v.stops[1].in_lane);
-        assert_eq!(v.stops[1].stopped.state, ReadoutState::Absent);
+        assert_eq!(v.stops[1].stopped.state, ReadoutState::Live);
+        assert_eq!(v.stops[1].stopped.text, ABSENT_TEXT);
         assert_eq!(v.stop_count, "2 stops");
     }
 

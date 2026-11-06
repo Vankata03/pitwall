@@ -90,7 +90,7 @@ pub struct CarHistory {
 }
 
 fn millis(part: u16, minutes: u8) -> Option<u32> {
-    let value = u32::from(minutes) * 60_000 + u32::from(part);
+    let value = crate::format::sector_millis(part, minutes);
     (value > 0).then_some(value)
 }
 

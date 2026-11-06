@@ -7,10 +7,9 @@
 
 use gpui::{IntoElement, ParentElement, Styled, div};
 use pitwall_core::{
-    model::{CarView, Lifecycle, Readout, Reference, SessionModel},
+    model::{CarView, Lifecycle, Readout, SessionModel},
     readout::{ReadoutState, ReadoutView, readout_view, whole_tile_message},
 };
-use serde_json::Value;
 
 use super::{
     Densities, Density,
@@ -18,7 +17,8 @@ use super::{
     widgets,
 };
 
-pub const NAME: &str = "Lap timing";
+pub const TYPE: &str = pitwall_core::tile_catalog::LAP_TIMING.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (300.0, 150.0),
     full: Some((400.0, 220.0)),
@@ -26,57 +26,7 @@ pub const DENSITIES: Densities = Densities {
 /// Show the official result briefly, then return to the next lap's clock and delta.
 pub const HOLD_RESULT_MS: u32 = 5000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LapReference {
-    Best,
-    Previous,
-    PersonalBest,
-    Rival,
-}
-
-impl LapReference {
-    /// `settings.reference`; anything unknown reads as Best and is left alone.
-    pub fn of(settings: &Value) -> Self {
-        match settings.get("reference").and_then(Value::as_str) {
-            Some("previous") => Self::Previous,
-            Some("personal-best") => Self::PersonalBest,
-            Some("rival") => Self::Rival,
-            _ => Self::Best,
-        }
-    }
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Best => "Best lap",
-            Self::Previous => "Previous lap",
-            Self::PersonalBest => "Personal best",
-            Self::Rival => "Rival",
-        }
-    }
-    /// Cycle the reference control, keeping unrelated saved tile settings intact.
-    pub fn cycle(settings: &mut Value, time_trial: bool) {
-        let next = match Self::of(settings) {
-            Self::Best => "previous",
-            Self::Previous if time_trial => "personal-best",
-            Self::PersonalBest if time_trial => "rival",
-            _ => "best",
-        };
-        if let Some(settings) = settings.as_object_mut() {
-            settings.insert("reference".into(), Value::from(next));
-        }
-    }
-
-    fn extra(self) -> bool {
-        matches!(self, Self::PersonalBest | Self::Rival)
-    }
-    fn model(self) -> Reference {
-        match self {
-            Self::Best => Reference::Best,
-            Self::Previous => Reference::Previous,
-            Self::PersonalBest => Reference::PersonalBest,
-            Self::Rival => Reference::Rival,
-        }
-    }
-}
+pub use pitwall_core::model::Reference as LapReference;
 
 /// The running lap as Lap Data reports it.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -236,17 +186,19 @@ impl Inputs {
             number: l.current_lap_num,
             time_ms: l.current_lap_time_in_ms,
             sector: l.sector,
-            sector1_ms: u32::from(l.sector1_time_minutes_part) * 60_000
-                + u32::from(l.sector1_time_ms_part),
-            sector2_ms: u32::from(l.sector2_time_minutes_part) * 60_000
-                + u32::from(l.sector2_time_ms_part),
+            sector1_ms: pitwall_core::format::sector_millis(
+                l.sector1_time_ms_part,
+                l.sector1_time_minutes_part,
+            ),
+            sector2_ms: pitwall_core::format::sector_millis(
+                l.sector2_time_ms_part,
+                l.sector2_time_minutes_part,
+            ),
             invalid: l.current_lap_invalid == 1,
         });
         let in_first_sector = lap.value().is_some_and(|l| l.sector == 0);
         let laps = &car.session_history().laps;
-        let result = car
-            .completed_result(reference.model())
-            .filter(|_| in_first_sector);
+        let result = car.completed_result(reference).filter(|_| in_first_sector);
         let completed = result.as_ref().map(|r| Completed {
             sectors_ms: laps
                 .iter()
@@ -264,17 +216,16 @@ impl Inputs {
             .as_ref()
             .filter(|_| lap.value().is_some_and(|l| l.time_ms < HOLD_RESULT_MS));
         let reference_lap = if reference.extra() {
-            car.time_trial_reference(reference.model())
-                .map(|tt| RefLap {
-                    lap_number: None,
-                    lap_time_ms: tt.lap_time_in_ms,
-                    sectors_ms: [
-                        tt.sector1_time_in_ms,
-                        tt.sector2_time_in_ms,
-                        tt.sector3_time_in_ms,
-                    ]
-                    .map(|ms| (ms > 0).then_some(ms)),
-                })
+            car.time_trial_reference(reference).map(|tt| RefLap {
+                lap_number: None,
+                lap_time_ms: tt.lap_time_in_ms,
+                sectors_ms: [
+                    tt.sector1_time_in_ms,
+                    tt.sector2_time_in_ms,
+                    tt.sector3_time_in_ms,
+                ]
+                .map(|ms| (ms > 0).then_some(ms)),
+            })
         } else {
             match held {
                 Some(result) => result.reference_lap_number.and_then(|number| {
@@ -282,7 +233,7 @@ impl Inputs {
                         .find(|l| l.lap_number == number)
                         .map(|l| l.as_ref())
                 }),
-                None => car.reference_lap(reference.model()),
+                None => car.reference_lap(reference),
             }
             .map(|l| RefLap {
                 lap_number: Some(l.lap_number),
@@ -294,7 +245,7 @@ impl Inputs {
             reference,
             sector_ranks: [None; 3],
             lap,
-            live_delta: car.live_delta(reference.model()),
+            live_delta: car.live_delta(reference),
             completed,
             reference_lap,
             lifecycle,
@@ -457,7 +408,7 @@ pub fn view(inputs: &Inputs) -> View {
                         .reference_lap
                         .as_ref()
                         .and_then(|r| r.lap_number)
-                        .map_or("\u{2014}".into(), |n| n.to_string()),
+                        .map_or(pitwall_core::readout::ABSENT_TEXT.into(), |n| n.to_string()),
                     inputs.reference.label()
                 ),
                 readout_view(reference_state, &clock(reference_time.unwrap_or(0), true)),
@@ -602,24 +553,6 @@ mod tests {
             delta_ms: Some(-500),
             sectors_ms: [Some(29_800), Some(30_900), Some(28_800)],
             sector_deltas_ms: [Some(-200), Some(-100), Some(-200)],
-        }
-    }
-
-    #[test]
-    fn reference_control_cycles_available_choices_and_preserves_other_settings() {
-        let mut settings = json!({"other": 1, "car": {"target": "focus"}});
-        for (tt, expected) in [
-            (false, "previous"),
-            (false, "best"),
-            (true, "previous"),
-            (true, "personal-best"),
-            (true, "rival"),
-            (true, "best"),
-        ] {
-            LapReference::cycle(&mut settings, tt);
-            assert_eq!(settings["reference"], expected);
-            assert_eq!(settings["other"], 1);
-            assert_eq!(settings["car"]["target"], "focus");
         }
     }
 

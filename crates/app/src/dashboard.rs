@@ -46,7 +46,6 @@ use pitwall_native::{desktop, host::Command as HostCommand};
 
 use crate::{
     theme,
-    tiles::{lap_timing, memory::Memory},
     windows::{Windows, placement_of},
 };
 use std::{cell::RefCell, collections::HashMap};
@@ -115,7 +114,7 @@ pub struct Dashboard {
     drag: Option<Drag>,
     /// Kept while editing so tiles do not jump as rows are added.
     row_height: f32,
-    drawn: (u64, u64, u64),
+    drawn: (u64, u64, u64, u64),
     stats: Arc<Stats>,
     /// The window's id in the window list; names its choices file.
     id: String,
@@ -126,7 +125,7 @@ pub struct Dashboard {
     services: Windows,
     _subscriptions: Vec<gpui::Subscription>,
     /// What each placed tile keeps between renders, by tile id.
-    memory: RefCell<HashMap<String, Memory>>,
+    memory: RefCell<HashMap<String, gpui::Entity<registry::TileSurface>>>,
 }
 
 impl Dashboard {
@@ -203,7 +202,7 @@ impl Dashboard {
             focus_handle,
             drag: None,
             row_height: screen::ROW_HEIGHT,
-            drawn: (u64::MAX, u64::MAX, u64::MAX),
+            drawn: (u64::MAX, u64::MAX, u64::MAX, u64::MAX),
             stats: services.stats.clone(),
             memory: RefCell::default(),
             id: spec.id.clone(),
@@ -237,6 +236,7 @@ impl Dashboard {
         (
             self.reader.fast_generation(),
             self.reader.snapshot().generation,
+            self.reader.frame_snapshot().generation,
             self.window.controller().version(),
         ) != self.drawn
     }
@@ -810,7 +810,6 @@ struct Frame<'a> {
     context: &'a BindingContext<'a>,
     participants: &'a [Participant],
     units: Units,
-    time_trial: bool,
 }
 
 impl Render for Dashboard {
@@ -821,6 +820,7 @@ impl Render for Dashboard {
         self.drawn = (
             fast.generation,
             snap.generation,
+            self.reader.frame_snapshot().generation,
             self.window.controller().version(),
         );
         let viewport = window.viewport_size();
@@ -845,10 +845,6 @@ impl Render for Dashboard {
                 context: &context,
                 participants: &participants,
                 units: self.window.choices().units,
-                time_trial: snap
-                    .session()
-                    .value()
-                    .is_some_and(|s| s.session_type == TIME_TRIAL),
             };
             return self.render_stream(background, &tiles, (width, height), &frame, cx);
         }
@@ -888,10 +884,6 @@ impl Render for Dashboard {
             (true, Some(label)) => format!("Focus: {label}"),
             (true, None) => "Focus: car not in session".into(),
         };
-        let time_trial = snap
-            .session()
-            .value()
-            .is_some_and(|s| s.session_type == TIME_TRIAL);
 
         // Chrome, top to bottom. The row height fills what is left (GRID-01).
         let mut chrome = div().flex().flex_col().flex_shrink_0();
@@ -1018,7 +1010,6 @@ impl Render for Dashboard {
             context: &context,
             participants: &participants,
             units: choices.units,
-            time_trial,
         };
         let grid = self.grid(&frame, geometry, &shown, &tiles, editing, cx);
 
@@ -1106,7 +1097,7 @@ impl Dashboard {
         tiles: &[Tile],
         (width, height): (f32, f32),
         frame: &Frame,
-        cx: &Context<Self>,
+        cx: &mut Context<Self>,
     ) -> AnyElement {
         // Every tile, the Notice included: a stream window has no short line of its own.
         let shown: Vec<&Tile> = tiles.iter().collect();
@@ -1142,10 +1133,10 @@ impl Dashboard {
         shown: &[&Tile],
         tiles: &[Tile],
         editing: bool,
-        cx: &Context<Self>,
+        cx: &mut Context<Self>,
     ) -> gpui::Div {
         let (snap, fast, context) = (frame.snap, frame.fast, frame.context);
-        let (participants, time_trial) = (frame.participants, frame.time_trial);
+        let participants = frame.participants;
         let grid_width = geometry.width;
         let mut grid = div()
             .relative()
@@ -1154,9 +1145,8 @@ impl Dashboard {
         for tile in shown.iter().copied() {
             let declaration = tile_catalog::declaration(&tile.kind);
             let renderer = registry::renderer(&tile.kind);
-            let name = renderer
-                .map(|r| r.name)
-                .or(declaration.map(|d| d.name))
+            let name = declaration
+                .map(|d| d.name)
                 .unwrap_or(tile.kind.as_str())
                 .to_owned();
             let (x, y, w, h) = geometry.rect(tile);
@@ -1178,28 +1168,6 @@ impl Dashboard {
                 .text_size(px(12.0))
                 .text_color(theme::muted())
                 .child(name.clone());
-            if tile.kind == "lap-timing" {
-                let label = format!(
-                    "Compare: {}",
-                    lap_timing::LapReference::of(&tile.settings).label()
-                );
-                head = head.child(if editing {
-                    let mut next = tile.settings.clone();
-                    lap_timing::LapReference::cycle(&mut next, time_trial);
-                    self.button(
-                        format!("reference-{}", tile.i),
-                        label,
-                        Action::Command(Command::Setting(
-                            tile.i.clone(),
-                            "reference".into(),
-                            next["reference"].clone(),
-                        )),
-                        cx,
-                    )
-                } else {
-                    div().child(label).into_any_element()
-                });
-            }
             if follows
                 && let Some(p) = resolved
                     .index()
@@ -1232,18 +1200,37 @@ impl Dashboard {
                 (Some(_), Some(renderer)) => {
                     match missing_car_message(&binding, resolved).filter(|_| follows) {
                         Some(text) => message(text.to_owned()),
-                        None => (renderer.render)(
-                            &registry::TileInputs {
+                        None => {
+                            let frame_snapshot = self.reader.frame_snapshot();
+                            let inputs = registry::TileInputs {
                                 tile,
-                                snapshot: snap,
+                                snapshot: if renderer.frame_rate() {
+                                    &frame_snapshot
+                                } else {
+                                    snap
+                                },
                                 fast,
                                 reader: &self.reader,
                                 car: resolved,
                                 units: frame.units,
                                 size: (w, (h - TILE_HEADER).max(0.0)),
-                            },
-                            self.memory.borrow_mut().entry(tile.i.clone()).or_default(),
-                        ),
+                            };
+                            let entity = self
+                                .memory
+                                .borrow_mut()
+                                .entry(tile.i.clone())
+                                .or_insert_with(|| cx.new(|_| registry::TileSurface::default()))
+                                .clone();
+                            entity.update(cx, |surface, cx| {
+                                if surface.prepare(renderer, &inputs) {
+                                    cx.notify();
+                                }
+                            });
+                            let mut style = gpui::StyleRefinement::default();
+                            style.size.width = Some(px(inputs.size.0).into());
+                            style.size.height = Some(px(inputs.size.1).into());
+                            entity.cached(style).into_any_element()
+                        }
                     }
                 }
             };

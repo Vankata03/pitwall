@@ -1,6 +1,6 @@
 # Development
 
-The Cargo workspace has two members and the pnpm workspace one package,
+The Cargo workspace has five members and the pnpm workspace one package,
 `dashboard`:
 
 - `crates/core` (`pitwall-core`) is the UI-free core: telemetry parsing, ingest,
@@ -11,6 +11,10 @@ The Cargo workspace has two members and the pnpm workspace one package,
   HTTP shell, the wire stream, the tray app, the overlay host and the `pitwall`,
   `pitrec` and `pitrec-resend` binaries. It re-exports the core modules under
   their old paths (`pitwall_collector::model` and so on).
+- `crates/app` (`pitwall-native`) contains the gpui dashboard, native host controls,
+  window management and tray integration.
+- `crates/overlay` (`pitwall-overlay`) contains the Win32 overlay and Direct2D drawing.
+- `crates/livery-art` (`pitwall-livery-art`) loads and rasterizes livery art for the native UI.
 
 ## Build and test
 

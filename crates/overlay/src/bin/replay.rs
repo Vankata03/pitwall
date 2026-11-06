@@ -145,7 +145,7 @@ mod windows_main {
             loaded.elapsed().as_secs_f64()
         );
         let settings = match &args.settings {
-            Some(path) => match OverlaySettings::load(path) {
+            Some(path) => match OverlaySettings::load_preserved(path) {
                 Loaded::Malformed { kept, error, .. } => {
                     eprintln!(
                         "overlay.json was unreadable ({error}); kept as {}",

@@ -12,8 +12,8 @@ use super::{
     slow::{self, Row},
 };
 
-pub const TYPE: &str = "lap-state";
-pub const NAME: &str = "Lap state";
+pub const TYPE: &str = pitwall_core::tile_catalog::LAP_STATE.kind;
+
 pub const DENSITIES: Densities = Densities {
     regular: (280.0, 64.0),
     full: None,
@@ -156,7 +156,10 @@ mod tests {
 
     #[test]
     fn declares_the_catalogue_entry() {
-        assert_eq!((TYPE, NAME), ("lap-state", "Lap state"));
+        assert_eq!(
+            (TYPE, pitwall_core::tile_catalog::LAP_STATE.name),
+            ("lap-state", "Lap state")
+        );
         assert_eq!(DENSITIES.pick(279.0, 64.0), Density::Compact);
         assert_eq!(DENSITIES.pick(280.0, 64.0), Density::Regular);
     }

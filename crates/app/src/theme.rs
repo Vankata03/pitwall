@@ -59,3 +59,16 @@ pub fn line() -> Hsla {
 pub fn raised() -> Hsla {
     colour(0x242B2E)
 }
+
+/// The shared tyre colour family; text and badge details remain context-specific.
+pub fn compound_colour(family: pitwall_core::compound::Family) -> gpui::Hsla {
+    use pitwall_core::compound::Family;
+    match family {
+        Family::Soft => brake(),
+        Family::Medium => slower(),
+        Family::Hard => window(),
+        Family::Inter => personal_best(),
+        Family::Wet => cold(),
+        Family::Unknown => muted(),
+    }
+}

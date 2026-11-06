@@ -18,8 +18,12 @@ pub struct GapsView {
 /// `car`'s interval to the car in front: positive for the car ahead of us, negative for
 /// the car behind. No interval reads absent.
 fn interval(car: &FieldCar, behind: bool) -> Readout<String> {
-    let sign = if behind { '\u{2212}' } else { '+' };
-    let text = |ms: u32| format!("{sign}{:.3} s", f64::from(ms) / 1000.0);
+    let text = |ms: u32| {
+        format!(
+            "{} s",
+            crate::format::seconds_from_millis(u64::from(ms), behind)
+        )
+    };
     match car.gaps {
         Readout::Live(g) => g
             .to_car_in_front_ms
@@ -43,12 +47,7 @@ pub fn gaps_view(field: &[FieldCar], index: usize) -> GapsView {
         };
     };
     let position = mine.position();
-    // P1 has no car ahead; the game still sends a zero interval for it in races.
-    let ahead = if position == Some(1) {
-        Readout::Absent
-    } else {
-        interval(mine, false)
-    };
+    let ahead = interval(mine, false);
     let mut behind = Readout::Absent;
     if let Some(position) = position {
         let next = field.iter().find(|other| {
