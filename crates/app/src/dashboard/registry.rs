@@ -16,6 +16,20 @@ use pitwall_core::{
     units::Units,
 };
 use serde_json::Value;
+use std::collections::HashMap;
+
+pub type TileKey = (String, String, String);
+
+pub fn tile_key(layout: &str, tile: &Tile) -> TileKey {
+    (layout.to_owned(), tile.i.clone(), tile.kind.clone())
+}
+
+/// Retained paint belongs to the currently mounted tiles of one layout.
+pub fn retain_mounted<T>(surfaces: &mut HashMap<TileKey, T>, layout: &str, shown: &[&Tile]) {
+    surfaces.retain(|(mounted_layout, id, kind), _| {
+        mounted_layout == layout && shown.iter().any(|tile| &tile.i == id && &tile.kind == kind)
+    });
+}
 
 /// Everything a renderer reads for one tile in one frame.
 pub struct TileInputs<'a> {
@@ -648,6 +662,32 @@ pub static RENDERERS: &[Renderer] = &[
 mod tests {
     use super::*;
     use pitwall_core::tile_catalog::declaration;
+
+    #[test]
+    fn leaving_a_layout_or_removing_a_tile_unmounts_its_retained_paint() {
+        let tile: Tile = serde_json::from_value(
+            serde_json::json!({"i":"car", "type":"car-status", "x":0,"y":0,"w":12,"h":12}),
+        )
+        .unwrap();
+        let mut surfaces = HashMap::from([(tile_key("A", &tile), TileSurface::default())]);
+        retain_mounted(&mut surfaces, "A", &[&tile]);
+        assert_eq!(
+            surfaces.len(),
+            1,
+            "an unchanged mounted tile retains its image upload"
+        );
+        retain_mounted(&mut surfaces, "B", &[&tile]);
+        assert!(
+            surfaces.is_empty(),
+            "another layout must not inherit the old livery cache for the same tile id"
+        );
+        surfaces.insert(tile_key("B", &tile), TileSurface::default());
+        retain_mounted(&mut surfaces, "B", &[]);
+        assert!(
+            surfaces.is_empty(),
+            "removing or hiding a tile unmounts its image"
+        );
+    }
 
     #[test]
     fn input_channel_choices_match_web_defaults_canonical_order_and_last_selection_guard() {

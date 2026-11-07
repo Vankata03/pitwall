@@ -298,22 +298,40 @@ pub static LIVERY_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 pub struct Memory {
     images: Option<Arc<LiveryImages>>,
     last: Option<(Arc<RgbaImage>, Arc<RenderImage>)>,
+    mounted: bool,
 }
 
 impl Memory {
+    /// A tile using an explicitly resolved host pack folder.
+    pub fn new(folder: PathBuf) -> Self {
+        Self {
+            images: Some(Arc::new(LiveryImages::new(folder))),
+            last: None,
+            mounted: true,
+        }
+    }
+
+    /// Compact removes CarImage, so the next picture mounts with a fresh pack listing.
+    pub fn hide_picture(&mut self) {
+        self.mounted = false;
+    }
+
     /// The car picture for `car`: its pack image, else the fallback car in its colours.
     pub fn picture(&mut self, car: Option<&LiveryCar>) -> Arc<RenderImage> {
-        let images = self
-            .images
-            .get_or_insert_with(|| {
-                let folder = LIVERY_FOLDER.get().cloned().unwrap_or_else(|| {
-                    pitwall_core::paths::AppPaths::resolve()
-                        .map(|p| p.liveries)
-                        .unwrap_or_default()
-                });
-                Arc::new(LiveryImages::new(folder))
-            })
-            .clone();
+        if self.images.is_none() {
+            let folder = LIVERY_FOLDER.get().cloned().unwrap_or_else(|| {
+                pitwall_core::paths::AppPaths::resolve()
+                    .map(|p| p.liveries)
+                    .unwrap_or_default()
+            });
+            *self = Self::new(folder);
+        }
+        let images = self.images.as_ref().unwrap();
+        if !self.mounted {
+            images.refresh();
+            self.last = None;
+            self.mounted = true;
+        }
         let rgba = images.image_for(car);
         if let Some((source, image)) = &self.last
             && Arc::ptr_eq(source, &rgba)
@@ -492,6 +510,9 @@ fn wing(part: &DamageView) -> Div {
 }
 
 pub fn render(view: View, memory: &mut Memory) -> impl IntoElement {
+    if !view.show_car {
+        memory.hide_picture();
+    }
     let mut head = div()
         .flex()
         .items_baseline()

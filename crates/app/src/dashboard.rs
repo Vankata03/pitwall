@@ -125,8 +125,8 @@ pub struct Dashboard {
     reported: Option<String>,
     services: Windows,
     _subscriptions: Vec<gpui::Subscription>,
-    /// What each placed tile keeps between renders, by tile id.
-    memory: RefCell<HashMap<String, gpui::Entity<registry::TileSurface>>>,
+    /// What each mounted tile keeps between renders, scoped to its layout and type.
+    memory: RefCell<HashMap<registry::TileKey, gpui::Entity<registry::TileSurface>>>,
 }
 
 impl Dashboard {
@@ -1198,6 +1198,8 @@ impl Dashboard {
     ) -> gpui::Div {
         let (snap, fast, context) = (frame.snap, frame.fast, frame.context);
         let participants = frame.participants;
+        let layout = self.window.current_name().unwrap_or_default();
+        registry::retain_mounted(&mut self.memory.borrow_mut(), layout, shown);
         let grid_width = geometry.width;
         let mut grid = div()
             .relative()
@@ -1260,7 +1262,12 @@ impl Dashboard {
                 (Some(_), None) => message(format!("{name} is not yet drawn natively.")),
                 (Some(_), Some(renderer)) => {
                     match missing_car_message(&binding, resolved).filter(|_| follows) {
-                        Some(text) => message(text.to_owned()),
+                        Some(text) => {
+                            self.memory
+                                .borrow_mut()
+                                .remove(&registry::tile_key(layout, tile));
+                            message(text.to_owned())
+                        }
                         None => {
                             let frame_snapshot = self.reader.frame_snapshot();
                             let inputs = registry::TileInputs {
@@ -1279,7 +1286,7 @@ impl Dashboard {
                             let entity = self
                                 .memory
                                 .borrow_mut()
-                                .entry(tile.i.clone())
+                                .entry(registry::tile_key(layout, tile))
                                 .or_insert_with(|| cx.new(|_| registry::TileSurface::default()))
                                 .clone();
                             entity.update(cx, |surface, cx| {
