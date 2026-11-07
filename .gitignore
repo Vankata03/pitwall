@@ -11,3 +11,6 @@ __pycache__/
 
 # Real livery art stays local (README: never ship it). Copy it into the per-user liveries folder.
 liveries/
+
+# Local agent checkouts and their generated build output.
+.claude/worktrees/
